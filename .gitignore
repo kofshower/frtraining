@@ -4,7 +4,8 @@ build/
 dist/
 *.log
 .env
-
+.build-cache/
+.swiftpm/
 .build/
 dist/
 .DS_Store
