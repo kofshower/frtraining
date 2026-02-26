@@ -339,6 +339,7 @@ struct LactateLabView: View {
     @State private var sampleContaminated = false
     @State private var sampleNote = ""
     @State private var liveAlert: String?
+    @State private var selectedHistorySession: LactateTestSession?
     @State private var primaryGoal: LactatePrimaryGoal = .firstBaseline
     @State private var experienceLevel: LactateExperienceLevel = .beginner
     @State private var readiness: LactateReadinessState = .fresh
@@ -572,6 +573,9 @@ struct LactateLabView: View {
         .padding(20)
         .sheet(isPresented: $showingSampleSheet) {
             sampleSheet
+        }
+        .sheet(item: $selectedHistorySession) { session in
+            historyDetailSheet(session)
         }
         .alert("提醒", isPresented: Binding(get: { liveAlert != nil }, set: { if !$0 { liveAlert = nil } })) {
             Button("OK", role: .cancel) {}
@@ -972,13 +976,74 @@ struct LactateLabView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(store.history) { item in
-                    GroupBox {
-                        VStack(alignment: .leading) {
-                            Text("\(item.protocolType.title) · \(item.createdAt.formatted(date: .abbreviated, time: .omitted))")
-                            Text("样本数: \(item.samples.count) · 状态: \(item.status.rawValue)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                    Button {
+                        selectedHistorySession = item
+                    } label: {
+                        GroupBox {
+                            HStack(alignment: .top) {
+                                VStack(alignment: .leading) {
+                                    Text("\(item.protocolType.title) · \(item.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                                    Text("样本数: \(item.samples.count) · 状态: \(item.status.rawValue)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(.tertiary)
+                            }
                         }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func historyDetailSheet(_ session: LactateTestSession) -> some View {
+        let points = powerLactatePoints(for: session)
+        return NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    GroupBox("测试概览") {
+                        VStack(alignment: .leading) {
+                            Text("协议: \(session.protocolType.title)")
+                            Text("日期: \(session.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                            Text("样本数: \(session.samples.count)")
+                        }
+                    }
+
+                    GroupBox("历史曲线") {
+                        if points.isEmpty {
+                            Text("暂无有效样本，无法绘制曲线。")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Chart(points) { point in
+                                LineMark(
+                                    x: .value("Power", point.power),
+                                    y: .value("Lactate", point.lactate)
+                                )
+                                .foregroundStyle(.orange)
+
+                                PointMark(
+                                    x: .value("Power", point.power),
+                                    y: .value("Lactate", point.lactate)
+                                )
+                                .foregroundStyle(.orange)
+                            }
+                            .frame(height: 260)
+                            .chartXAxisLabel("Power (W)")
+                            .chartYAxisLabel("Lactate (mmol/L)")
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            .padding(.horizontal, 20)
+            .navigationTitle("历史详情")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("完成") {
+                        selectedHistorySession = nil
                     }
                 }
             }
