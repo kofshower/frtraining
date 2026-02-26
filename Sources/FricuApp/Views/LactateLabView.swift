@@ -388,6 +388,78 @@ private struct FullRampProtocolGraphicView: View {
     }
 }
 
+private struct MLSSProtocolStageVisual: Identifiable {
+    let id = UUID()
+    let title: String
+    let subTitle: String
+}
+
+private struct MLSSProtocolGraphicView: View {
+    private let stages: [MLSSProtocolStageVisual] = [
+        MLSSProtocolStageVisual(title: "Stage 1", subTitle: "~10W below estimated MLSS"),
+        MLSSProtocolStageVisual(title: "Stage 2", subTitle: "~10W increment"),
+        MLSSProtocolStageVisual(title: "Stage 3", subTitle: "~10W increment")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        ForEach(stages) { stage in
+                            VStack(spacing: 0) {
+                                HStack(spacing: 38) {
+                                    Text("3 mins")
+                                    Text("9 mins")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                                HStack(spacing: 72) {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 10, height: 10)
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 10, height: 10)
+                                }
+                                .padding(.bottom, 6)
+
+                                Rectangle()
+                                    .fill(Color.cyan.opacity(0.75))
+                                    .overlay(
+                                        Rectangle()
+                                            .stroke(Color.cyan.opacity(0.95), lineWidth: 1)
+                                    )
+                                    .frame(width: 250, height: 44)
+                                    .overlay {
+                                        Text(stage.subTitle)
+                                            .font(.subheadline.monospaced())
+                                            .foregroundStyle(.black.opacity(0.78))
+                                    }
+
+                                Text("10 mins")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 4)
+
+                                Text(stage.title)
+                                    .font(.subheadline.bold())
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Text("Red dots indicate blood lactate sampling at 3 and 9 mins of each stage.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 private struct LactatePowerPoint: Identifiable {
     let id = UUID()
     let power: Int
@@ -522,17 +594,19 @@ struct LactateLabView: View {
                 ProtocolFocusSection(
                     title: "Key Details",
                     bullets: [
-                        "总时长约 90 分钟以上，适合精确阈值标定。",
-                        "同阶段内至少采 2 次，观察乳酸漂移。",
-                        "后段相对前段增加 >1.0 mmol/L，通常提示超过 MLSS。"
+                        "Duration: ~40-mins or more.",
+                        "No. of lactate strips required: 4 or more.",
+                        "Use this test to determine: Maximal Lactate Steady State (MLSS).",
+                        "Notes: Only recommended where precise determination of MLSS is needed."
                     ]
                 ),
                 ProtocolFocusSection(
                     title: "Protocol",
                     bullets: [
-                        "围绕预估阈值设置多个 30 分钟稳态功率块。",
-                        "每个功率块记录 10/20/30 分钟乳酸。",
-                        "根据漂移趋势微调下一次测试功率。"
+                        "Stage 1: Ride 10 mins at ~10W below estimated MLSS.",
+                        "Stage 2: Increase by ~10W and ride 10 mins.",
+                        "Stage 3: Increase by another ~10W and ride 10 mins.",
+                        "Sample lactate at 3 mins and 9 mins of each stage."
                     ]
                 ),
                 ProtocolFocusSection(
@@ -777,6 +851,8 @@ struct LactateLabView: View {
 
                             if session.protocolType.wrappedValue == .fullRamp {
                                 FullRampProtocolGraphicView()
+                            } else if session.protocolType.wrappedValue == .mlss {
+                                MLSSProtocolGraphicView()
                             }
 
                             ForEach(protocolFocusSections(for: session.protocolType.wrappedValue)) { section in
