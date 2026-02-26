@@ -321,6 +321,73 @@ private struct ProtocolFocusSection: Identifiable {
     let bullets: [String]
 }
 
+private struct FullRampStageVisual: Identifiable {
+    let id = UUID()
+    let label: String
+    let width: CGFloat
+    let height: CGFloat
+}
+
+private struct FullRampProtocolGraphicView: View {
+    private let stages: [FullRampStageVisual] = [
+        FullRampStageVisual(label: "40% FTP", width: 138, height: 44),
+        FullRampStageVisual(label: "50% FTP", width: 92, height: 54),
+        FullRampStageVisual(label: "60% FTP", width: 92, height: 58),
+        FullRampStageVisual(label: "70% FTP", width: 92, height: 62),
+        FullRampStageVisual(label: "80% FTP", width: 92, height: 66),
+        FullRampStageVisual(label: "90% FTP", width: 92, height: 70),
+        FullRampStageVisual(label: "100% FTP", width: 92, height: 74),
+        FullRampStageVisual(label: "110% FTP", width: 92, height: 78),
+        FullRampStageVisual(label: "120% FTP", width: 92, height: 82)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        ForEach(Array(stages.enumerated()), id: \.element.id) { index, stage in
+                            ZStack {
+                                Rectangle()
+                                    .fill(Color.cyan.opacity(0.75))
+                                    .overlay(
+                                        Rectangle()
+                                            .stroke(Color.cyan.opacity(0.95), lineWidth: 1)
+                                    )
+                                Text(stage.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.black.opacity(0.78))
+                            }
+                            .frame(width: stage.width, height: stage.height)
+                            .overlay(alignment: .topTrailing) {
+                                if index > 0 {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 10, height: 10)
+                                        .offset(x: -8, y: -14)
+                                }
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 10) {
+                        Text("15 mins @ 40% FTP")
+                        Text("6 mins @ 50% FTP")
+                        Text("Then +10% FTP every 5 mins")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(8)
+            }
+
+            Text("Red dots indicate blood lactate sampling at each stage end.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 private struct LactatePowerPoint: Identifiable {
     let id = UUID()
     let power: Int
@@ -426,17 +493,19 @@ struct LactateLabView: View {
                 ProtocolFocusSection(
                     title: "Key Details",
                     bullets: [
-                        "时长约 50-70 分钟（含热身与冷却）。",
-                        "每个阶段建议 4-6 分钟，阶段末采血。",
-                        "常用于建立初始乳酸曲线与 LT1/LT2 粗估范围。"
+                        "Duration: ~1H plus cool-down.",
+                        "No. of lactate strips required: ~9-13 (more if you need to take repeat measures).",
+                        "Use this test to determine: overall lactate profile and approximate locations of LT1 and LT2.",
+                        "Notes: Recommended for those with no prior testing or where last test is out of date."
                     ]
                 ),
                 ProtocolFocusSection(
                     title: "Protocol",
                     bullets: [
-                        "热身从低功率开始，确保踏频稳定后再进入阶梯。",
-                        "每个阶段提高约 10% FTP（或 10-20W），保持输出稳定。",
-                        "当乳酸 > 6 mmol/L、RPE 异常高或心率接近上限时结束测试。"
+                        "Start at 40% FTP for 15 mins.",
+                        "Ride 50% FTP for 6 mins.",
+                        "Increase by 10% FTP every 5 mins (60% → 70% → 80% ...), with lactate sampling near each stage end.",
+                        "100%-120% FTP stages may not be needed if test objective has already been reached."
                     ]
                 ),
                 ProtocolFocusSection(
@@ -705,6 +774,10 @@ struct LactateLabView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(session.protocolType.wrappedValue.title)
                                 .font(.headline)
+
+                            if session.protocolType.wrappedValue == .fullRamp {
+                                FullRampProtocolGraphicView()
+                            }
 
                             ForEach(protocolFocusSections(for: session.protocolType.wrappedValue)) { section in
                                 VStack(alignment: .leading, spacing: 4) {
