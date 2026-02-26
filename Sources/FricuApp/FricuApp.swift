@@ -197,17 +197,15 @@ private struct AppPageChrome<Content: View>: View {
 
                     Spacer()
 
-                    if store.athletePanels.count > 1 {
-                        Picker(
-                            L10n.choose(simplifiedChinese: "运动员", english: "Athlete"),
-                            selection: $store.selectedAthletePanelID
-                        ) {
-                            ForEach(store.athletePanels) { athlete in
-                                Text(athlete.title).tag(athlete.id)
-                            }
+                    Picker(
+                        L10n.choose(simplifiedChinese: "运动员", english: "Athlete"),
+                        selection: $store.selectedAthletePanelID
+                    ) {
+                        ForEach(store.athletePanels) { athlete in
+                            Text(athlete.title).tag(athlete.id)
                         }
-                        .appDropdownTheme(width: 230)
                     }
+                    .appDropdownTheme(width: 230)
 
                     Picker(L10n.choose(simplifiedChinese: "页面", english: "Page"), selection: $selection) {
                         ForEach(AppSection.allCases) { candidate in
