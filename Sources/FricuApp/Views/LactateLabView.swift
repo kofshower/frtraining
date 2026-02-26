@@ -566,6 +566,12 @@ private struct AnaerobicClearanceProtocolGraphicView: View {
             .clipped()
 
             Text("Red dots indicate blood lactate samples (pre-sprint baseline, 3/5/7 mins post-sprint, and optional 20-min sample).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
 private struct MLSSProtocolStageVisual: Identifiable {
     let id = UUID()
     let title: String
