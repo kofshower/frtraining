@@ -234,12 +234,13 @@ private final class LactateLabStore: ObservableObject {
 }
 
 private enum LactateFlowPage: String, CaseIterable, Identifiable {
-    case hub, setup, checklist, live, results, history, settings
+    case hub, protocols, setup, checklist, live, results, history, settings
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .hub: return L10n.choose(simplifiedChinese: "测试首页", english: "Test Hub")
+        case .protocols: return L10n.choose(simplifiedChinese: "协议总览", english: "Protocol Library")
         case .setup: return L10n.choose(simplifiedChinese: "协议设置", english: "Protocol Setup")
         case .checklist: return L10n.choose(simplifiedChinese: "测试前检查", english: "Pre-Test Checklist")
         case .live: return L10n.choose(simplifiedChinese: "实时测试", english: "Live Test")
@@ -388,6 +389,110 @@ private struct FullRampProtocolGraphicView: View {
     }
 }
 
+private struct TimeLactatePoint: Identifiable {
+    let id = UUID()
+    let minute: Int
+    let value: Double
+}
+
+private struct AerobicCurveGraphicView: View {
+    private let points: [LactatePowerPoint] = [
+        LactatePowerPoint(power: 120, lactate: 1.1, stageIndex: 0),
+        LactatePowerPoint(power: 150, lactate: 1.2, stageIndex: 1),
+        LactatePowerPoint(power: 180, lactate: 1.5, stageIndex: 2),
+        LactatePowerPoint(power: 210, lactate: 2.1, stageIndex: 3),
+        LactatePowerPoint(power: 240, lactate: 3.0, stageIndex: 4),
+        LactatePowerPoint(power: 270, lactate: 4.4, stageIndex: 5),
+        LactatePowerPoint(power: 300, lactate: 6.2, stageIndex: 6)
+    ]
+
+    var body: some View {
+        Chart(points) { point in
+            LineMark(x: .value("Power", point.power), y: .value("Lactate", point.lactate))
+                .foregroundStyle(.orange)
+            PointMark(x: .value("Power", point.power), y: .value("Lactate", point.lactate))
+                .foregroundStyle(.orange)
+
+            if point.lactate >= 2.0 && point.lactate < 2.3 {
+                RuleMark(x: .value("LT1", point.power))
+                    .foregroundStyle(.blue)
+                    .lineStyle(.init(lineWidth: 1, dash: [5, 3]))
+                    .annotation(position: .top, alignment: .leading) {
+                        Text("LT1")
+                            .font(.caption2)
+                    }
+            }
+            if point.lactate >= 4.0 && point.lactate < 4.8 {
+                RuleMark(x: .value("LT2", point.power))
+                    .foregroundStyle(.red)
+                    .lineStyle(.init(lineWidth: 1, dash: [5, 3]))
+                    .annotation(position: .top, alignment: .trailing) {
+                        Text("LT2")
+                            .font(.caption2)
+                    }
+            }
+        }
+        .frame(height: 220)
+        .chartXAxisLabel("Power (W)")
+        .chartYAxisLabel("Lactate (mmol/L)")
+    }
+}
+
+private struct AnaerobicClearanceGraphicView: View {
+    private let points: [TimeLactatePoint] = [
+        TimeLactatePoint(minute: 0, value: 1.2),
+        TimeLactatePoint(minute: 3, value: 6.8),
+        TimeLactatePoint(minute: 5, value: 8.1),
+        TimeLactatePoint(minute: 10, value: 6.9),
+        TimeLactatePoint(minute: 15, value: 5.8),
+        TimeLactatePoint(minute: 20, value: 4.9),
+        TimeLactatePoint(minute: 25, value: 4.1)
+    ]
+
+    var body: some View {
+        Chart(points) { point in
+            LineMark(x: .value("Minute", point.minute), y: .value("Lactate", point.value))
+                .foregroundStyle(.mint)
+            PointMark(x: .value("Minute", point.minute), y: .value("Lactate", point.value))
+                .foregroundStyle(.mint)
+        }
+        .frame(height: 220)
+        .chartXAxisLabel("Time (min)")
+        .chartYAxisLabel("Lactate (mmol/L)")
+    }
+}
+
+private struct ProtocolComparisonGraphicView: View {
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
+            GridRow {
+                Text("Protocol").font(.caption.bold())
+                Text("Duration").font(.caption.bold())
+                Text("Strips").font(.caption.bold())
+                Text("Primary Outcome").font(.caption.bold())
+            }
+            Divider()
+                .gridCellUnsizedAxes([.horizontal, .vertical])
+            GridRow {
+                Text("Full Ramp")
+                Text("~60 min")
+                Text("9-13")
+                Text("LT1/LT2 粗估")
+            }
+            GridRow {
+                Text("MLSS")
+                Text("90-150 min")
+                Text("12+")
+                Text("可持续阈值精确定位")
+            }
+            GridRow {
+                Text("Anaerobic + Clearance")
+                Text("35-45 min")
+                Text("6-10")
+                Text("峰值与清除速度")
+            }
+        }
+        .font(.caption)
 private struct AnaerobicClearanceProtocolGraphicView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -774,6 +879,8 @@ struct LactateLabView: View {
                 switch page {
                 case .hub:
                     hubPage
+                case .protocols:
+                    protocolLibraryPage
                 case .setup:
                     setupPage
                 case .checklist:
@@ -818,11 +925,18 @@ struct LactateLabView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
-                    Button("进入测试重点与设置") {
-                        store.startSession(protocolType: selectedProtocol)
-                        page = .setup
+                    HStack {
+                        Button("进入测试重点与设置") {
+                            store.startSession(protocolType: selectedProtocol)
+                            page = .setup
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button("查看完整协议库与图示") {
+                            page = .protocols
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.borderedProminent)
                 }
             }
 
@@ -895,6 +1009,105 @@ struct LactateLabView: View {
                             page = .live
                         }
                     }
+                }
+            }
+        }
+    }
+
+    private var protocolLibraryPage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GroupBox("Blood Lactate Testing: Protocols For Cyclists") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("这页整合完整测试说明、图示与执行要点，并拆分到乳酸实验室各页面可直接操作。")
+                        .foregroundStyle(.secondary)
+                    Text("核心目标：先拿到干净数据，再做阈值判定，最后回写训练区间。")
+                }
+            }
+
+            GroupBox("What do I need for a lactate test?") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("• 乳酸仪 + 试纸（建议预留重测余量）")
+                    Text("• 采血针、酒精棉、干纸巾、垃圾收纳")
+                    Text("• 稳定功率来源（智能台/功率计）与心率带")
+                    Text("• 风扇、饮水、计时器、记录表（功率/心率/RPE/乳酸）")
+                    Text("• 可选：协助者（显著降低独自采样误差）")
+                }
+                .font(.subheadline)
+            }
+
+            GroupBox("How To Take A Lactate Sample") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("1. 擦汗并保持手指/耳垂清洁，避免汗液污染。")
+                    Text("2. 酒精消毒后等待完全干燥。")
+                    Text("3. 穿刺后丢弃第一滴血，第二滴用于测试。")
+                    Text("4. 若读数异常或试纸沾污，立刻重测并标记 isRetest。")
+                    Text("5. 各阶段采样时机保持一致（阶段末 20-40 秒窗口）。")
+                }
+                .font(.subheadline)
+            }
+
+            GroupBox("Full Ramp: protocol diagram") {
+                VStack(alignment: .leading, spacing: 10) {
+                    FullRampProtocolGraphicView()
+                    Text("上图已对应 Setup 页的默认阶段。红点 = 阶段末采血。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            GroupBox("Aerobic Test (LT1 / LT2)") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("判读逻辑：")
+                        .font(.subheadline.bold())
+                    Text("• LT1：乳酸从基线出现持续上拐（常在 ~2.0 mmol/L 附近）")
+                    Text("• LT2：上升斜率明显增加（常在 ~4.0 mmol/L 附近）")
+                    AerobicCurveGraphicView()
+                }
+                .font(.subheadline)
+            }
+
+            GroupBox("Anaerobic Power + Clearance Test") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("步骤：热身 → 冲刺刺激 → 20 分钟恢复追踪。")
+                    Text("关注：峰值、20 分钟回落比例、单位时间清除率。")
+                    AnaerobicClearanceGraphicView()
+                }
+                .font(.subheadline)
+            }
+
+            GroupBox("Protocol comparison") {
+                ProtocolComparisonGraphicView()
+            }
+
+            GroupBox("Incorporating The Results") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("• 把 LT1/LT2 对应功率与心率写入训练区间。")
+                    Text("• 有氧日围绕 LT1 下方；阈值训练围绕 LT2 上下。")
+                    Text("• 无氧课按清除速度决定间歇密度与恢复时长。")
+                    Text("• 4-8 周复测一次；训练负荷变化大时提前复测。")
+                }
+                .font(.subheadline)
+            }
+
+            GroupBox("Limitations") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("• 不同日状态（睡眠/补给/压力）会改变读数。")
+                    Text("• 采样污染是最大误差源，需严格流程控制。")
+                    Text("• 单次测试不等于长期能力，必须结合训练日志。")
+                    Text("• 乳酸仅反映代谢侧面，需与主观体感和表现共同解读。")
+                }
+                .font(.subheadline)
+            }
+
+            GroupBox("Get Fast, Faster") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("执行顺序建议：协议总览 → Setup → Checklist → Live → Results。")
+                    Text("若今天状态不佳，先做低成本基线，避免把错误阈值写入训练计划。")
+                    Button("基于当前推荐协议开始测试") {
+                        store.startSession(protocolType: selectedProtocol)
+                        page = .setup
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
             }
         }
