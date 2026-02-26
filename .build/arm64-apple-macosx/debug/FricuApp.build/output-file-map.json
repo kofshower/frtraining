@@ -1,0 +1,327 @@
+{
+  "": {
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/master.swiftdeps"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/AIEngine.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AIEngine.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AIEngine.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AIEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AIEngine.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AIEngine.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/AdvancedEngines.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AdvancedEngines.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AdvancedEngines.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AdvancedEngines~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AdvancedEngines.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AdvancedEngines.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/FinalStageServices.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FinalStageServices.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FinalStageServices.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FinalStageServices~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FinalStageServices.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FinalStageServices.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/FricuApp.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FricuApp.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FricuApp.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FricuApp~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FricuApp.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FricuApp.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/GoldenCheetahMetricCatalog.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/GoldenCheetahMetricCatalog.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/GoldenCheetahMetricCatalog.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/GoldenCheetahMetricCatalog~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/GoldenCheetahMetricCatalog.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/GoldenCheetahMetricCatalog.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/HeartRateBluetooth.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateBluetooth.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateBluetooth.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateBluetooth~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateBluetooth.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateBluetooth.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Importers.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Importers.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Importers.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Importers~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Importers.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Importers.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/IntervalsAPI.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/IntervalsAPI.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/IntervalsAPI.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/IntervalsAPI~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/IntervalsAPI.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/IntervalsAPI.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/LiveRideFITWriter.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/LiveRideFITWriter.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/LiveRideFITWriter.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/LiveRideFITWriter~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/LiveRideFITWriter.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/LiveRideFITWriter.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Localization.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Localization.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Localization.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Localization~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Localization.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Localization.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/MetricStoryEngine.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/MetricStoryEngine.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/MetricStoryEngine.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/MetricStoryEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/MetricStoryEngine.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/MetricStoryEngine.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Models.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Models.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Models.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Models.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Models.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/NutritionFoodSearchService.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionFoodSearchService.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionFoodSearchService.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionFoodSearchService~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionFoodSearchService.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionFoodSearchService.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/OpenAICoach.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/OpenAICoach.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/OpenAICoach.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/OpenAICoach~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/OpenAICoach.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/OpenAICoach.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/PerformanceEstimator.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PerformanceEstimator.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PerformanceEstimator.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PerformanceEstimator~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PerformanceEstimator.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PerformanceEstimator.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/PowerMeterBluetooth.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterBluetooth.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterBluetooth.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterBluetooth~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterBluetooth.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterBluetooth.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/RealMapRouteEngine.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/RealMapRouteEngine.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/RealMapRouteEngine.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/RealMapRouteEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/RealMapRouteEngine.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/RealMapRouteEngine.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/ScenarioMetricEngine.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ScenarioMetricEngine.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ScenarioMetricEngine.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ScenarioMetricEngine~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ScenarioMetricEngine.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ScenarioMetricEngine.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Services.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Services.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Services.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Services~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Services.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Services.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/StravaAPI.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaAPI.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaAPI.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaAPI~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaAPI.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaAPI.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/StravaOAuth.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaOAuth.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaOAuth.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaOAuth~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaOAuth.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/StravaOAuth.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/TrainerBluetooth.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerBluetooth.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerBluetooth.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerBluetooth~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerBluetooth.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerBluetooth.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/ViewModels.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ViewModels.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ViewModels.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ViewModels~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ViewModels.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ViewModels.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ActivityLibraryView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ActivityLibraryView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ActivityLibraryView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ActivityLibraryView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ActivityLibraryView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ActivityLibraryView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/AppDropdownTheme.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AppDropdownTheme.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AppDropdownTheme.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AppDropdownTheme~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AppDropdownTheme.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/AppDropdownTheme.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ChartHoverTip.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ChartHoverTip.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ChartHoverTip.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ChartHoverTip~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ChartHoverTip.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ChartHoverTip.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/CyclingPowerFieldsView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/CyclingPowerFieldsView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/CyclingPowerFieldsView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/CyclingPowerFieldsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/CyclingPowerFieldsView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/CyclingPowerFieldsView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/DashboardView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/DashboardView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/DashboardView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/DashboardView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/DashboardView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/DashboardView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/FitnessMachineFieldsView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FitnessMachineFieldsView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FitnessMachineFieldsView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FitnessMachineFieldsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FitnessMachineFieldsView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/FitnessMachineFieldsView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HealthTheme.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HealthTheme.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HealthTheme.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HealthTheme~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HealthTheme.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HealthTheme.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateControlPanel.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateControlPanel.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateControlPanel.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateControlPanel~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateControlPanel.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateControlPanel.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateServiceFieldsView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateServiceFieldsView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateServiceFieldsView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateServiceFieldsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateServiceFieldsView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/HeartRateServiceFieldsView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/InsightsView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/InsightsView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/InsightsView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/InsightsView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/InsightsView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/InsightsView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/NutritionBarcodeScannerSheet.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionBarcodeScannerSheet.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionBarcodeScannerSheet.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionBarcodeScannerSheet~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionBarcodeScannerSheet.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionBarcodeScannerSheet.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/NutritionPageView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPageView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPageView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPageView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPageView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPageView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/NutritionPlannerCard.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPlannerCard.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPlannerCard.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPlannerCard~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPlannerCard.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/NutritionPlannerCard.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/PowerMeterControlPanel.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterControlPanel.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterControlPanel.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterControlPanel~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterControlPanel.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/PowerMeterControlPanel.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ProSuiteView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ProSuiteView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ProSuiteView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ProSuiteView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ProSuiteView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/ProSuiteView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TelemetryFieldPanel.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TelemetryFieldPanel.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TelemetryFieldPanel.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TelemetryFieldPanel~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TelemetryFieldPanel.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TelemetryFieldPanel.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerControlPanel.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerControlPanel.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerControlPanel.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerControlPanel~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerControlPanel.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerControlPanel.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerPageView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerPageView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerPageView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerPageView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerPageView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/TrainerPageView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/Whoosh3DGameView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Whoosh3DGameView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Whoosh3DGameView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Whoosh3DGameView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Whoosh3DGameView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/Whoosh3DGameView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/WhooshRealityKitView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WhooshRealityKitView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WhooshRealityKitView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WhooshRealityKitView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WhooshRealityKitView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WhooshRealityKitView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/WorkoutBuilderView.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WorkoutBuilderView.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WorkoutBuilderView.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WorkoutBuilderView~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WorkoutBuilderView.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WorkoutBuilderView.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuApp/WellnessAnalytics.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WellnessAnalytics.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WellnessAnalytics.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WellnessAnalytics~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WellnessAnalytics.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/WellnessAnalytics.dia"
+  },
+  "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/DerivedSources/resource_bundle_accessor.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/resource_bundle_accessor.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/resource_bundle_accessor.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/resource_bundle_accessor~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/resource_bundle_accessor.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuApp.build/resource_bundle_accessor.dia"
+  }
+}

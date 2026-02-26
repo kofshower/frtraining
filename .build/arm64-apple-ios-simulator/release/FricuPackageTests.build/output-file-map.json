@@ -1,0 +1,13 @@
+{
+  "": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/FricuPackageTests.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/FricuPackageTests.o",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/master.swiftdeps"
+  },
+  "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.derived/runner.swift": {
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/runner.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/runner~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/runner.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/runner.dia"
+  }
+}

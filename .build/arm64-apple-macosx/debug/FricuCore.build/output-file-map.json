@@ -1,0 +1,40 @@
+{
+  "": {
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/master.swiftdeps"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuCore/CyclingPowerMeasurementParser.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/CyclingPowerMeasurementParser.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/CyclingPowerMeasurementParser.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/CyclingPowerMeasurementParser~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/CyclingPowerMeasurementParser.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/CyclingPowerMeasurementParser.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuCore/FitnessMachineParsers.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/FitnessMachineParsers.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/FitnessMachineParsers.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/FitnessMachineParsers~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/FitnessMachineParsers.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/FitnessMachineParsers.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateParsers.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateParsers.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateParsers.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateParsers~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateParsers.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateParsers.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateVariabilityMath.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateVariabilityMath.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateVariabilityMath.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateVariabilityMath~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateVariabilityMath.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/HeartRateVariabilityMath.dia"
+  },
+  "/Users/bytedance/Documents/fricu/Sources/FricuCore/TrainingCore.swift": {
+    "dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/TrainingCore.d",
+    "object": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/TrainingCore.swift.o",
+    "swiftmodule": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/TrainingCore~partial.swiftmodule",
+    "swift-dependencies": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/TrainingCore.swiftdeps",
+    "diagnostics": "/Users/bytedance/Documents/fricu/.build/arm64-apple-macosx/debug/FricuCore.build/TrainingCore.dia"
+  }
+}

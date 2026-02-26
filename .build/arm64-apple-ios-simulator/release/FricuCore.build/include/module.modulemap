@@ -1,0 +1,3 @@
+module FricuCore {
+    header "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/include/FricuCore-Swift.h"
+}

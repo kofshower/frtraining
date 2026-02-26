@@ -1,0 +1,1678 @@
+{
+  "builtTestProducts" : [
+    {
+      "binaryPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.xctest/Contents/MacOS/FricuPackageTests",
+      "packagePath" : "/Users/bytedance/Documents/fricu",
+      "productName" : "FricuPackageTests"
+    }
+  ],
+  "copyCommands" : {
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/Info.plist" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Info.plist"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/Info.plist"
+        }
+      ]
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/README.txt" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Resources/README.txt"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/README.txt"
+        }
+      ]
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/en.lproj/Localizable.strings" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Resources/en.lproj/Localizable.strings"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/en.lproj/Localizable.strings"
+        }
+      ]
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/zh-hans.lproj/Localizable.strings" : {
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Resources/zh-Hans.lproj/Localizable.strings"
+        }
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Fricu_FricuApp.bundle/zh-hans.lproj/Localizable.strings"
+        }
+      ]
+    }
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.FricuApp-arm64-apple-ios17.0-simulator-release.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/sources",
+      "importPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/AIEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/AdvancedEngines.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/FinalStageServices.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/FricuApp.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/GoldenCheetahMetricCatalog.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/HeartRateBluetooth.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Importers.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/IntervalsAPI.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/LiveRideFITWriter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Localization.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/MetricStoryEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/OpenAICoach.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/PerformanceEstimator.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/PowerMeterBluetooth.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/ScenarioMetricEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Services.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/StravaAPI.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/TrainerBluetooth.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/ViewModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ActivityLibraryView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/AppDropdownTheme.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ChartHoverTip.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/CyclingPowerFieldsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/DashboardView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/FitnessMachineFieldsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HealthTheme.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateControlPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateServiceFieldsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/InsightsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/PowerMeterControlPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ProSuiteView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TelemetryFieldPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerControlPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerPageView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/WorkoutBuilderView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/WellnessAnalytics.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/DerivedSources/resource_bundle_accessor.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<FricuApp-arm64-apple-ios17.0-simulator-release.module-resources>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "FricuApp",
+      "moduleOutputPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuApp.swiftmodule",
+      "objects" : [
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AIEngine.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AdvancedEngines.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FinalStageServices.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FricuApp.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/GoldenCheetahMetricCatalog.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateBluetooth.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Importers.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/IntervalsAPI.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/LiveRideFITWriter.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Localization.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/MetricStoryEngine.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Models.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/OpenAICoach.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PerformanceEstimator.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PowerMeterBluetooth.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ScenarioMetricEngine.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Services.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/StravaAPI.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerBluetooth.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ViewModels.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ActivityLibraryView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AppDropdownTheme.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ChartHoverTip.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/CyclingPowerFieldsView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/DashboardView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FitnessMachineFieldsView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HealthTheme.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateControlPanel.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateServiceFieldsView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/InsightsView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PowerMeterControlPanel.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ProSuiteView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TelemetryFieldPanel.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerControlPanel.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerPageView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/WorkoutBuilderView.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/WellnessAnalytics.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/resource_bundle_accessor.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-ios17.0-simulator",
+        "-whole-module-optimization",
+        "-num-threads",
+        "12",
+        "-serialize-diagnostics",
+        "-O",
+        "-j12",
+        "-DSWIFT_PACKAGE",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
+        "-module-cache-path",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "FricuApp_main",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "fricu"
+      ],
+      "outputFileMapPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AIEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AdvancedEngines.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FinalStageServices.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FricuApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/GoldenCheetahMetricCatalog.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateBluetooth.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Importers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/IntervalsAPI.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/LiveRideFITWriter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Localization.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/MetricStoryEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/OpenAICoach.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PerformanceEstimator.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PowerMeterBluetooth.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ScenarioMetricEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Services.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/StravaAPI.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerBluetooth.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ViewModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ActivityLibraryView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AppDropdownTheme.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ChartHoverTip.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/CyclingPowerFieldsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/DashboardView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FitnessMachineFieldsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HealthTheme.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateControlPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateServiceFieldsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/InsightsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PowerMeterControlPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ProSuiteView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TelemetryFieldPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerControlPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerPageView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/WorkoutBuilderView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/WellnessAnalytics.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/resource_bundle_accessor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuApp.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/AIEngine.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/AdvancedEngines.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/FinalStageServices.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/FricuApp.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/GoldenCheetahMetricCatalog.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/HeartRateBluetooth.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Importers.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/IntervalsAPI.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/LiveRideFITWriter.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Localization.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/MetricStoryEngine.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Models.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/OpenAICoach.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/PerformanceEstimator.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/PowerMeterBluetooth.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/ScenarioMetricEngine.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Services.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/StravaAPI.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/TrainerBluetooth.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/ViewModels.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ActivityLibraryView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/AppDropdownTheme.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ChartHoverTip.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/CyclingPowerFieldsView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/DashboardView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/FitnessMachineFieldsView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HealthTheme.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateControlPanel.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateServiceFieldsView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/InsightsView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/PowerMeterControlPanel.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ProSuiteView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TelemetryFieldPanel.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerControlPanel.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerPageView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/WorkoutBuilderView.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuApp/WellnessAnalytics.swift",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/DerivedSources/resource_bundle_accessor.swift"
+      ],
+      "tempsPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build",
+      "wholeModuleOptimization" : true
+    },
+    "C.FricuCore-arm64-apple-ios17.0-simulator-release.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/sources",
+      "importPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/CyclingPowerMeasurementParser.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/FitnessMachineParsers.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateParsers.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateVariabilityMath.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/TrainingCore.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "FricuCore",
+      "moduleOutputPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuCore.swiftmodule",
+      "objects" : [
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/CyclingPowerMeasurementParser.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/FitnessMachineParsers.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateParsers.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateVariabilityMath.swift.o",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/TrainingCore.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-ios17.0-simulator",
+        "-whole-module-optimization",
+        "-num-threads",
+        "12",
+        "-serialize-diagnostics",
+        "-O",
+        "-j12",
+        "-DSWIFT_PACKAGE",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/include/FricuCore-Swift.h",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "fricu"
+      ],
+      "outputFileMapPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/CyclingPowerMeasurementParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/FitnessMachineParsers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateParsers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateVariabilityMath.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/TrainingCore.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuCore.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/bytedance/Documents/fricu/Sources/FricuCore/CyclingPowerMeasurementParser.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuCore/FitnessMachineParsers.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateParsers.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateVariabilityMath.swift",
+        "/Users/bytedance/Documents/fricu/Sources/FricuCore/TrainingCore.swift"
+      ],
+      "tempsPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build",
+      "wholeModuleOptimization" : true
+    },
+    "C.FricuCoreTests-arm64-apple-ios17.0-simulator-release.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/sources",
+      "importPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Tests/FricuCoreTests/TrainingCoreTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuCore.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "FricuCoreTests",
+      "moduleOutputPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuCoreTests.swiftmodule",
+      "objects" : [
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/TrainingCoreTests.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-ios17.0-simulator",
+        "-whole-module-optimization",
+        "-num-threads",
+        "12",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/index/store",
+        "-O",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j12",
+        "-DSWIFT_PACKAGE",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "fricu"
+      ],
+      "outputFileMapPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/TrainingCoreTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuCoreTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/bytedance/Documents/fricu/Tests/FricuCoreTests/TrainingCoreTests.swift"
+      ],
+      "tempsPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build",
+      "wholeModuleOptimization" : true
+    },
+    "C.FricuPackageTests-arm64-apple-ios17.0-simulator-release.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/sources",
+      "importPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.derived/runner.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuCoreTests.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "FricuPackageTests",
+      "moduleOutputPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuPackageTests.swiftmodule",
+      "objects" : [
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/runner.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-ios17.0-simulator",
+        "-whole-module-optimization",
+        "-num-threads",
+        "12",
+        "-serialize-diagnostics",
+        "-O",
+        "-enable-testing",
+        "-Xfrontend",
+        "-enable-cross-import-overlays",
+        "-j12",
+        "-DSWIFT_PACKAGE",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/include/FricuPackageTests-Swift.h",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "fricu"
+      ],
+      "outputFileMapPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/runner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules/FricuPackageTests.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.derived/runner.swift"
+      ],
+      "tempsPath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build",
+      "wholeModuleOptimization" : true
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "FricuApp" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "FricuApp",
+      "-package-name",
+      "fricu",
+      "-c",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/AIEngine.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/AdvancedEngines.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/FinalStageServices.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/FricuApp.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/GoldenCheetahMetricCatalog.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/HeartRateBluetooth.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Importers.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/IntervalsAPI.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/LiveRideFITWriter.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Localization.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/MetricStoryEngine.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Models.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/OpenAICoach.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/PerformanceEstimator.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/PowerMeterBluetooth.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/ScenarioMetricEngine.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Services.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/StravaAPI.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/TrainerBluetooth.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/ViewModels.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ActivityLibraryView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/AppDropdownTheme.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ChartHoverTip.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/CyclingPowerFieldsView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/DashboardView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/FitnessMachineFieldsView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HealthTheme.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateControlPanel.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateServiceFieldsView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/InsightsView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/PowerMeterControlPanel.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ProSuiteView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TelemetryFieldPanel.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerControlPanel.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerPageView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/WorkoutBuilderView.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuApp/WellnessAnalytics.swift",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/DerivedSources/resource_bundle_accessor.swift",
+      "-I",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "-target",
+      "arm64-apple-ios17.0-simulator",
+      "-whole-module-optimization",
+      "-num-threads",
+      "12",
+      "-serialize-diagnostics",
+      "-O",
+      "-j12",
+      "-DSWIFT_PACKAGE",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_AVAILABLE",
+      "-module-cache-path",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "FricuApp_main",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "fricu",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "FricuCore" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "FricuCore",
+      "-package-name",
+      "fricu",
+      "-c",
+      "/Users/bytedance/Documents/fricu/Sources/FricuCore/CyclingPowerMeasurementParser.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuCore/FitnessMachineParsers.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateParsers.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateVariabilityMath.swift",
+      "/Users/bytedance/Documents/fricu/Sources/FricuCore/TrainingCore.swift",
+      "-I",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "-target",
+      "arm64-apple-ios17.0-simulator",
+      "-whole-module-optimization",
+      "-num-threads",
+      "12",
+      "-serialize-diagnostics",
+      "-O",
+      "-j12",
+      "-DSWIFT_PACKAGE",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/include/FricuCore-Swift.h",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "fricu",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "FricuCoreTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "FricuCoreTests",
+      "-package-name",
+      "fricu",
+      "-c",
+      "/Users/bytedance/Documents/fricu/Tests/FricuCoreTests/TrainingCoreTests.swift",
+      "-I",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "-target",
+      "arm64-apple-ios17.0-simulator",
+      "-whole-module-optimization",
+      "-num-threads",
+      "12",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/index/store",
+      "-O",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j12",
+      "-DSWIFT_PACKAGE",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "fricu",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "FricuPackageTests" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "FricuPackageTests",
+      "-package-name",
+      "fricu",
+      "-c",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.derived/runner.swift",
+      "-I",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/Modules",
+      "-target",
+      "arm64-apple-ios17.0-simulator",
+      "-whole-module-optimization",
+      "-num-threads",
+      "12",
+      "-serialize-diagnostics",
+      "-O",
+      "-enable-testing",
+      "-Xfrontend",
+      "-enable-cross-import-overlays",
+      "-j12",
+      "-DSWIFT_PACKAGE",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/include/FricuPackageTests-Swift.h",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/Library/PrivateFrameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "fricu",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "FricuApp" : [
+      "FricuCore"
+    ],
+    "FricuCore" : [
+
+    ],
+    "FricuCoreTests" : [
+      "FricuCore"
+    ],
+    "FricuPackageTests" : [
+      "FricuCoreTests",
+      "FricuCore"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.derived/runner.swift" : {
+      "inputs" : [
+
+      ],
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.derived/runner.swift"
+        }
+      ]
+    }
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/AIEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/AdvancedEngines.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/FinalStageServices.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/FricuApp.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/GoldenCheetahMetricCatalog.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/HeartRateBluetooth.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Importers.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/IntervalsAPI.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/LiveRideFITWriter.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Localization.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/MetricStoryEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Models.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/OpenAICoach.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/PerformanceEstimator.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/PowerMeterBluetooth.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/ScenarioMetricEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Services.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/StravaAPI.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/TrainerBluetooth.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/ViewModels.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ActivityLibraryView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/AppDropdownTheme.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ChartHoverTip.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/CyclingPowerFieldsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/DashboardView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/FitnessMachineFieldsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HealthTheme.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateControlPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/HeartRateServiceFieldsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/InsightsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/PowerMeterControlPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/ProSuiteView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TelemetryFieldPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerControlPanel.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/TrainerPageView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/Views/WorkoutBuilderView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuApp/WellnessAnalytics.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/DerivedSources/resource_bundle_accessor.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/sources"
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AIEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ActivityLibraryView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AdvancedEngines.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/AppDropdownTheme.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ChartHoverTip.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/CyclingPowerFieldsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/DashboardView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FinalStageServices.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FitnessMachineFieldsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/FricuApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/GoldenCheetahMetricCatalog.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HealthTheme.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateBluetooth.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateControlPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/HeartRateServiceFieldsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Importers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/InsightsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/IntervalsAPI.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/LiveRideFITWriter.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Localization.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/MetricStoryEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Models.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/OpenAICoach.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PerformanceEstimator.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PowerMeterBluetooth.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/PowerMeterControlPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ProSuiteView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ScenarioMetricEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/Services.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/StravaAPI.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TelemetryFieldPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerBluetooth.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerControlPanel.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/TrainerPageView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/ViewModels.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/WellnessAnalytics.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/WorkoutBuilderView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.build/resource_bundle_accessor.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/CyclingPowerMeasurementParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/FitnessMachineParsers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateParsers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateVariabilityMath.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/TrainingCore.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuApp.product/Objects.LinkFileList"
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/CyclingPowerMeasurementParser.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/FitnessMachineParsers.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateParsers.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/HeartRateVariabilityMath.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Sources/FricuCore/TrainingCore.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/sources"
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/Tests/FricuCoreTests/TrainingCoreTests.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/sources"
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.derived/runner.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/sources"
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/CyclingPowerMeasurementParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/FitnessMachineParsers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateParsers.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/HeartRateVariabilityMath.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCore.build/TrainingCore.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuCoreTests.build/TrainingCoreTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.build/runner.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/FricuPackageTests.product/Objects.LinkFileList"
+    },
+    "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/bytedance/Documents/fricu/.build/arm64-apple-ios-simulator/release/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}
