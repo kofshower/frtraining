@@ -303,6 +303,12 @@ private struct LactatePathRecommendation {
     var caution: String
 }
 
+private struct SetupGuideItem: Identifiable {
+    let id = UUID()
+    let text: String
+    let isWarning: Bool
+}
+
 struct LactateLabView: View {
     @StateObject private var store = LactateLabStore()
     @State private var page: LactateFlowPage = .hub
@@ -391,6 +397,28 @@ struct LactateLabView: View {
                 caution: "出现污染怀疑请立刻重测，避免用错误读数推导阈值。"
             )
         }
+    }
+
+    private func setupGuideItems(for session: Binding<LactateTestSession>) -> [SetupGuideItem] {
+        var items: [SetupGuideItem] = [
+            SetupGuideItem(text: "先确认 FTP 与 Max HR，后续阈值推导都会依赖这两个基准。", isWarning: false),
+            SetupGuideItem(text: "若独自测试，建议保持 Self-Test Mode 打开，阶段末再统一采样。", isWarning: false),
+            SetupGuideItem(text: "开测前至少保留 60 分钟无热量摄入窗口，避免乳酸基线被抬高。", isWarning: false)
+        ]
+
+        if session.preconditions.minutesSinceCalories.wrappedValue < 60 {
+            items.append(SetupGuideItem(text: "当前距上次进食不足 60 分钟，建议延后测试。", isWarning: true))
+        }
+
+        if session.preconditions.fatigueLevel.wrappedValue >= 4 {
+            items.append(SetupGuideItem(text: "疲劳较高（4/5 及以上），优先做轻量基线或改天精测。", isWarning: true))
+        }
+
+        if session.preconditions.sleepHours.wrappedValue < 6 {
+            items.append(SetupGuideItem(text: "睡眠少于 6 小时，阈值结果可能偏差，建议谨慎解读。", isWarning: true))
+        }
+
+        return items
     }
 
     var body: some View {
@@ -536,6 +564,22 @@ struct LactateLabView: View {
         Group {
             if let session = Binding($store.currentSession) {
                 VStack(alignment: .leading, spacing: 12) {
+                    GroupBox("本页引导（填完这些再进入下一步）") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("推荐协议：\(session.protocolType.wrappedValue.title)")
+                                .font(.subheadline.bold())
+                            ForEach(setupGuideItems(for: session)) { item in
+                                Label {
+                                    Text(item.text)
+                                        .foregroundStyle(item.isWarning ? .orange : .primary)
+                                } icon: {
+                                    Image(systemName: item.isWarning ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                                        .foregroundStyle(item.isWarning ? .orange : .green)
+                                }
+                            }
+                        }
+                    }
+
                     GroupBox("Athlete") {
                         VStack(alignment: .leading, spacing: 8) {
                             TextField("Name", text: session.preconditions.riderName)
