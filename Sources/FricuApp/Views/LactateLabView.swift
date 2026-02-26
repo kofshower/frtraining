@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 private enum LactateProtocolType: String, Codable, CaseIterable, Identifiable {
     case fullRamp
@@ -314,6 +315,19 @@ private struct SetupGuideItem: Identifiable {
     let isWarning: Bool
 }
 
+private struct ProtocolFocusSection: Identifiable {
+    let id = UUID()
+    let title: String
+    let bullets: [String]
+}
+
+private struct LactatePowerPoint: Identifiable {
+    let id = UUID()
+    let power: Int
+    let lactate: Double
+    let stageIndex: Int
+}
+
 struct LactateLabView: View {
     @StateObject private var store = LactateLabStore()
     @State private var page: LactateFlowPage = .hub
@@ -404,6 +418,104 @@ struct LactateLabView: View {
         }
     }
 
+    private func protocolFocusSections(for type: LactateProtocolType) -> [ProtocolFocusSection] {
+        switch type {
+        case .fullRamp:
+            return [
+                ProtocolFocusSection(
+                    title: "Key Details",
+                    bullets: [
+                        "时长约 50-70 分钟（含热身与冷却）。",
+                        "每个阶段建议 4-6 分钟，阶段末采血。",
+                        "常用于建立初始乳酸曲线与 LT1/LT2 粗估范围。"
+                    ]
+                ),
+                ProtocolFocusSection(
+                    title: "Protocol",
+                    bullets: [
+                        "热身从低功率开始，确保踏频稳定后再进入阶梯。",
+                        "每个阶段提高约 10% FTP（或 10-20W），保持输出稳定。",
+                        "当乳酸 > 6 mmol/L、RPE 异常高或心率接近上限时结束测试。"
+                    ]
+                ),
+                ProtocolFocusSection(
+                    title: "Testing Tips",
+                    bullets: [
+                        "优先保证采样质量：擦汗→消毒→酒精干燥→弃第一滴血。",
+                        "若独自测试，建议在阶段末短暂停车取样。",
+                        "将功率作为 x 轴、乳酸作为 y 轴观察拐点。"
+                    ]
+                )
+            ]
+        case .mlss:
+            return [
+                ProtocolFocusSection(
+                    title: "Key Details",
+                    bullets: [
+                        "总时长约 90 分钟以上，适合精确阈值标定。",
+                        "同阶段内至少采 2 次，观察乳酸漂移。",
+                        "后段相对前段增加 >1.0 mmol/L，通常提示超过 MLSS。"
+                    ]
+                ),
+                ProtocolFocusSection(
+                    title: "Protocol",
+                    bullets: [
+                        "围绕预估阈值设置多个 30 分钟稳态功率块。",
+                        "每个功率块记录 10/20/30 分钟乳酸。",
+                        "根据漂移趋势微调下一次测试功率。"
+                    ]
+                ),
+                ProtocolFocusSection(
+                    title: "Testing Tips",
+                    bullets: [
+                        "稳态输出比追求更高功率更重要。",
+                        "当天补给、睡眠和疲劳水平需尽量标准化。",
+                        "建议使用 Full Ramp 结果先缩小 MLSS 搜索范围。"
+                    ]
+                )
+            ]
+        case .anaerobicClearance:
+            return [
+                ProtocolFocusSection(
+                    title: "Key Details",
+                    bullets: [
+                        "用于评估冲刺后乳酸峰值与清除速度。",
+                        "重点指标：峰值、20 分钟回落比例、清除率。",
+                        "适合用于无氧训练和恢复策略调整。"
+                    ]
+                ),
+                ProtocolFocusSection(
+                    title: "Protocol",
+                    bullets: [
+                        "低强度热身后进行短冲刺刺激乳酸升高。",
+                        "恢复阶段每 5 分钟采样，追踪下降曲线。",
+                        "同一协议重复测试时，冲刺方式需保持一致。"
+                    ]
+                ),
+                ProtocolFocusSection(
+                    title: "Testing Tips",
+                    bullets: [
+                        "冲刺前务必充分热身，减少受伤风险。",
+                        "若峰值异常低，先排查采样污染或时机过晚。",
+                        "关注曲线斜率变化而不是单次绝对值。"
+                    ]
+                )
+            ]
+        }
+    }
+
+    private func powerLactatePoints(for session: LactateTestSession) -> [LactatePowerPoint] {
+        session.samples
+            .filter { !$0.suspectedContamination }
+            .sorted { $0.timestamp < $1.timestamp }
+            .compactMap { sample in
+                guard let stage = session.stages.first(where: { $0.stageIndex == sample.stageIndex }) else {
+                    return nil
+                }
+                return LactatePowerPoint(power: stage.targetPower, lactate: sample.value, stageIndex: sample.stageIndex)
+            }
+    }
+
     private func setupGuideItems(for session: Binding<LactateTestSession>) -> [SetupGuideItem] {
         var items: [SetupGuideItem] = [
             SetupGuideItem(text: "先确认 FTP 与 Max HR，后续阈值推导都会依赖这两个基准。", isWarning: false),
@@ -470,7 +582,28 @@ struct LactateLabView: View {
 
     private var hubPage: some View {
         VStack(alignment: .leading, spacing: 12) {
-            GroupBox("路径引导（推荐你该走哪条测试路径）") {
+            GroupBox("第 1 步：选择测试 protocol") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Protocol", selection: $selectedProtocol) {
+                        ForEach(LactateProtocolType.allCases) { type in
+                            Text(verbatim: type.title).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(verbatim: selectedProtocol.recommendation)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Button("进入测试重点与设置") {
+                        store.startSession(protocolType: selectedProtocol)
+                        page = .setup
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            GroupBox("路径引导（可选）") {
                 VStack(alignment: .leading, spacing: 10) {
                     Picker("主要目标", selection: $primaryGoal) {
                         ForEach(LactatePrimaryGoal.allCases) { goal in
@@ -530,27 +663,6 @@ struct LactateLabView: View {
                 }
             }
 
-            GroupBox(L10n.choose(simplifiedChinese: "开始新测试", english: "Start New Test")) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Picker("Protocol", selection: $selectedProtocol) {
-                        ForEach(LactateProtocolType.allCases) { type in
-                            Text(verbatim: type.title).tag(type)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Text(verbatim: selectedProtocol.recommendation)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    Button(L10n.choose(simplifiedChinese: "开始", english: "Start")) {
-                        store.startSession(protocolType: selectedProtocol)
-                        page = .setup
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            }
-
             if let current = store.currentSession, current.status != .completed {
                 GroupBox(L10n.choose(simplifiedChinese: "未完成测试", english: "Incomplete Test")) {
                     HStack {
@@ -580,6 +692,24 @@ struct LactateLabView: View {
                                 } icon: {
                                     Image(systemName: item.isWarning ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                                         .foregroundStyle(item.isWarning ? .orange : .green)
+                                }
+                            }
+                        }
+                    }
+
+                    GroupBox("测试重点（类似 Full ramp test 说明）") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(session.protocolType.wrappedValue.title)
+                                .font(.headline)
+
+                            ForEach(protocolFocusSections(for: session.protocolType.wrappedValue)) { section in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(section.title)
+                                        .font(.subheadline.bold())
+                                    ForEach(section.bullets, id: \.self) { bullet in
+                                        Text("• \(bullet)")
+                                            .font(.subheadline)
+                                    }
                                 }
                             }
                         }
@@ -778,6 +908,7 @@ struct LactateLabView: View {
     private var resultsPage: some View {
         Group {
             if let session = store.currentSession {
+                let points = powerLactatePoints(for: session)
                 VStack(alignment: .leading, spacing: 10) {
                     GroupBox("测试概览") {
                         VStack(alignment: .leading) {
@@ -801,6 +932,30 @@ struct LactateLabView: View {
                             Text("峰值: \(session.metrics.peakLactate.map { String(format: "%.1f", $0) } ?? "-") mmol/L")
                             Text("VLaMax: \(session.metrics.vlaMax.map { String(format: "%.3f", $0) } ?? "-")")
                             Text("清除率: \(session.metrics.clearanceRate.map { String(format: "%.3f", $0) } ?? "-") mmol/L/min")
+                        }
+                    }
+
+                    GroupBox("功率-乳酸曲线") {
+                        if points.isEmpty {
+                            Text("暂无有效样本，完成阶段采样后将显示曲线。")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Chart(points) { point in
+                                LineMark(
+                                    x: .value("Power", point.power),
+                                    y: .value("Lactate", point.lactate)
+                                )
+                                .foregroundStyle(.orange)
+
+                                PointMark(
+                                    x: .value("Power", point.power),
+                                    y: .value("Lactate", point.lactate)
+                                )
+                                .foregroundStyle(.orange)
+                            }
+                            .frame(height: 250)
+                            .chartXAxisLabel("Power (W)")
+                            .chartYAxisLabel("Lactate (mmol/L)")
                         }
                     }
                 }
