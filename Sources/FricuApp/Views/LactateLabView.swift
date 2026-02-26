@@ -493,6 +493,148 @@ private struct ProtocolComparisonGraphicView: View {
             }
         }
         .font(.caption)
+private struct AnaerobicClearanceProtocolGraphicView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Anaerobic capacity + clearance test")
+                .font(.headline)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 4) {
+                    Rectangle()
+                        .fill(Color.cyan.opacity(0.75))
+                        .overlay(
+                            Rectangle()
+                                .stroke(Color.cyan.opacity(0.95), lineWidth: 1)
+                        )
+                        .frame(width: 210, height: 46)
+                        .overlay {
+                            Text("40–50% FTP")
+                                .font(.subheadline.bold())
+                                .foregroundStyle(.black.opacity(0.75))
+                        }
+
+                    Rectangle()
+                        .fill(Color.cyan.opacity(0.25))
+                        .frame(width: 82, height: 2)
+
+                    Rectangle()
+                        .fill(Color.cyan.opacity(0.9))
+                        .overlay(
+                            Rectangle()
+                                .stroke(Color.cyan.opacity(0.95), lineWidth: 1)
+                        )
+                        .frame(width: 24, height: 175)
+                        .overlay(alignment: .top) {
+                            Text("20s max effort")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .offset(y: -18)
+                        }
+
+                    Rectangle()
+                        .fill(Color.cyan.opacity(0.25))
+                        .frame(width: 338, height: 2)
+                }
+
+                HStack(alignment: .top, spacing: 0) {
+                    Text("15 mins")
+                        .frame(width: 210, alignment: .center)
+                    Text("5 mins")
+                        .frame(width: 82, alignment: .center)
+                    Text("Samples @ 3, 5 & 7 mins")
+                        .frame(width: 178, alignment: .center)
+                    Text("Optional final sample @\n20mins after max effort")
+                        .multilineTextAlignment(.center)
+                        .frame(width: 184, alignment: .center)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .overlay(alignment: .bottomLeading) {
+                HStack(spacing: 84) {
+                    Circle().fill(.red).frame(width: 10, height: 10)
+                    Circle().fill(.red).frame(width: 10, height: 10)
+                    Circle().fill(.red).frame(width: 10, height: 10)
+                    Circle().fill(.red).frame(width: 10, height: 10)
+                    Circle().fill(.red).frame(width: 10, height: 10)
+                }
+                .offset(x: 255, y: -44)
+            }
+            .padding(8)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .clipped()
+
+            Text("Red dots indicate blood lactate samples (pre-sprint baseline, 3/5/7 mins post-sprint, and optional 20-min sample).")
+private struct MLSSProtocolStageVisual: Identifiable {
+    let id = UUID()
+    let title: String
+    let subTitle: String
+}
+
+private struct MLSSProtocolGraphicView: View {
+    private let stages: [MLSSProtocolStageVisual] = [
+        MLSSProtocolStageVisual(title: "Stage 1", subTitle: "~10W below estimated MLSS"),
+        MLSSProtocolStageVisual(title: "Stage 2", subTitle: "~10W increment"),
+        MLSSProtocolStageVisual(title: "Stage 3", subTitle: "~10W increment")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 0) {
+                        ForEach(stages) { stage in
+                            VStack(spacing: 0) {
+                                HStack(spacing: 38) {
+                                    Text("3 mins")
+                                    Text("9 mins")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                                HStack(spacing: 72) {
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 10, height: 10)
+                                    Circle()
+                                        .fill(Color.red)
+                                        .frame(width: 10, height: 10)
+                                }
+                                .padding(.bottom, 6)
+
+                                Rectangle()
+                                    .fill(Color.cyan.opacity(0.75))
+                                    .overlay(
+                                        Rectangle()
+                                            .stroke(Color.cyan.opacity(0.95), lineWidth: 1)
+                                    )
+                                    .frame(width: 250, height: 44)
+                                    .overlay {
+                                        Text(stage.subTitle)
+                                            .font(.subheadline.monospaced())
+                                            .foregroundStyle(.black.opacity(0.78))
+                                    }
+
+                                Text("10 mins")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.top, 4)
+
+                                Text(stage.title)
+                                    .font(.subheadline.bold())
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Text("Red dots indicate blood lactate sampling at 3 and 9 mins of each stage.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -630,17 +772,19 @@ struct LactateLabView: View {
                 ProtocolFocusSection(
                     title: "Key Details",
                     bullets: [
-                        "总时长约 90 分钟以上，适合精确阈值标定。",
-                        "同阶段内至少采 2 次，观察乳酸漂移。",
-                        "后段相对前段增加 >1.0 mmol/L，通常提示超过 MLSS。"
+                        "Duration: ~40-mins or more.",
+                        "No. of lactate strips required: 4 or more.",
+                        "Use this test to determine: Maximal Lactate Steady State (MLSS).",
+                        "Notes: Only recommended where precise determination of MLSS is needed."
                     ]
                 ),
                 ProtocolFocusSection(
                     title: "Protocol",
                     bullets: [
-                        "围绕预估阈值设置多个 30 分钟稳态功率块。",
-                        "每个功率块记录 10/20/30 分钟乳酸。",
-                        "根据漂移趋势微调下一次测试功率。"
+                        "Stage 1: Ride 10 mins at ~10W below estimated MLSS.",
+                        "Stage 2: Increase by ~10W and ride 10 mins.",
+                        "Stage 3: Increase by another ~10W and ride 10 mins.",
+                        "Sample lactate at 3 mins and 9 mins of each stage."
                     ]
                 ),
                 ProtocolFocusSection(
@@ -657,17 +801,20 @@ struct LactateLabView: View {
                 ProtocolFocusSection(
                     title: "Key Details",
                     bullets: [
-                        "用于评估冲刺后乳酸峰值与清除速度。",
-                        "重点指标：峰值、20 分钟回落比例、清除率。",
-                        "适合用于无氧训练和恢复策略调整。"
+                        "Duration: ~30-40 mins.",
+                        "No. of lactate strips required: 4 or 5.",
+                        "Use this test to determine: VLaMax/glycolytic rate/anaerobic capacity, lactate clearance rate.",
+                        "Notes: This test should follow after one of Protocols 1-3."
                     ]
                 ),
                 ProtocolFocusSection(
                     title: "Protocol",
                     bullets: [
-                        "低强度热身后进行短冲刺刺激乳酸升高。",
-                        "恢复阶段每 5 分钟采样，追踪下降曲线。",
-                        "同一协议重复测试时，冲刺方式需保持一致。"
+                        "Ride 15 mins at 40-50% FTP.",
+                        "Collect a baseline lactate sample, then recover for 5 mins.",
+                        "Perform 20s max effort sprint.",
+                        "Collect post-sprint samples at 3, 5 and 7 mins.",
+                        "Optional: collect a final sample at 20 mins after max effort."
                     ]
                 ),
                 ProtocolFocusSection(
@@ -993,6 +1140,10 @@ struct LactateLabView: View {
 
                             if session.protocolType.wrappedValue == .fullRamp {
                                 FullRampProtocolGraphicView()
+                            } else if session.protocolType.wrappedValue == .anaerobicClearance {
+                                AnaerobicClearanceProtocolGraphicView()
+                            } else if session.protocolType.wrappedValue == .mlss {
+                                MLSSProtocolGraphicView()
                             }
 
                             ForEach(protocolFocusSections(for: session.protocolType.wrappedValue)) { section in
