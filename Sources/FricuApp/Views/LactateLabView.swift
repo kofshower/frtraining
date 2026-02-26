@@ -493,6 +493,9 @@ private struct ProtocolComparisonGraphicView: View {
             }
         }
         .font(.caption)
+    }
+}
+
 private struct AnaerobicClearanceProtocolGraphicView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
