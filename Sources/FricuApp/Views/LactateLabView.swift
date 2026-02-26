@@ -1,0 +1,599 @@
+import SwiftUI
+
+private enum LactateProtocolType: String, Codable, CaseIterable, Identifiable {
+    case fullRamp
+    case mlss
+    case anaerobicClearance
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fullRamp:
+            return L10n.choose(simplifiedChinese: "Full Ramp", english: "Full Ramp")
+        case .mlss:
+            return "MLSS"
+        case .anaerobicClearance:
+            return L10n.choose(simplifiedChinese: "Anaerobic + Clearance", english: "Anaerobic + Clearance")
+        }
+    }
+
+    var recommendation: String {
+        switch self {
+        case .fullRamp:
+            return L10n.choose(simplifiedChinese: "第一次测试建议从 Full Ramp 开始", english: "First-time users should start with Full Ramp.")
+        case .mlss:
+            return L10n.choose(simplifiedChinese: "如需精确阈值，请使用 MLSS", english: "Use MLSS when you need precise threshold estimation.")
+        case .anaerobicClearance:
+            return L10n.choose(simplifiedChinese: "用于评估无氧能力与乳酸清除", english: "Use to evaluate anaerobic capacity and lactate clearance.")
+        }
+    }
+}
+
+private enum LactateSessionStatus: String, Codable {
+    case notStarted
+    case inProgress
+    case completed
+}
+
+private struct LactatePreconditions: Codable {
+    var riderName: String = ""
+    var ftp: Int = 240
+    var maxHR: Int = 190
+    var weightKg: Double?
+    var powerSource: String = "Smart Trainer"
+    var usesERGMode: Bool = true
+    var analyzerModel: String = ""
+    var hasAssistant: Bool = false
+    var minutesSinceCalories: Int = 90
+    var drinkType: String = "Water"
+    var caffeineStatus: String = "Normal"
+    var fatigueLevel: Int = 2
+    var sleepHours: Double = 7.5
+    var selfTestMode: Bool = true
+}
+
+private struct LactateStageRecord: Identifiable, Codable {
+    var id = UUID()
+    var stageIndex: Int
+    var stageType: String
+    var targetPower: Int
+    var avgPower: Int?
+    var avgHR: Int?
+    var posture: String = "Seated"
+    var rpe: Int = 5
+    var note: String = ""
+}
+
+private struct LactateSample: Identifiable, Codable {
+    var id = UUID()
+    var stageIndex: Int
+    var timestamp: Date
+    var value: Double
+    var isRetest: Bool
+    var suspectedContamination: Bool
+    var note: String
+}
+
+private struct LactateDerivedMetrics: Codable {
+    var lt1Estimate: Int?
+    var lt2Estimate: Int?
+    var mlssLowerBound: Int?
+    var mlssUpperBound: Int?
+    var baselineLactate: Double?
+    var peakLactate: Double?
+    var vlaMax: Double?
+    var drop20MinPct: Double?
+    var clearanceRate: Double?
+}
+
+private struct LactateTestSession: Identifiable, Codable {
+    var id = UUID()
+    var createdAt = Date()
+    var protocolType: LactateProtocolType
+    var status: LactateSessionStatus = .notStarted
+    var preconditions = LactatePreconditions()
+    var stages: [LactateStageRecord] = []
+    var samples: [LactateSample] = []
+    var metrics = LactateDerivedMetrics()
+    var checklistCompleted = false
+    var checklistItems: [Bool] = Array(repeating: false, count: 4)
+    var qualityFlags: [String] = []
+
+    mutating func recalculateMetrics() {
+        guard !samples.isEmpty else { return }
+        let sorted = samples.sorted { $0.timestamp < $1.timestamp }
+        let maxValue = sorted.map(\.value).max()
+        let minValue = sorted.map(\.value).min()
+        metrics.baselineLactate = minValue
+        metrics.peakLactate = maxValue
+
+        switch protocolType {
+        case .fullRamp:
+            if let lt1Sample = sorted.first(where: { $0.value >= 2.0 }),
+               let stage = stages.first(where: { $0.stageIndex == lt1Sample.stageIndex }) {
+                metrics.lt1Estimate = stage.targetPower
+            }
+            if let lt2Sample = sorted.first(where: { $0.value >= 4.0 }),
+               let stage = stages.first(where: { $0.stageIndex == lt2Sample.stageIndex }) {
+                metrics.lt2Estimate = stage.targetPower
+            }
+        case .mlss:
+            let grouped = Dictionary(grouping: sorted, by: \.stageIndex)
+            let overMlss = grouped.compactMap { key, values -> Int? in
+                guard values.count >= 2 else { return nil }
+                let local = values.sorted { $0.timestamp < $1.timestamp }
+                guard let first = local.first?.value, let last = local.last?.value else { return nil }
+                return (last - first) > 1.0 ? key : nil
+            }.sorted()
+            if let firstOver = overMlss.first {
+                metrics.mlssUpperBound = stages.first(where: { $0.stageIndex == firstOver })?.targetPower
+                metrics.mlssLowerBound = stages.first(where: { $0.stageIndex == firstOver - 1 })?.targetPower
+            }
+        case .anaerobicClearance:
+            if let peak = maxValue, let baseline = minValue {
+                metrics.vlaMax = (peak - baseline) / 16.0
+                if sorted.count >= 2 {
+                    let first = sorted.first?.value ?? baseline
+                    let last = sorted.last?.value ?? baseline
+                    let durationMin = sorted.last?.timestamp.timeIntervalSince(sorted.first?.timestamp ?? Date()) ?? 1
+                    let minutes = max(durationMin / 60.0, 1)
+                    metrics.clearanceRate = (first - last) / minutes
+                }
+                if let sample20 = sorted.last(where: { Date().timeIntervalSince($0.timestamp) >= 20 * 60 }) {
+                    metrics.drop20MinPct = peak == 0 ? nil : ((peak - sample20.value) / peak) * 100
+                }
+            }
+        }
+    }
+}
+
+private final class LactateLabStore: ObservableObject {
+    @Published var currentSession: LactateTestSession?
+    @Published var history: [LactateTestSession] = []
+    @Published var defaultFTP = 240
+    @Published var defaultMaxHR = 190
+    @Published var defaultAnalyzerModel = ""
+    @Published var defaultSelfTestMode = true
+    @Published var reminderEnabled = true
+
+    private let historyKey = "fricu.lactate.history.v1"
+
+    init() {
+        loadHistory()
+    }
+
+    func startSession(protocolType: LactateProtocolType) {
+        var session = LactateTestSession(protocolType: protocolType)
+        session.preconditions.ftp = defaultFTP
+        session.preconditions.maxHR = defaultMaxHR
+        session.preconditions.analyzerModel = defaultAnalyzerModel
+        session.preconditions.selfTestMode = defaultSelfTestMode
+        session.stages = defaultStages(for: protocolType, ftp: defaultFTP)
+        currentSession = session
+    }
+
+    func saveCurrent() {
+        guard let currentSession else { return }
+        if let index = history.firstIndex(where: { $0.id == currentSession.id }) {
+            history[index] = currentSession
+        } else {
+            history.insert(currentSession, at: 0)
+        }
+        persistHistory()
+    }
+
+    func completeSession() {
+        guard var session = currentSession else { return }
+        session.status = .completed
+        session.recalculateMetrics()
+        currentSession = session
+        saveCurrent()
+    }
+
+    private func defaultStages(for protocolType: LactateProtocolType, ftp: Int) -> [LactateStageRecord] {
+        switch protocolType {
+        case .fullRamp:
+            return [
+                LactateStageRecord(stageIndex: 0, stageType: "Warm-up", targetPower: Int(Double(ftp) * 0.4)),
+                LactateStageRecord(stageIndex: 1, stageType: "Stage 1", targetPower: Int(Double(ftp) * 0.6)),
+                LactateStageRecord(stageIndex: 2, stageType: "Stage 2", targetPower: Int(Double(ftp) * 0.7)),
+                LactateStageRecord(stageIndex: 3, stageType: "Stage 3", targetPower: Int(Double(ftp) * 0.8))
+            ]
+        case .mlss:
+            return [
+                LactateStageRecord(stageIndex: 1, stageType: "Stage 1", targetPower: ftp - 10),
+                LactateStageRecord(stageIndex: 2, stageType: "Stage 2", targetPower: ftp),
+                LactateStageRecord(stageIndex: 3, stageType: "Stage 3", targetPower: ftp + 10)
+            ]
+        case .anaerobicClearance:
+            return [
+                LactateStageRecord(stageIndex: 0, stageType: "Easy Ride", targetPower: Int(Double(ftp) * 0.45)),
+                LactateStageRecord(stageIndex: 1, stageType: "Rest", targetPower: 0),
+                LactateStageRecord(stageIndex: 2, stageType: "Sprint 20s", targetPower: Int(Double(ftp) * 1.8)),
+                LactateStageRecord(stageIndex: 3, stageType: "Recovery", targetPower: 0)
+            ]
+        }
+    }
+
+    private func loadHistory() {
+        guard let data = UserDefaults.standard.data(forKey: historyKey) else { return }
+        history = (try? JSONDecoder().decode([LactateTestSession].self, from: data)) ?? []
+    }
+
+    private func persistHistory() {
+        let data = try? JSONEncoder().encode(history)
+        UserDefaults.standard.set(data, forKey: historyKey)
+    }
+}
+
+private enum LactateFlowPage: String, CaseIterable, Identifiable {
+    case hub, setup, checklist, live, results, history, settings
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .hub: return L10n.choose(simplifiedChinese: "测试首页", english: "Test Hub")
+        case .setup: return L10n.choose(simplifiedChinese: "协议设置", english: "Protocol Setup")
+        case .checklist: return L10n.choose(simplifiedChinese: "测试前检查", english: "Pre-Test Checklist")
+        case .live: return L10n.choose(simplifiedChinese: "实时测试", english: "Live Test")
+        case .results: return L10n.choose(simplifiedChinese: "结果", english: "Results")
+        case .history: return L10n.choose(simplifiedChinese: "历史", english: "History")
+        case .settings: return L10n.choose(simplifiedChinese: "设置", english: "Settings")
+        }
+    }
+}
+
+struct LactateLabView: View {
+    @StateObject private var store = LactateLabStore()
+    @State private var page: LactateFlowPage = .hub
+    @State private var selectedProtocol: LactateProtocolType = .fullRamp
+    @State private var selectedStage = 0
+    @State private var showingSampleSheet = false
+    @State private var sampleValue = ""
+    @State private var sampleRetest = false
+    @State private var sampleContaminated = false
+    @State private var sampleNote = ""
+    @State private var liveAlert: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Lactate Lab")
+                .font(.largeTitle.bold())
+
+            Picker("Page", selection: $page) {
+                ForEach(LactateFlowPage.allCases) { p in
+                    Text(verbatim: p.title).tag(p)
+                }
+            }
+            .appDropdownTheme(width: 260)
+
+            ScrollView {
+                switch page {
+                case .hub:
+                    hubPage
+                case .setup:
+                    setupPage
+                case .checklist:
+                    checklistPage
+                case .live:
+                    livePage
+                case .results:
+                    resultsPage
+                case .history:
+                    historyPage
+                case .settings:
+                    settingsPage
+                }
+            }
+        }
+        .padding(20)
+        .sheet(isPresented: $showingSampleSheet) {
+            sampleSheet
+        }
+        .alert("提醒", isPresented: Binding(get: { liveAlert != nil }, set: { if !$0 { liveAlert = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(liveAlert ?? "")
+        }
+    }
+
+    private var hubPage: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            GroupBox(L10n.choose(simplifiedChinese: "开始新测试", english: "Start New Test")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("Protocol", selection: $selectedProtocol) {
+                        ForEach(LactateProtocolType.allCases) { type in
+                            Text(verbatim: type.title).tag(type)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    Text(verbatim: selectedProtocol.recommendation)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Button(L10n.choose(simplifiedChinese: "开始", english: "Start")) {
+                        store.startSession(protocolType: selectedProtocol)
+                        page = .setup
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+
+            if let current = store.currentSession, current.status != .completed {
+                GroupBox(L10n.choose(simplifiedChinese: "未完成测试", english: "Incomplete Test")) {
+                    HStack {
+                        Text("\(current.protocolType.title) · \(current.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                        Spacer()
+                        Button(L10n.choose(simplifiedChinese: "继续", english: "Continue")) {
+                            page = .live
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var setupPage: some View {
+        Group {
+            if let session = Binding($store.currentSession) {
+                VStack(alignment: .leading, spacing: 12) {
+                    GroupBox("Athlete") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextField("Name", text: session.preconditions.riderName)
+                            Stepper("FTP: \(session.preconditions.ftp.wrappedValue) W", value: session.preconditions.ftp, in: 120...500)
+                            Stepper("Max HR: \(session.preconditions.maxHR.wrappedValue) bpm", value: session.preconditions.maxHR, in: 140...230)
+                            Toggle("Self-Test Mode", isOn: session.preconditions.selfTestMode)
+                        }
+                    }
+
+                    GroupBox("Preconditions") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Stepper("Minutes since calories: \(session.preconditions.minutesSinceCalories.wrappedValue)", value: session.preconditions.minutesSinceCalories, in: 0...360)
+                            Stepper("Fatigue: \(session.preconditions.fatigueLevel.wrappedValue)/5", value: session.preconditions.fatigueLevel, in: 1...5)
+                            Stepper("Sleep: \(String(format: "%.1f", session.preconditions.sleepHours.wrappedValue)) h", value: session.preconditions.sleepHours, in: 0...12, step: 0.5)
+                            Toggle("ERG Mode", isOn: session.preconditions.usesERGMode)
+                        }
+                    }
+
+                    Button("保存并继续") {
+                        store.saveCurrent()
+                        page = .checklist
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else {
+                Text("请先在 Test Hub 开始一个测试。")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var checklistPage: some View {
+        Group {
+            if let session = Binding($store.currentSession) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("样本污染是错误读数最常见原因")
+                        .font(.headline)
+                    Text("测试前约 1 小时避免摄入含热量饮料/食物；测试中避免含热量补给。")
+                        .foregroundStyle(.secondary)
+
+                    checklistRow("已准备乳酸仪/试纸/采血针/酒精棉/纸巾/毛巾", binding: session.checklistItems[0])
+                    checklistRow("已知晓：擦汗→酒精干燥→丢弃第一滴血", binding: session.checklistItems[1])
+                    checklistRow("已记录营养状态", binding: session.checklistItems[2])
+                    checklistRow("已知自测模式可阶段结束后暂停采样", binding: session.checklistItems[3])
+
+                    let ready = session.checklistItems.wrappedValue.allSatisfy { $0 }
+                    Button("进入实时测试") {
+                        session.checklistCompleted.wrappedValue = true
+                        store.saveCurrent()
+                        page = .live
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!ready)
+                }
+            } else {
+                Text("暂无测试。")
+            }
+        }
+    }
+
+    private func checklistRow(_ label: String, binding: Binding<Bool>) -> some View {
+        Toggle(isOn: binding) {
+            Text(verbatim: label)
+        }
+    }
+
+    private var livePage: some View {
+        Group {
+            if let session = Binding($store.currentSession) {
+                let stage = session.stages.wrappedValue.indices.contains(selectedStage) ? session.stages.wrappedValue[selectedStage] : nil
+                VStack(alignment: .leading, spacing: 12) {
+                    GroupBox("状态") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Protocol: \(session.protocolType.wrappedValue.title)")
+                            Text("当前阶段: \(stage?.stageType ?? "-")")
+                            Text("目标功率: \(stage?.targetPower ?? 0) W")
+                            Text("下一次采样: \(session.preconditions.selfTestMode.wrappedValue ? "阶段末暂停采样" : "第5分钟")")
+                        }
+                    }
+
+                    GroupBox("主操作") {
+                        HStack {
+                            Button("记录乳酸") {
+                                showingSampleSheet = true
+                            }
+                            .buttonStyle(.borderedProminent)
+
+                            Button("完成本阶段") {
+                                selectedStage = min(selectedStage + 1, max(session.stages.wrappedValue.count - 1, 0))
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("结束测试") {
+                                store.completeSession()
+                                page = .results
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    GroupBox("已记录") {
+                        if session.samples.wrappedValue.isEmpty {
+                            Text("暂无乳酸样本")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(session.samples.wrappedValue) { sample in
+                                HStack {
+                                    Text("Stage \(sample.stageIndex) · \(String(format: "%.1f", sample.value)) mmol/L")
+                                    if sample.isRetest { Text("重测").foregroundStyle(.orange) }
+                                    if sample.suspectedContamination { Text("污染").foregroundStyle(.red) }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text("暂无进行中的测试")
+            }
+        }
+    }
+
+    private var sampleSheet: some View {
+        NavigationStack {
+            Form {
+                TextField("乳酸值 mmol/L", text: $sampleValue)
+                    .keyboardType(.decimalPad)
+                Toggle("重测", isOn: $sampleRetest)
+                Toggle("疑似污染", isOn: $sampleContaminated)
+                TextField("备注", text: $sampleNote)
+            }
+            .navigationTitle("Sample Entry")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { resetSampleForm() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") { addSample() }
+                }
+            }
+        }
+    }
+
+    private func addSample() {
+        guard var session = store.currentSession, let value = Double(sampleValue) else { return }
+        let sample = LactateSample(
+            stageIndex: selectedStage,
+            timestamp: Date(),
+            value: value,
+            isRetest: sampleRetest,
+            suspectedContamination: sampleContaminated,
+            note: sampleNote
+        )
+        session.samples.append(sample)
+
+        if session.samples.count >= 2 {
+            let sorted = session.samples.sorted { $0.timestamp < $1.timestamp }
+            if let previous = sorted.dropLast().last,
+               (sample.value - previous.value) > 2.0 {
+                liveAlert = "相邻两次乳酸跳升超过 2 mmol/L，建议复测。"
+            }
+        }
+
+        if session.protocolType == .fullRamp {
+            if sample.value > 6.0 {
+                liveAlert = "Full Ramp 已超过 6 mmol/L，建议结束测试。"
+            }
+        }
+
+        store.currentSession = session
+        store.saveCurrent()
+        resetSampleForm()
+    }
+
+    private func resetSampleForm() {
+        sampleValue = ""
+        sampleRetest = false
+        sampleContaminated = false
+        sampleNote = ""
+        showingSampleSheet = false
+    }
+
+    private var resultsPage: some View {
+        Group {
+            if let session = store.currentSession {
+                VStack(alignment: .leading, spacing: 10) {
+                    GroupBox("测试概览") {
+                        VStack(alignment: .leading) {
+                            Text("协议: \(session.protocolType.title)")
+                            Text("日期: \(session.createdAt.formatted(date: .abbreviated, time: .shortened))")
+                            Text("有效样本: \(session.samples.filter { !$0.suspectedContamination }.count)")
+                        }
+                    }
+
+                    GroupBox("关键结论") {
+                        switch session.protocolType {
+                        case .fullRamp:
+                            Text("LT1 粗估: \(session.metrics.lt1Estimate.map { "\($0) W" } ?? "-")")
+                            Text("LT2 粗估: \(session.metrics.lt2Estimate.map { "\($0) W" } ?? "-")")
+                            Text("本协议仅用于粗略观察，不是精确阈值判定。")
+                                .foregroundStyle(.secondary)
+                        case .mlss:
+                            Text("MLSS 区间: \(session.metrics.mlssLowerBound.map(String.init) ?? "-") - \(session.metrics.mlssUpperBound.map(String.init) ?? "-") W")
+                        case .anaerobicClearance:
+                            Text("基线: \(session.metrics.baselineLactate.map { String(format: "%.1f", $0) } ?? "-") mmol/L")
+                            Text("峰值: \(session.metrics.peakLactate.map { String(format: "%.1f", $0) } ?? "-") mmol/L")
+                            Text("VLaMax: \(session.metrics.vlaMax.map { String(format: "%.3f", $0) } ?? "-")")
+                            Text("清除率: \(session.metrics.clearanceRate.map { String(format: "%.3f", $0) } ?? "-") mmol/L/min")
+                        }
+                    }
+                }
+            } else {
+                Text("暂无结果")
+            }
+        }
+    }
+
+    private var historyPage: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if store.history.isEmpty {
+                Text("暂无历史记录")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(store.history) { item in
+                    GroupBox {
+                        VStack(alignment: .leading) {
+                            Text("\(item.protocolType.title) · \(item.createdAt.formatted(date: .abbreviated, time: .omitted))")
+                            Text("样本数: \(item.samples.count) · 状态: \(item.status.rawValue)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var settingsPage: some View {
+        GroupBox("默认配置") {
+            VStack(alignment: .leading, spacing: 8) {
+                Stepper("默认 FTP: \(store.defaultFTP) W", value: $store.defaultFTP, in: 120...500)
+                Stepper("默认 Max HR: \(store.defaultMaxHR) bpm", value: $store.defaultMaxHR, in: 140...230)
+                TextField("默认乳酸仪型号", text: $store.defaultAnalyzerModel)
+                Toggle("默认自测模式", isOn: $store.defaultSelfTestMode)
+                Toggle("默认采样提醒", isOn: $store.reminderEnabled)
+            }
+        }
+    }
+}
+
+private extension Binding {
+    init?(_ source: Binding<Value?>) {
+        guard source.wrappedValue != nil else { return nil }
+        self.init(
+            get: { source.wrappedValue! },
+            set: { source.wrappedValue = $0 }
+        )
+    }
+}
