@@ -464,7 +464,6 @@ struct LactateLabView: View {
         NavigationStack {
             Form {
                 TextField("乳酸值 mmol/L", text: $sampleValue)
-                    .keyboardType(.decimalPad)
                 Toggle("重测", isOn: $sampleRetest)
                 Toggle("疑似污染", isOn: $sampleContaminated)
                 TextField("备注", text: $sampleNote)
