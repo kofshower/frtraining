@@ -58,6 +58,8 @@ private struct LactateStageRecord: Identifiable, Codable {
     var stageIndex: Int
     var stageType: String
     var targetPower: Int
+    var durationMinutes: Int = 4
+    var sampleHint: String = "阶段末 30 秒采样"
     var avgPower: Int?
     var avgHR: Int?
     var posture: String = "Seated"
@@ -195,23 +197,26 @@ private final class LactateLabStore: ObservableObject {
         switch protocolType {
         case .fullRamp:
             return [
-                LactateStageRecord(stageIndex: 0, stageType: "Warm-up", targetPower: Int(Double(ftp) * 0.4)),
-                LactateStageRecord(stageIndex: 1, stageType: "Stage 1", targetPower: Int(Double(ftp) * 0.6)),
-                LactateStageRecord(stageIndex: 2, stageType: "Stage 2", targetPower: Int(Double(ftp) * 0.7)),
-                LactateStageRecord(stageIndex: 3, stageType: "Stage 3", targetPower: Int(Double(ftp) * 0.8))
+                LactateStageRecord(stageIndex: 0, stageType: "Warm-up", targetPower: Int(Double(ftp) * 0.5), durationMinutes: 10, sampleHint: "热身末尾可选采样"),
+                LactateStageRecord(stageIndex: 1, stageType: "Stage 1", targetPower: Int(Double(ftp) * 0.6), durationMinutes: 4),
+                LactateStageRecord(stageIndex: 2, stageType: "Stage 2", targetPower: Int(Double(ftp) * 0.7), durationMinutes: 4),
+                LactateStageRecord(stageIndex: 3, stageType: "Stage 3", targetPower: Int(Double(ftp) * 0.8), durationMinutes: 4),
+                LactateStageRecord(stageIndex: 4, stageType: "Stage 4", targetPower: Int(Double(ftp) * 0.9), durationMinutes: 4),
+                LactateStageRecord(stageIndex: 5, stageType: "Stage 5", targetPower: ftp, durationMinutes: 4),
+                LactateStageRecord(stageIndex: 6, stageType: "Stage 6", targetPower: Int(Double(ftp) * 1.1), durationMinutes: 4)
             ]
         case .mlss:
             return [
-                LactateStageRecord(stageIndex: 1, stageType: "Stage 1", targetPower: ftp - 10),
-                LactateStageRecord(stageIndex: 2, stageType: "Stage 2", targetPower: ftp),
-                LactateStageRecord(stageIndex: 3, stageType: "Stage 3", targetPower: ftp + 10)
+                LactateStageRecord(stageIndex: 1, stageType: "MLSS Block 1", targetPower: ftp - 10, durationMinutes: 30, sampleHint: "10/20/30 分钟采样"),
+                LactateStageRecord(stageIndex: 2, stageType: "MLSS Block 2", targetPower: ftp, durationMinutes: 30, sampleHint: "10/20/30 分钟采样"),
+                LactateStageRecord(stageIndex: 3, stageType: "MLSS Block 3", targetPower: ftp + 10, durationMinutes: 30, sampleHint: "10/20/30 分钟采样")
             ]
         case .anaerobicClearance:
             return [
-                LactateStageRecord(stageIndex: 0, stageType: "Easy Ride", targetPower: Int(Double(ftp) * 0.45)),
-                LactateStageRecord(stageIndex: 1, stageType: "Rest", targetPower: 0),
-                LactateStageRecord(stageIndex: 2, stageType: "Sprint 20s", targetPower: Int(Double(ftp) * 1.8)),
-                LactateStageRecord(stageIndex: 3, stageType: "Recovery", targetPower: 0)
+                LactateStageRecord(stageIndex: 0, stageType: "Easy Ride", targetPower: Int(Double(ftp) * 0.45), durationMinutes: 10, sampleHint: "热身后采样"),
+                LactateStageRecord(stageIndex: 1, stageType: "Rest", targetPower: 0, durationMinutes: 3, sampleHint: "末尾采样"),
+                LactateStageRecord(stageIndex: 2, stageType: "Sprint 20s", targetPower: Int(Double(ftp) * 1.8), durationMinutes: 1, sampleHint: "冲刺后 1 分钟采样"),
+                LactateStageRecord(stageIndex: 3, stageType: "Recovery", targetPower: Int(Double(ftp) * 0.4), durationMinutes: 20, sampleHint: "每 5 分钟采样")
             ]
         }
     }
@@ -589,6 +594,15 @@ struct LactateLabView: View {
                         }
                     }
 
+                    GroupBox("阶段计划") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(session.stages.wrappedValue) { stage in
+                                Text("\(stage.stageType): \(stage.targetPower) W · \(stage.durationMinutes) 分钟 · \(stage.sampleHint)")
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
+
                     GroupBox("Preconditions") {
                         VStack(alignment: .leading, spacing: 8) {
                             Stepper("Minutes since calories: \(session.preconditions.minutesSinceCalories.wrappedValue)", value: session.preconditions.minutesSinceCalories, in: 0...360)
@@ -656,7 +670,8 @@ struct LactateLabView: View {
                             Text("Protocol: \(session.protocolType.wrappedValue.title)")
                             Text("当前阶段: \(stage?.stageType ?? "-")")
                             Text("目标功率: \(stage?.targetPower ?? 0) W")
-                            Text("下一次采样: \(session.preconditions.selfTestMode.wrappedValue ? "阶段末暂停采样" : "第5分钟")")
+                            Text("阶段时长: \(stage?.durationMinutes ?? 0) 分钟")
+                            Text("下一次采样: \(stage?.sampleHint ?? (session.preconditions.selfTestMode.wrappedValue ? "阶段末暂停采样" : "第5分钟"))")
                         }
                     }
 
