@@ -244,6 +244,65 @@ private enum LactateFlowPage: String, CaseIterable, Identifiable {
     }
 }
 
+private enum LactatePrimaryGoal: String, CaseIterable, Identifiable {
+    case firstBaseline
+    case preciseThreshold
+    case anaerobicCapacity
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .firstBaseline:
+            return "我是第一次做乳酸测试"
+        case .preciseThreshold:
+            return "我要精确阈值（配速/功率区间）"
+        case .anaerobicCapacity:
+            return "我要评估冲刺后乳酸清除能力"
+        }
+    }
+}
+
+private enum LactateExperienceLevel: String, CaseIterable, Identifiable {
+    case beginner
+    case practiced
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .beginner:
+            return "新手（采血流程不熟）"
+        case .practiced:
+            return "熟练（可稳定按阶段采样）"
+        }
+    }
+}
+
+private enum LactateReadinessState: String, CaseIterable, Identifiable {
+    case fresh
+    case tired
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fresh:
+            return "今天状态较新鲜（睡眠/疲劳可控）"
+        case .tired:
+            return "今天偏疲劳（恢复不充分）"
+        }
+    }
+}
+
+private struct LactatePathRecommendation {
+    var protocolType: LactateProtocolType
+    var title: String
+    var why: String
+    var executionPath: [String]
+    var caution: String
+}
+
 struct LactateLabView: View {
     @StateObject private var store = LactateLabStore()
     @State private var page: LactateFlowPage = .hub
@@ -255,6 +314,84 @@ struct LactateLabView: View {
     @State private var sampleContaminated = false
     @State private var sampleNote = ""
     @State private var liveAlert: String?
+    @State private var primaryGoal: LactatePrimaryGoal = .firstBaseline
+    @State private var experienceLevel: LactateExperienceLevel = .beginner
+    @State private var readiness: LactateReadinessState = .fresh
+    @State private var has90MinWindow = true
+
+    private var guidedRecommendation: LactatePathRecommendation {
+        if readiness == .tired {
+            return LactatePathRecommendation(
+                protocolType: .fullRamp,
+                title: "今天建议走：轻量 Full Ramp（仅做基线）",
+                why: "疲劳会抬高或压低阈值点，先做低成本基线比强行做 MLSS 更可靠。",
+                executionPath: [
+                    "测试首页 → Full Ramp",
+                    "协议设置里确认 FTP/睡眠/疲劳",
+                    "仅记录关键台阶（2.0 / 4.0 mmol/L 附近）",
+                    "48-72 小时恢复后再做 MLSS 精测"
+                ],
+                caution: "若 RPE 异常高或乳酸跳升 >2 mmol/L，请停止并改天复测。"
+            )
+        }
+
+        switch primaryGoal {
+        case .anaerobicCapacity:
+            return LactatePathRecommendation(
+                protocolType: .anaerobicClearance,
+                title: "建议走：Anaerobic + Clearance",
+                why: "目标是看冲刺后峰值与回落速度，该协议最直接反映无氧产乳酸与清除能力。",
+                executionPath: [
+                    "测试首页 → Anaerobic + Clearance",
+                    "按冲刺→恢复节奏采样",
+                    "重点看峰值、20 分钟回落比例、清除率",
+                    "结果页回写到无氧训练与恢复策略"
+                ],
+                caution: "冲刺前确保热身充分；若独自测试，优先保证采血质量再追求样本数量。"
+            )
+        case .preciseThreshold:
+            if experienceLevel == .practiced && has90MinWindow {
+                return LactatePathRecommendation(
+                    protocolType: .mlss,
+                    title: "建议走：MLSS 精测路径",
+                    why: "你有稳定采样能力与充足时间，MLSS 更适合做精确阈值和训练区间标定。",
+                    executionPath: [
+                        "测试首页 → MLSS",
+                        "每阶段保持稳定功率，阶段内至少采两次",
+                        "观察同阶段乳酸漂移（>1.0 mmol/L 视为超 MLSS）",
+                        "结果页写入 MLSS 上下界并更新训练区"
+                    ],
+                    caution: "若中途配速/功率波动大，优先保证稳定输出，否则结果会偏差。"
+                )
+            }
+
+            return LactatePathRecommendation(
+                protocolType: .fullRamp,
+                title: "建议先走：Full Ramp 预筛，再进 MLSS",
+                why: "当时间不足或流程还不熟时，先用阶梯测试缩小阈值范围，再做 MLSS 更省样本。",
+                executionPath: [
+                    "先做 Full Ramp，定位 LT1/LT2 粗估功率",
+                    "24-72 小时后安排 MLSS 精测",
+                    "MLSS 阶段功率围绕粗估阈值上下 10W",
+                    "将最终阈值回写训练区间"
+                ],
+                caution: "Full Ramp 仅用于路径选择和范围收敛，不替代 MLSS 阈值判定。"
+            )
+        case .firstBaseline:
+            return LactatePathRecommendation(
+                protocolType: .fullRamp,
+                title: "建议走：Full Ramp 入门路径",
+                why: "首次测试要优先建立采血节奏与质量控制，分级测试更容易执行且风险更低。",
+                executionPath: [
+                    "测试首页 → Full Ramp",
+                    "完成测试前检查（尤其是污染控制）",
+                    "每阶段末采样并记录 RPE/心率",
+                    "得到初步 LT1/LT2 后再决定是否进 MLSS"
+                ],
+                caution: "出现污染怀疑请立刻重测，避免用错误读数推导阈值。"
+            )
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -300,6 +437,66 @@ struct LactateLabView: View {
 
     private var hubPage: some View {
         VStack(alignment: .leading, spacing: 12) {
+            GroupBox("路径引导（推荐你该走哪条测试路径）") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Picker("主要目标", selection: $primaryGoal) {
+                        ForEach(LactatePrimaryGoal.allCases) { goal in
+                            Text(goal.title).tag(goal)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Picker("经验水平", selection: $experienceLevel) {
+                        ForEach(LactateExperienceLevel.allCases) { level in
+                            Text(level.title).tag(level)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Picker("当天状态", selection: $readiness) {
+                        ForEach(LactateReadinessState.allCases) { state in
+                            Text(state.title).tag(state)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Toggle("我有 90 分钟以上完整测试窗口", isOn: $has90MinWindow)
+
+                    Divider()
+
+                    Text(guidedRecommendation.title)
+                        .font(.headline)
+                    Text(guidedRecommendation.why)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("建议操作路径")
+                            .font(.subheadline.bold())
+                        ForEach(Array(guidedRecommendation.executionPath.enumerated()), id: \.offset) { idx, step in
+                            Text("\(idx + 1). \(step)")
+                                .font(.subheadline)
+                        }
+                    }
+
+                    Text("注意：\(guidedRecommendation.caution)")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+
+                    HStack {
+                        Button("采用建议路径并开始") {
+                            selectedProtocol = guidedRecommendation.protocolType
+                            store.startSession(protocolType: selectedProtocol)
+                            page = .setup
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Text("推荐协议：\(guidedRecommendation.protocolType.title)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             GroupBox(L10n.choose(simplifiedChinese: "开始新测试", english: "Start New Test")) {
                 VStack(alignment: .leading, spacing: 10) {
                     Picker("Protocol", selection: $selectedProtocol) {
