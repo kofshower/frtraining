@@ -1,563 +1,0 @@
-"app.section.dashboard" = "ä»ªè¡¨ç";
-"app.section.trainer" = "éªè¡å°";
-"app.section.prosuite" = "ä¸ä¸å¥ä»¶";
-"app.section.workoutBuilder" = "è®­ç»æå»º";
-"app.section.library" = "åº";
-"app.section.insights" = "æ´å¯";
-"app.section.settings" = "è®¾ç½®";
-
-"toolbar.sport" = "è¿å¨";
-"toolbar.sport.all" = "å¨é¨è¿å¨";
-
-"settings.language.title" = "è¯­è¨";
-"settings.language.picker" = "åºç¨è¯­è¨";
-"settings.language.option.system" = "è·éç³»ç»";
-"settings.language.option.zhHans" = "ç®ä½ä¸­æ";
-"settings.language.option.english" = "English";
-
-"prosuite.module.picker" = "æ¨¡å";
-"prosuite.module.planner" = "è®­ç»æ¥å";
-"prosuite.module.intervals" = "é´æ­å®éªå®¤";
-"prosuite.module.metrics" = "å¾è¡¨å¼æ";
-"prosuite.module.powerModels" = "åçå»ºæ¨¡";
-"prosuite.module.activityGrid" = "æ´»å¨ç½æ ¼";
-"prosuite.module.collaboration" = "åä½";
-"prosuite.module.integrations" = "éæä¸­å¿";
-"prosuite.module.forensic" = "åè¯";
-
-"sport.cycling" = "éªè¡";
-"sport.running" = "è·æ­¥";
-"sport.swimming" = "æ¸¸æ³³";
-"sport.strength" = "åé";
-
-"Pro Training Suite" = "ä¸ä¸è®­ç»å¥ä»¶";
-"Athlete Profile" = "è¿å¨åæ¡£æ¡";
-"Inputs for load modeling, TSS estimation, and AI recommendations." = "ç¨äºè´è·å»ºæ¨¡ãTSS ä¼°ç®å AI å»ºè®®çè¾å¥åæ°ã";
-"Cycling" = "éªè¡";
-"Running" = "è·æ­¥";
-"Swimming" = "æ¸¸æ³³";
-"Strength" = "åé";
-"Save Profile" = "ä¿å­æ¡£æ¡";
-
-"180d" = "180d";
-"2D/3D Scatter (Forensic)" = "2D/3D æ£ç¹ï¼åè¯ï¼";
-"30-Day Sport Mix by TSS" = "30å¤©è¿å¨è´è·åå¸ï¼TSSï¼";
-"365d" = "365d";
-"42d" = "42d";
-"90d" = "90d";
-"AI Coach" = "AI æç»";
-"Activity" = "æ´»å¨";
-"Activity Library" = "æ´»å¨åº";
-"Add Rider" = "æ·»å éªæ";
-"Add Segment" = "æ·»å åæ®µ";
-"AeTHR" = "AeTHR";
-"Aerolab (CdA ä¼°è®¡è½¨è¿¹)" = "Aerolabï¼CdA ä¼°è®¡è½¨è¿¹ï¼";
-"All" = "å¨é¨";
-"All Sports" = "å¨é¨è¿å¨";
-"Apple Health" = "Apple å¥åº·";
-"Athlete Age" = "è¿å¨åå¹´é¾";
-"AvgHR" = "å¹³åå¿ç";
-"Bi-Sync (Push + Pull All)" = "åååæ­¥ï¼æ¨é+å¨éæåï¼";
-"Bike Power Meter (BLE)" = "èªè¡è½¦åçè®¡ï¼èçï¼";
-"Body Weight (kg)" = "ä½éï¼kgï¼";
-"CP/W'/Pmax å¤æ¨¡å" = "CP/W'/Pmax å¤æ¨¡å";
-"Cancel" = "åæ¶";
-"Clear All" = "æ¸ç©ºå¨é¨";
-"Clear All Activities" = "æ¸ç©ºå¨é¨æ´»å¨";
-"Daily TSS" = "æ¯æ¥ TSS";
-"Dashboard Metrics Trends" = "ä»ªè¡¨çææ è¶å¿";
-"Date" = "æ¥æ";
-"Decoupling (EF)" = "è§£è¦çï¼EFï¼";
-"Delete" = "å é¤";
-"Disconnect" = "æ­å¼è¿æ¥";
-"Discovered" = "å·²åç°è®¾å¤";
-"Distance" = "è·ç¦»";
-"Dur" = "æ¶é¿";
-"ERG" = "ERG";
-"ERG +10" = "ERG +10";
-"ERG -10" = "ERG -10";
-"FTP (W)" = "FTPï¼ç¦ï¼";
-"FTP / Threshold HR Evaluation" = "FTP / éå¼å¿çè¯ä¼°";
-"Fitness / Fatigue / Status" = "å¥åº·åº¦ / ç²å³åº¦ / ç¶æ";
-"Freshness Trend (21d)" = "æ°é²åº¦è¶å¿ï¼21å¤©ï¼";
-"Full Pull (A/W/Wellness/Events)" = "å¨éæåï¼æ´»å¨/è®­ç»/å¥åº·/æ¥åï¼";
-"GPT / OpenAI" = "GPT / OpenAI";
-"GPT Activity è§£è¯»ï¼ç¼å­ï¼" = "GPT Activity è§£è¯»ï¼ç¼å­ï¼";
-"Garmin" = "Garmin";
-"Garmin CSRF" = "Garmin CSRF";
-"Garmin Connect Sync" = "Garmin Connect åæ­¥";
-"Garmin Connectï¼æ´»å¨+Wellnessï¼ä¸ Oura å·²æ¯æçå® API æåï¼Garmin JSON å¯¼å¥ä¿çä¸ºç¦»çº¿å¤ç¨ã" = "Garmin Connectï¼æ´»å¨+Wellnessï¼ä¸ Oura å·²æ¯æçå® API æåï¼Garmin JSON å¯¼å¥ä¿çä¸ºç¦»çº¿å¤ç¨ã";
-"Garmin æå Wellness" = "Garmin æå Wellness";
-"Garmin æåæ´»å¨" = "Garmin æåæ´»å¨";
-"Goal Race Date" = "ç®æ æ¯èµæ¥";
-"Google Fit" = "Google Fit";
-"HRV / RHR" = "HRV / éæ¯å¿ç";
-"HRV Baseline (All Sports)" = "HRV åºçº¿ï¼å¨è¿å¨ï¼";
-"HRV Today (All Sports)" = "ä»æ¥ HRVï¼å¨è¿å¨ï¼";
-"Heart Rate (BPM)" = "å¿çï¼BPMï¼";
-"Heart Rate Monitor (Bluetooth)" = "å¿çå¸¦ï¼èçï¼";
-"HrPw (Heart Rate Ã Power)" = "HrPwï¼å¿ç Ã åçï¼";
-"HrPw å¾éè¦è¶³å¤çåç+å¿çæ ·æ¬ï¼å»ºè®®å¯¼å¥å«ä¼ æå¨æ²çº¿ç FIT æä»¶ï¼ã" = "HrPw å¾éè¦è¶³å¤çåç+å¿çæ ·æ¬ï¼å»ºè®®å¯¼å¥å«ä¼ æå¨æ²çº¿ç FIT æä»¶ï¼ã";
-"Import FIT/TCX/GPX" = "å¯¼å¥ FIT/TCX/GPX";
-"Insights" = "æ´å¯";
-"Intervals Calendar (Next 14d)" = "Intervals æ¥åï¼æªæ¥14å¤©ï¼";
-"Intervals.icu API Key" = "Intervals.icu API Key";
-"Intervals.icu Sync" = "Intervals.icu åæ­¥";
-"LTHR" = "LTHR";
-"LTHR åºé´è¡¨ï¼GC é£æ ¼ï¼" = "LTHR åºé´è¡¨ï¼GC é£æ ¼ï¼";
-"Max HR" = "æå¤§å¿ç";
-"Max HR (optional)" = "æå¤§å¿çï¼å¯éï¼";
-"Mode" = "æ¨¡å¼";
-"NP" = "NP";
-"No GPT result yet. Click Refresh GPT Coach." = "å°æ  GPT ç»æï¼è¯·ç¹å»å·æ° GPT æç»ã";
-"No load data yet." = "ææ è´è·æ°æ®ã";
-"No upcoming Intervals events. Pull calendar events in Settings." = "ææ å³å°å°æ¥ç Intervals äºä»¶ï¼è¯·å¨è®¾ç½®ä¸­æåæ¥åäºä»¶ã";
-"No wellness data yet. Pull wellness from Intervals.icu first." = "ææ å¥åº·æ°æ®ï¼è¯·åä» Intervals.icu æåã";
-"Not enough data." = "æ°æ®ä¸è¶³ã";
-"Not recording" = "æªå½å¶";
-"Oura" = "Oura";
-"Oura æå Wellness" = "Oura æå Wellness";
-"Performance Dashboard" = "è®­ç»è¡¨ç°ä»ªè¡¨ç";
-"Performance Estimator (Cycling + Running)" = "è¡¨ç°è¯ä¼°å¨ï¼éªè¡+è·æ­¥ï¼";
-"Planned Load (Next 21d)" = "è®¡åè´è·ï¼æªæ¥21å¤©ï¼";
-"Power" = "åç";
-"Power (Watts)" = "åçï¼ç¦ï¼";
-"Primary" = "ä¸»éªæ";
-"Program" = "è¯¾ç¨";
-"Pull Activities" = "æåæ´»å¨";
-"Pull Activities from Garmin Connect" = "ä» Garmin Connect æåæ´»å¨";
-"Pull Activities from Strava" = "ä» Strava æåæ´»å¨";
-"Pull Calendar Events" = "æåæ¥åäºä»¶";
-"Pull HRV / Wellness" = "æå HRV / å¥åº·";
-"Pull Wellness from Garmin" = "ä» Garmin æåå¥åº·";
-"Pull Wellness from Oura" = "ä» Oura æåå¥åº·";
-"Pull Wellness from WHOOP" = "ä» WHOOP æåå¥åº·";
-"Pull Workouts" = "æåè®­ç»";
-"Push Activities" = "æ¨éæ´»å¨";
-"Push Workouts" = "æ¨éè®­ç»";
-"RHR" = "RHR";
-"Readiness" = "åå¤åº¦";
-"Real parser enabled: FIT, TCX, GPX." = "å·²å¯ç¨çè§£æï¼FITãTCXãGPXã";
-"Recent Activity GPT Insights (Cached)" = "è¿ææ´»å¨ GPT è§£è¯»ï¼ç¼å­ï¼";
-"Recording" = "å½å¶ä¸­";
-"Recording disabled for this rider" = "è¯¥éªææªå¯ç¨å½å¶";
-"Recovery & Race" = "æ¢å¤ä¸æ¯èµ";
-"Remove" = "ç§»é¤";
-"Remove Rider" = "ç§»é¤éªæ";
-"Risk flags" = "é£é©æç¤º";
-"Save Workout" = "ä¿å­è®­ç»";
-"Saved Workout Library" = "å·²ä¿å­è®­ç»åº";
-"Scenario" = "åºæ¯";
-"Scenario Lens" = "åºæ¯è§è§";
-"Sel" = "éä¸­";
-"Set CRS" = "è®¾ç½® CRS";
-"Set ERG" = "è®¾ç½® ERG";
-"Set goal race date" = "è®¾ç½®ç®æ æ¯èµæ¥";
-"Set workout date" = "è®¾ç½®è®­ç»æ¥æ";
-"Sleep Hours / Score" = "ç¡ç æ¶é¿ / è¯å";
-"Smart Trainer (Wahoo / Garmin / FTMS)" = "æºè½éªè¡å°ï¼Wahoo / Garmin / FTMSï¼";
-"Sport" = "è¿å¨";
-"Start PGMF" = "å¼å§ PGMF";
-"Start Recording" = "å¼å§å½å¶";
-"Start SIM" = "å¼å§æ¨¡æ";
-"Stop ERG" = "åæ­¢ ERG";
-"Stop PGMF" = "åæ­¢ PGMF";
-"Stop SIM" = "åæ­¢æ¨¡æ";
-"Stop Scan" = "åæ­¢æ«æ";
-"Strava" = "Strava";
-"Strava Sync" = "Strava åæ­¥";
-"TSS" = "TSS";
-"This will permanently remove all activities from local storage." = "è¿å°ä»æ¬å°æ°¸ä¹å é¤æææ´»å¨ã";
-"Threshold HR" = "éå¼å¿ç";
-"Time (minutes)" = "æ¶é´ï¼åéï¼";
-"Token å¯å¡« Bearer token æ Cookie ä¸²ï¼å¦ SESSION=...; ...ï¼ã" = "Token å¯å¡« Bearer token æ Cookie ä¸²ï¼å¦ SESSION=...; ...ï¼ã";
-"Trainer" = "éªè¡å°";
-"TrainingPeaks" = "TrainingPeaks";
-"WHOOP" = "WHOOP";
-"WHOOP æå Wellness" = "WHOOP æå Wellness";
-"Weekly focus" = "æ¬å¨éç¹";
-"Wellness / Platform Connectors" = "å¥åº· / å¹³å°è¿æ¥å¨";
-"Wellness Sync" = "å¥åº·åæ­¥";
-"Wellness Trend (30d)" = "å¥åº·è¶å¿ï¼30å¤©ï¼";
-"Workout Builder" = "è®­ç»æå»º";
-"Workout Date" = "è®­ç»æ¥æ";
-"ä¸é®æ·»å åéå¼æ¥ (AM+PM)" = "ä¸é®æ·»å åéå¼æ¥ (AM+PM)";
-"ä¸­å½åº connectus.garmin.cn å»ºè®®é¢å¤å¡«å Connect-Csrf-Tokenã" = "ä¸­å½åº connectus.garmin.cn å»ºè®®é¢å¤å¡«å Connect-Csrf-Tokenã";
-"åå Athlete Profile" = "åå Athlete Profile";
-"åå: ä¸¤æ¬¡é½å¨éå¼éè¿ï¼å¤§è´ 88%-102% FTP æ 88%-100% LTHRï¼ï¼é¿ååæ VO2ï¼å½å¤©ä¼åç¢³æ°´ä¸æ¢å¤ã" = "åå: ä¸¤æ¬¡é½å¨éå¼éè¿ï¼å¤§è´ 88%-102% FTP æ 88%-100% LTHRï¼ï¼é¿ååæ VO2ï¼å½å¤©ä¼åç¢³æ°´ä¸æ¢å¤ã";
-"åå¹´é¾æ®µ Watt/kg æåä¸éªæç»å" = "åå¹´é¾æ®µ Watt/kg æåä¸éªæç»å";
-"åºäºåç/éåº¦ä¼°ç® CdAï¼ç¨äºç©ºæ°å¨åååè¶å¿è¿½è¸ªã" = "åºäºåç/éåº¦ä¼°ç® CdAï¼ç¨äºç©ºæ°å¨åååè¶å¿è¿½è¸ªã";
-"åºäºæè¿ 120 å¤©æ´»å¨ï¼èªå¨è¯ä¼°æ¯ä¸ªè¿å¨ç FTP åéå¼å¿çï¼LTHRï¼ã" = "åºäºæè¿ 120 å¤©æ´»å¨ï¼èªå¨è¯ä¼°æ¯ä¸ªè¿å¨ç FTP åéå¼å¿çï¼LTHRï¼ã";
-"å¯¼å¥ Garmin JSON" = "å¯¼å¥ Garmin JSON";
-"å¯¼å¥: FIT / TCX / GPX / Strava / Intervals.icu" = "å¯¼å¥: FIT / TCX / GPX / Strava / Intervals.icu";
-"å¯¼åº: JSON å¿«ç§ï¼å½åå¯ç¨ï¼ + è®­ç»è®¡ååååæ­¥" = "å¯¼åº: JSON å¿«ç§ï¼å½åå¯ç¨ï¼ + è®­ç»è®¡ååååæ­¥";
-"å¯¼åºå½åæ´»å¨å¿«ç§å° dist/exports" = "å¯¼åºå½åæ´»å¨å¿«ç§å° dist/exports";
-"å¯¼åºæéJSON" = "å¯¼åºæéJSON";
-"å°æªçæ GPT è§£è¯»ã" = "å°æªçæ GPT è§£è¯»ã";
-"å·¥å·é¾: å¼å¸¸æ£æµãGPS/å°å³°/æ­ç©ä¿®å¤æ¥å£ã" = "å·¥å·é¾: å¼å¸¸æ£æµãGPS/å°å³°/æ­ç©ä¿®å¤æ¥å£ã";
-"å»ºè®®å¡« client/secret/refresh tokenï¼access token è¿æåå¯èªå¨ç»­æã" = "å»ºè®®å¡« client/secret/refresh tokenï¼access token è¿æåå¯èªå¨ç»­æã";
-"å½åå¯ç¨: æ´»å¨ç½æ ¼æ¹éåçä¿®æ­£ + å¼å¸¸æ£æµï¼GPS/æ­ç©ä¿®å¤ä¸ºä¸ä¸é¶æ®µã" = "å½åå¯ç¨: æ´»å¨ç½æ ¼æ¹éåçä¿®æ­£ + å¼å¸¸æ£æµï¼GPS/æ­ç©ä¿®å¤ä¸ºä¸ä¸é¶æ®µã";
-"å½åå®ç°ç¶æ: BLE FTMS å·²å¯ç¨ï¼ANT+/è§é¢èå¨å·²é¢çæ¥å£ã" = "å½åå®ç°ç¶æ: BLE FTMS å·²å¯ç¨ï¼ANT+/è§é¢èå¨å·²é¢çæ¥å£ã";
-"æ¯æé¡¹: ANT+ FE-C, ERG/CRS/PGMF, è§é¢/è¡æ¯èå¨æ¥å£ã" = "æ¯æé¡¹: ANT+ FE-C, ERG/CRS/PGMF, è§é¢/è¡æ¯èå¨æ¥å£ã";
-"æç»: Coach Chen" = "æç»: Coach Chen";
-"ææ æ´»å¨æ°æ®ãåå¯¼å¥ FIT/TCX/GPX æåæ­¥ Strava / Intervalsã" = "ææ æ´»å¨æ°æ®ãåå¯¼å¥ FIT/TCX/GPX æåæ­¥ Strava / Intervalsã";
-"ææ ç¼å­æ´»å¨è§£è¯»ãæå¼ Activity è¯¦æåä¼èªå¨çæå¹¶æä¹åï¼Insights ç´æ¥å¤ç¨ã" = "ææ ç¼å­æ´»å¨è§£è¯»ãæå¼ Activity è¯¦æåä¼èªå¨çæå¹¶æä¹åï¼Insights ç´æ¥å¤ç¨ã";
-"æªæ£æµå°ææé´æ­ãå¯å¯¼å¥å¸¦åçæ°æ®ç FIT å¹¶éè¯ã" = "æªæ£æµå°ææé´æ­ãå¯å¯¼å¥å¸¦åçæ°æ®ç FIT å¹¶éè¯ã";
-"æ±: å¹³ååç(W)ï¼ç¹: æ¶é¿(ç§/10)ã" = "æ±: å¹³ååç(W)ï¼ç¹: æ¶é¿(ç§/10)ã";
-"æ¯ä½éªæå¯ç¬ç«å½å¶å¹¶ä¿å­ FITï¼ä¸»éªæç¶æä¼åæ­¥å°å¨å±ç¶ææ ã" = "æ¯ä½éªæå¯ç¬ç«å½å¶å¹¶ä¿å­ FITï¼ä¸»éªæç¶æä¼åæ­¥å°å¨å±ç¶ææ ã";
-"ç¹å¤§å°ä»£è¡¨ TSSï¼ä½ä¸ºä¼ª 3D å¼ºåº¦è½´ã" = "ç¹å¤§å°ä»£è¡¨ TSSï¼ä½ä¸ºä¼ª 3D å¼ºåº¦è½´ã";
-"ç»æå¹¶ä¿å­ FIT" = "ç»æå¹¶ä¿å­ FIT";
-"è§£è¦çéè¦ >=20min ä¸å«åç+å¿çæ°æ®ã" = "è§£è¦çéè¦ >=20min ä¸å«åç+å¿çæ°æ®ã";
-"è®¡ç®: 7dåå¼ = æè¿7å¤©æææ ·æ¬å¹³åï¼Sleep(h) ç±å¹³å°ç§/åéå­æ®µæ¢ç®" = "è®¡ç®: 7dåå¼ = æè¿7å¤©æææ ·æ¬å¹³åï¼Sleep(h) ç±å¹³å°ç§/åéå­æ®µæ¢ç®";
-"è®¡ç®: è§£è¦ç = (EFåå - EFåå) / EFåå Ã 100ï¼EF = åç / å¿ç" = "è®¡ç®: è§£è¦ç = (EFåå - EFåå) / EFåå Ã 100ï¼EF = åç / å¿ç";
-"è¯ä¼° FTP + LTHR" = "è¯ä¼° FTP + LTHR";
-"é»çº¿: Power(W)ï¼çº¢çº¿: HR(bpm)ï¼ç°è²é¢ç§¯: æµ·æ" = "é»çº¿: Power(W)ï¼çº¢çº¿: HR(bpm)ï¼ç°è²é¢ç§¯: æµ·æ";
-"é»ç¹: æè¿90å¤© MMPï¼ç°ç¹: å90å¤©ãè/ç´«/ç»¿åå«ä¸º MonodãMorton 3PãSubmax å»ºæ¨¡æ²çº¿ã" = "é»ç¹: æè¿90å¤© MMPï¼ç°ç¹: å90å¤©ãè/ç´«/ç»¿åå«ä¸º MonodãMorton 3PãSubmax å»ºæ¨¡æ²çº¿ã";
-"Connected" = "å·²è¿æ¥";
-"Connect" = "è¿æ¥";
-"Scan Trainers" = "æ«æéªè¡å°";
-"Scan Power Meters" = "æ«æåçè®¡";
-"Scan HR Monitors" = "æ«æå¿çå¸¦";
-"Scanning..." = "æ«æä¸­...";
-"Rider Name" = "éªæåç§°";
-"Search notes or sport" = "æç´¢å¤æ³¨æè¿å¨";
-"Segment note" = "åæ®µå¤æ³¨";
-"Workout name" = "è®­ç»åç§°";
-"Target watts" = "ç®æ åç";
-"x Speed" = "åé";
-"Grade %" = "å¡åº¦%";
-"Client ID" = "Client ID";
-"Client Secret" = "Client Secret";
-"Refresh Token" = "Refresh Token";
-"Access Token" = "Access Token";
-"Access Token (optional)" = "Access Tokenï¼å¯éï¼";
-"Garmin Connect Access Token" = "Garmin Connect Access Token";
-"Garmin Connect Csrf Token (connectus/gc-api å¸¸é)" = "Garmin Connect Csrf Tokenï¼connectus/gc-api å¸¸éï¼";
-"Connect-Csrf-Token" = "Connect-Csrf-Token";
-"Oura Personal Access Token" = "Oura Personal Access Token";
-"WHOOP Access Token" = "WHOOP Access Token";
-"Apple Health Access Token" = "Apple Health Access Token";
-"Google Fit Access Token" = "Google Fit Access Token";
-"TrainingPeaks Access Token" = "TrainingPeaks Access Token";
-"Personal Access Token" = "Personal Access Token";
-"API key" = "API Key";
-"Refreshing..." = "å·æ°ä¸­...";
-"Refresh GPT Coach" = "å·æ° GPT æç»";
-"No activities" = "ææ æ´»å¨";
-"No matching activities" = "æ å¹éæ´»å¨";
-"No workouts yet" = "ææ è®­ç»";
-"Clear all activities?" = "æ¸ç©ºå¨é¨æ´»å¨ï¼";
-"Selected Day" = "éä¸­æ¥æ";
-"Start" = "å¼å§";
-"End" = "ç»æ";
-"Duration" = "æ¶é¿";
-"Avg Power" = "å¹³ååç";
-"Avg HR" = "å¹³åå¿ç";
-"Avg Speed" = "å¹³åéåº¦";
-"Cadence" = "è¸é¢";
-"Heart Rate" = "å¿ç";
-"Speed" = "éåº¦";
-"Elevation" = "ç¬å";
-"PowerStart" = "èµ·å§åç";
-"PowerEnd" = "ç»æåç";
-"Power@150: %.0fW" = "150Wå¯¹åºåçï¼%.0fW";
-"Regression" = "åå½";
-"Model" = "æ¨¡å";
-"Model Power" = "æ¨¡ååç";
-"Current TSB: %.1f" = "å½åTSBï¼%.1f";
-"Trends" = "è¶å¿";
-"Wellness" = "å¥åº·";
-"Cloud" = "äºç«¯";
-"Device" = "è®¾å¤";
-"Category" = "ç±»å«";
-"Value" = "å¼";
-"Baseline" = "åºçº¿";
-"Base" = "åºç¡";
-"Split" = "åæ®µ";
-"Minute" = "åé";
-"Minutes" = "åé";
-"Y Start" = "Yèµ·ç¹";
-"Y End" = "Yç»ç¹";
-"RÂ²: %.2f" = "RÂ²: %.2f";
-"TSS/h" = "TSS/å°æ¶";
-"Fitness" = "å¥åº·åº¦";
-"Fatigue" = "ç²å³åº¦";
-"SS" = "å²åº";
-"Z7+" = "Z7+";
-"none" = "æ ";
-"å·æ° GPT è§£è¯»" = "å·æ° GPT è§£è¯»";
-"%.0f" = "%.0f";
-"%.0f %@" = "%.0f %@";
-"%.0f W" = "%.0f W";
-"%.0f kJ" = "%.0f kJ";
-"%.0f km" = "%.0f km";
-"%.0f m" = "%.0f m";
-"%.0f ms" = "%.0f ms";
-"%.0f rpm" = "%.0f rpm";
-"%.0f%%" = "%.0f%%";
-"%.1f" = "%.1f";
-"%.1f %@" = "%.1f %@";
-"%.1f bpm" = "%.1f bpm";
-"%.1f h" = "%.1f h";
-"%.1f km" = "%.1f km";
-"%.1f km/h" = "%.1f km/h";
-"%.1f%%" = "%.1f%%";
-"%.1fkm" = "%.1fkm";
-"%.2f" = "%.2f";
-"%.2f %@" = "%.2f %@";
-"%.3f*x+%.1f : R %.3f (%d)" = "%.3f*x+%.1f : R %.3f (%d)";
-"%d:%02d" = "%d:%02d";
-"%d:%02d /km" = "%d:%02d /km";
-"%d:%02d:%02d" = "%d:%02d:%02d";
-", durationMin))" = ", durationMin))";
-", hit.interval.intensityFactor))" = ", hit.interval.intensityFactor))";
-", interval.intensityFactor))" = ", interval.intensityFactor))";
-", mix.pyramidIndex))" = ", mix.pyramidIndex))";
-", store.summary.currentTSB))" = ", store.summary.currentTSB))";
-", with: " = ", with: ";
-"--/km" = "--/km";
-"155 (optional)" = "155 (optional)";
-"190 (optional)" = "190 (optional)";
-"1m %.0f W" = "1m %.0f W";
-"1m %.0f bpm" = "1m %.0f bpm";
-"1m %.1f km/h" = "1m %.1f km/h";
-"1m --" = "1m --";
-"1m Average" = "1m Average";
-"1m L%.0f%%" = "1m L%.0f%%";
-"30d" = "30d";
-"52 (optional)" = "52 (optional)";
-"7dåå¼ %.1f" = "7dåå¼ %.1f";
-"7dåå¼ %.1f h" = "7dåå¼ %.1f h";
-"7dåå¼ --" = "7dåå¼ --";
-"ANT+ FE-C" = "ANT+ FE-C";
-"Aerobic TISS (Day)" = "Aerobic TISS (Day)";
-"Aerobic TISS Long Term Stress" = "Aerobic TISS Long Term Stress";
-"Aerobic TISS Short Term Stress" = "Aerobic TISS Short Term Stress";
-"Anaerobic TISS (Day)" = "Anaerobic TISS (Day)";
-"Anaerobic TISS Long Term Stress" = "Anaerobic TISS Long Term Stress";
-"Anaerobic TISS Short Term Stress" = "Anaerobic TISS Short Term Stress";
-"Athlete A Â· Road" = "Athlete A Â· Road";
-"Athlete B Â· Triathlon" = "Athlete B Â· Triathlon";
-"Athlete C Â· Marathon" = "Athlete C Â· Marathon";
-"AvgPower" = "AvgPower";
-"CdA" = "CdA";
-"Coach" = "Coach";
-"Coggan ATL" = "Coggan ATL";
-"Coggan Acute Training Load (ATL)" = "Coggan Acute Training Load (ATL)";
-"Coggan CTL" = "Coggan CTL";
-"Coggan Chronic Training Load (CTL)" = "Coggan Chronic Training Load (CTL)";
-"Coggan TSB" = "Coggan TSB";
-"Coggan Training Stress Balance (TSB)" = "Coggan Training Stress Balance (TSB)";
-"Count" = "Count";
-"Current grade %.1f%%" = "Current grade %.1f%%";
-"DailyTSS %.0f Â· CTL %.1f Â· ATL %.1f Â· TSB %.1f" = "DailyTSS %.0f Â· CTL %.1f Â· ATL %.1f Â· TSB %.1f";
-"Decoupling" = "Decoupling";
-"EF" = "EF";
-"EF First" = "EF First";
-"EF Second" = "EF Second";
-"EFåå %.3f â åå %.3f" = "EFåå %.3f â åå %.3f";
-"Edge Headunit" = "Edge Headunit";
-"Elite Build Group" = "Elite Build Group";
-"Est. Work" = "Est. Work";
-"Fitness %.1f Â· Fatigue %.1f" = "Fitness %.1f Â· Fatigue %.1f";
-"Fresh and trainable: good window for race-pace or threshold work." = "Fresh and trainable: good window for race-pace or threshold work.";
-"Fricu" = "Fricu";
-"GC Activity ææ " = "GC Activity ææ ";
-"Garmin Connect" = "Garmin Connect";
-"Garmin/Tacx" = "Garmin/Tacx";
-"Garmin/Tacx Trainer" = "Garmin/Tacx Trainer";
-"HIITå" = "HIITå";
-"HR" = "HR";
-"HR/LTHR" = "HR/LTHR";
-"HRMax" = "HRMax";
-"HRMin" = "HRMin";
-"HRV" = "HRV";
-"HRV (Daily)" = "HRV (Daily)";
-"HRV (Today / 7d)" = "HRV (Today / 7d)";
-"HeartRate" = "HeartRate";
-"High fatigue: prioritize recovery and reduce intensity." = "High fatigue: prioritize recovery and reduce intensity.";
-"IF" = "IF";
-"IF %.2fï¼åä½å¼ºåº¦ï¼éåæåºä¸æ¢å¤çªå£ã" = "IF %.2fï¼åä½å¼ºåº¦ï¼éåæåºä¸æ¢å¤çªå£ã";
-"IF %.2fï¼å±äºä¸­é«å¼ºåº¦èååºæ¿ï¼éåæé«ææ°§ä¸éå¼è½åã" = "IF %.2fï¼å±äºä¸­é«å¼ºåº¦èååºæ¿ï¼éåæé«ææ°§ä¸éå¼è½åã";
-"IF %.2fï¼æ¥è¿æè¶è¿éå¼è¯¾å¼ºåº¦ãå»ºè®®åç»­ 24-48h å³æ³¨æ¢å¤ä¸ç¡ç ã" = "IF %.2fï¼æ¥è¿æè¶è¿éå¼è¯¾å¼ºåº¦ãå»ºè®®åç»­ 24-48h å³æ³¨æ¢å¤ä¸ç¡ç ã";
-"Indoor" = "Indoor";
-"Interval" = "Interval";
-"Intervals.icu" = "Intervals.icu";
-"L%.0f%% / R%.0f%%" = "L%.0f%% / R%.0f%%";
-"Monod-Scherrer" = "Monod-Scherrer";
-"Monthly Distance" = "Monthly Distance";
-"Morton 3P" = "Morton 3P";
-"N/A" = "N/A";
-"PM Cadence" = "PM Cadence";
-"PM L/R" = "PM L/R";
-"PM Power" = "PM Power";
-"Pace" = "Pace";
-"Peak 1 second Power" = "Peak 1 second Power";
-"Prev" = "Prev";
-"Prev Duration" = "Prev Duration";
-"Prev Power" = "Prev Power";
-"Productive load zone: maintain quality sessions, watch sleep and HRV." = "Productive load zone: maintain quality sessions, watch sleep and HRV.";
-"RHR (Today / 7d)" = "RHR (Today / 7d)";
-"RR Interval" = "RR Interval";
-"Race Prep Squad" = "Race Prep Squad";
-"Resting HR" = "Resting HR";
-"Resting HR (Daily)" = "Resting HR (Daily)";
-"SIM speed x%.1f" = "SIM speed x%.1f";
-"Session" = "Session";
-"Sleep" = "Sleep";
-"Sleep (Today / 7d)" = "Sleep (Today / 7d)";
-"Sleep Hours" = "Sleep Hours";
-"Sleep Hours (Daily)" = "Sleep Hours (Daily)";
-"Sleep Score" = "Sleep Score";
-"Submax Envelope" = "Submax Envelope";
-"Swim Pace" = "Swim Pace";
-"TSB" = "TSB";
-"TSB %.1f" = "TSB %.1f";
-"TSS/h %.0fï¼åä½æ¶é´è´è·è¾é«ãè¥è¿ç»­åºç°ï¼å»ºè®®å¨ä¸ä¸å¤©å®æä½åè®­ç»ã" = "TSS/h %.0fï¼åä½æ¶é´è´è·è¾é«ãè¥è¿ç»­åºç°ï¼å»ºè®®å¨ä¸ä¸å¤©å®æä½åè®­ç»ã";
-"TSS/h %.0fï¼å±äºææè®­ç»å¯åº¦ãå¯ç»§ç»­å¨å¨åå®æ1-2æ¬¡åçº§å«è¯¾è¡¨ã" = "TSS/h %.0fï¼å±äºææè®­ç»å¯åº¦ãå¯ç»§ç»­å¨å¨åå®æ1-2æ¬¡åçº§å«è¯¾è¡¨ã";
-"TSS/h %.0fï¼è®­ç»åºæ¿æ¸©åãéåæ¢å¤æ¥æåºç¡å®¹éæ¥ã" = "TSS/h %.0fï¼è®­ç»åºæ¿æ¸©åãéåæ¢å¤æ¥æåºç¡å®¹éæ¥ã";
-"Tempo" = "Tempo";
-"Threshold" = "Threshold";
-"Time" = "Time";
-"Very fresh: consider a high-quality session or race simulation." = "Very fresh: consider a high-quality session or race simulation.";
-"W" = "W";
-"Wahoo KICKR" = "Wahoo KICKR";
-"Wahoo Smart Trainer" = "Wahoo Smart Trainer";
-"Warm-up" = "Warm-up";
-"Weekend Endurance Group" = "Weekend Endurance Group";
-"Weekly TSS" = "Weekly TSS";
-"Z1" = "Z1";
-"Z1+2 %.1f%%" = "Z1+2 %.1f%%";
-"Z2" = "Z2";
-"Z3" = "Z3";
-"Z3+4+SS %.1f%%" = "Z3+4+SS %.1f%%";
-"Z4" = "Z4";
-"Z5" = "Z5";
-"Z5+ %.1f%%" = "Z5+ %.1f%%";
-"Z6" = "Z6";
-"Z7" = "Z7";
-"Zwift" = "Zwift";
-"Zwift Bridge" = "Zwift Bridge";
-"all" = "all";
-"arrow.down" = "arrow.down";
-"arrow.left.arrow.right" = "arrow.left.arrow.right";
-"bicycle" = "bicycle";
-"bpm" = "bpm";
-"calendar" = "calendar";
-"chart.xyaxis.line" = "chart.xyaxis.line";
-"checkmark.square.fill" = "checkmark.square.fill";
-"chevron.down" = "chevron.down";
-"chevron.right" = "chevron.right";
-"ctl" = "ctl";
-"daily_tss" = "daily_tss";
-"empty" = "empty";
-"figure.outdoor.cycle" = "figure.outdoor.cycle";
-"fit" = "fit";
-"gearshape" = "gearshape";
-"gpx" = "gpx";
-"h" = "h";
-"kg" = "kg";
-"km" = "km";
-"magnifyingglass" = "magnifyingglass";
-"min/km" = "min/km";
-"minus.circle" = "minus.circle";
-"ms" = "ms";
-"pencil.and.ruler" = "pencil.and.ruler";
-"person.2" = "person.2";
-"record.circle" = "record.circle";
-"record.circle.fill" = "record.circle.fill";
-"speedometer" = "speedometer";
-"square" = "square";
-"square.grid.3x3" = "square.grid.3x3";
-"tcx" = "tcx";
-"trash" = "trash";
-"tray" = "tray";
-"waveform.path.ecg" = "waveform.path.ecg";
-"åæ°: AerLTS=%.1f, AnaLTS=%.1f, AerSTS=%.1f, AnaSTS=%.1f" = "åæ°: AerLTS=%.1f, AnaLTS=%.1f, AerSTS=%.1f, AnaSTS=%.1f";
-"åæ°: Distance=%.1fkm (%.0fm)" = "åæ°: Distance=%.1fkm (%.0fm)";
-"åæ°: Distance=%.1fkm, h=%.2f" = "åæ°: Distance=%.1fkm, h=%.2f";
-"åæ°: Duration=%.1fmin, Distance=%.1fkm" = "åæ°: Duration=%.1fmin, Distance=%.1fkm";
-"åæ°: Duration=%.1fmin, Distance=%.1fÃ100m" = "åæ°: Duration=%.1fmin, Distance=%.1fÃ100m";
-"åæ°: EF_first=%.3f, EF_second=%.3f, æ ·æ¬ç¹=%d, æ¶é¿=%.0fmin" = "åæ°: EF_first=%.3f, EF_second=%.3f, æ ·æ¬ç¹=%d, æ¶é¿=%.0fmin";
-"åæ°: NP=%dW, Duration=%ds" = "åæ°: NP=%dW, Duration=%ds";
-"åæ°: NP=%dW, FTP=%dW" = "åæ°: NP=%dW, FTP=%dW";
-"åæ°: TSS=%d, h=%.2f" = "åæ°: TSS=%d, h=%.2f";
-"åæ°: h=%.2f, AvgHR=%dbpm, LTHR=%dbpm, HR/LTHR=%.2f\\n%@" = "åæ°: h=%.2f, AvgHR=%dbpm, LTHR=%dbpm, HR/LTHR=%.2f\\n%@";
-"åæ°: h=%.2f, NP=%dW, FTP=%dW, IF=%.2f" = "åæ°: h=%.2f, NP=%dW, FTP=%dW, IF=%.2f";
-"åæ°: h=%.2f, fallback=45 TSS/h" = "åæ°: h=%.2f, fallback=45 TSS/h";
-"åæ°: åå§CTL=45.0, åå§ATL=50.0, ÏCTL=42d, ÏATL=7d" = "åæ°: åå§CTL=45.0, åå§ATL=50.0, ÏCTL=42d, ÏATL=7d";
-"åæ°: ææ°DailyTSS=%.1f, 7å¤©åå¼=%.1f, çªå£æå¤§=%.1f" = "åæ°: ææ°DailyTSS=%.1f, 7å¤©åå¼=%.1f, çªå£æå¤§=%.1f";
-"åæ°: çªå£=%dmin(%ds), æ ·æ¬æ¶é¿=%ds, æ¥æº=%@" = "åæ°: çªå£=%dmin(%ds), æ ·æ¬æ¶é¿=%ds, æ¥æº=%@";
-"åæ°: çªå£=%dmin(%ds), æ ·æ¬æ¶é¿=%ds, æ¥æº=%@ (æ´»å¨æ¶é¿ä¸è¶³ææ åçæ°æ®)" = "åæ°: çªå£=%dmin(%ds), æ ·æ¬æ¶é¿=%ds, æ¥æº=%@ (æ´»å¨æ¶é¿ä¸è¶³ææ åçæ°æ®)";
-"åæ°: çªå£=%ds, æ ·æ¬æ¶é¿=%ds, æ¥æº=%@" = "åæ°: çªå£=%ds, æ ·æ¬æ¶é¿=%ds, æ¥æº=%@";
-"åæ°: çªå£=%ds, æ ·æ¬æ¶é¿=%ds, æ¥æº=%@ (æ´»å¨æ¶é¿ä¸è¶³ææ åçæ°æ®)" = "åæ°: çªå£=%ds, æ ·æ¬æ¶é¿=%ds, æ¥æº=%@ (æ´»å¨æ¶é¿ä¸è¶³ææ åçæ°æ®)";
-"åæ°: çªå£=%då¤©, ææ°TSS=%.1f, ææ°CTL=%.1f, ææ°ATL=%.1f, ææ°TSB=%.1f" = "åæ°: çªå£=%då¤©, ææ°TSS=%.1f, ææ°CTL=%.1f, ææ°ATL=%.1f, ææ°TSB=%.1f";
-"åæ°: çªå£=%då¤©, æè®­ç»å¤©æ°=%d" = "åæ°: çªå£=%då¤©, æè®­ç»å¤©æ°=%d";
-"å£å¾: æå½åæ´»å¨æ°æ®åå¼å®¹ä¼°ç®ï¼ä¸ GC ååææ ï¼" = "å£å¾: æå½åæ´»å¨æ°æ®åå¼å®¹ä¼°ç®ï¼ä¸ GC ååææ ï¼";
-"å·²åºç¨å¹¶ä¿å­ FTP/LTHR è¯ä¼°ç»æã" = "å·²åºç¨å¹¶ä¿å­ FTP/LTHR è¯ä¼°ç»æã";
-"å¹³åå¿ç %d bpmï¼çº¦ LTHR ç %.0f%%ï¼ï¼åºæ¿ææä¸å¯æ§ã" = "å¹³åå¿ç %d bpmï¼çº¦ LTHR ç %.0f%%ï¼ï¼åºæ¿ææä¸å¯æ§ã";
-"å¹³åå¿ç %d bpmï¼çº¦ LTHR ç %.0f%%ï¼ï¼å¤äºä½ååºé´ï¼åæ¢å¤æèåæåºã" = "å¹³åå¿ç %d bpmï¼çº¦ LTHR ç %.0f%%ï¼ï¼å¤äºä½ååºé´ï¼åæ¢å¤æèåæåºã";
-"å¹³åå¿ç %d bpmï¼çº¦ LTHR ç %.0f%%ï¼ï¼å¿è¡ç®¡ååè¾é«ãå»ºè®®è¿æå³æ³¨ HRV åä¸»è§ç²å³ã" = "å¹³åå¿ç %d bpmï¼çº¦ LTHR ç %.0f%%ï¼ï¼å¿è¡ç®¡ååè¾é«ãå»ºè®®è¿æå³æ³¨ HRV åä¸»è§ç²å³ã";
-"å¹³åéé /100m" = "å¹³åéé /100m";
-"å¹³åéé /km" = "å¹³åéé /km";
-"å¹³æ» 7d" = "å¹³æ» 7d";
-"å½å¤© TSB %.1fï¼å¤äºå¯è®­ç»åºé´ãä¿æå½åèå¥å³å¯ã" = "å½å¤© TSB %.1fï¼å¤äºå¯è®­ç»åºé´ãä¿æå½åèå¥å³å¯ã";
-"å½å¤© TSB %.1fï¼ç²å³é«ä½ãä¸ä¸è¯¾å»ºè®®éå¼ºåº¦æè½¬æ¢å¤éªã" = "å½å¤© TSB %.1fï¼ç²å³é«ä½ãä¸ä¸è¯¾å»ºè®®éå¼ºåº¦æè½¬æ¢å¤éªã";
-"å½å¤© TSB %.1fï¼èº«ä½è¾æ°é²ãå¯è®¡åä¸ä¸æ¬¡è´¨éè¯¾ã" = "å½å¤© TSB %.1fï¼èº«ä½è¾æ°é²ãå¯è®¡åä¸ä¸æ¬¡è´¨éè¯¾ã";
-"æå %.1f" = "æå %.1f";
-"æç´¢ææ  (GC Activity + Trends)" = "æç´¢ææ  (GC Activity + Trends)";
-"æ¥æº: åå§ä¼ æå¨æµ (FIT/TCX/GPX)" = "æ¥æº: åå§ä¼ æå¨æµ (FIT/TCX/GPX)";
-"æ­£å¨çæ GPT è§£è¯»..." = "æ­£å¨çæ GPT è§£è¯»...";
-"æ´»å¨æ¦è¦NPä¼°ç®" = "æ´»å¨æ¦è¦NPä¼°ç®";
-"ç¶æ(TSB)" = "ç¶æ(TSB)";
-"ç®æ åçW" = "ç®æ åçW";
-"ç®æ å¿çbpm" = "ç®æ å¿çbpm";
-"ç¸å¯¹ FTP å¼ºåº¦" = "ç¸å¯¹ FTP å¼ºåº¦";
-"è§£è¦ç %.1f%%" = "è§£è¦ç %.1f%%";
-"è§£è¦ç %.1f%%ï¼åååç¨è¦åç¨³å®ï¼èåæ§å¶è¾å¥½ã" = "è§£è¦ç %.1f%%ï¼åååç¨è¦åç¨³å®ï¼èåæ§å¶è¾å¥½ã";
-"è§£è¦ç %.1f%%ï¼ååç¨å¿çæ¼ç§»ææ¾ãå»ºè®®è¡¥ç»æ´æ©ãéä½ååæ®µå²å¨ééã" = "è§£è¦ç %.1f%%ï¼ååç¨å¿çæ¼ç§»ææ¾ãå»ºè®®è¡¥ç»æ´æ©ãéä½ååæ®µå²å¨ééã";
-"è§£è¦ç %.1f%%ï¼æè½»å¾®æ¼ç§»ãå¯éè¿ç¨³å®è¾åºåææ°§å®¹éè®­ç»è¿ä¸æ­¥ä¼åã" = "è§£è¦ç %.1f%%ï¼æè½»å¾®æ¼ç§»ãå¯éè¿ç¨³å®è¾åºåææ°§å®¹éè®­ç»è¿ä¸æ­¥ä¼åã";
-"è®¡ç®: ATL_d = ATL_(d-1) + (TSS_d - ATL_(d-1))/7" = "è®¡ç®: ATL_d = ATL_(d-1) + (TSS_d - ATL_(d-1))/7";
-"è®¡ç®: AerLTS_d = AerLTS_(d-1) + (AerTISS_d - AerLTS_(d-1))/42" = "è®¡ç®: AerLTS_d = AerLTS_(d-1) + (AerTISS_d - AerLTS_(d-1))/42";
-"è®¡ç®: AerSTS_d = AerSTS_(d-1) + (AerTISS_d - AerSTS_(d-1))/7" = "è®¡ç®: AerSTS_d = AerSTS_(d-1) + (AerTISS_d - AerSTS_(d-1))/7";
-"è®¡ç®: AerTISS_d = TSS_d Ã (1 - AnaShare(IF))" = "è®¡ç®: AerTISS_d = TSS_d Ã (1 - AnaShare(IF))";
-"è®¡ç®: AnaLTS_d = AnaLTS_(d-1) + (AnaTISS_d - AnaLTS_(d-1))/42" = "è®¡ç®: AnaLTS_d = AnaLTS_(d-1) + (AnaTISS_d - AnaLTS_(d-1))/42";
-"è®¡ç®: AnaSTS_d = AnaSTS_(d-1) + (AnaTISS_d - AnaSTS_(d-1))/7" = "è®¡ç®: AnaSTS_d = AnaSTS_(d-1) + (AnaTISS_d - AnaSTS_(d-1))/7";
-"è®¡ç®: AnaTISS_d = TSS_d Ã AnaShare(IF)" = "è®¡ç®: AnaTISS_d = TSS_d Ã AnaShare(IF)";
-"è®¡ç®: AvgHR = mean(HR samples)" = "è®¡ç®: AvgHR = mean(HR samples)";
-"è®¡ç®: AvgSpeed = Distance(km) / h" = "è®¡ç®: AvgSpeed = Distance(km) / h";
-"è®¡ç®: CTL_d = CTL_(d-1) + (TSS_d - CTL_(d-1))/42" = "è®¡ç®: CTL_d = CTL_(d-1) + (TSS_d - CTL_(d-1))/42";
-"è®¡ç®: CTL_d=CTL_(d-1)+(TSS_d-CTL_(d-1))/42; ATL_d=ATL_(d-1)+(TSS_d-ATL_(d-1))/7; TSB_d=CTL_d-ATL_d" = "è®¡ç®: CTL_d=CTL_(d-1)+(TSS_d-CTL_(d-1))/42; ATL_d=ATL_(d-1)+(TSS_d-ATL_(d-1))/7; TSB_d=CTL_d-ATL_d";
-"è®¡ç®: DailyTSS_d = Î£(å½å¤©æææ´»å¨TSS)" = "è®¡ç®: DailyTSS_d = Î£(å½å¤©æææ´»å¨TSS)";
-"è®¡ç®: Decoupling% = (EF_first - EF_second) / EF_first Ã 100ï¼EF=Power/HR" = "è®¡ç®: Decoupling% = (EF_first - EF_second) / EF_first Ã 100ï¼EF=Power/HR";
-"è®¡ç®: Distance(km) = Distance(m) / 1000" = "è®¡ç®: Distance(km) = Distance(m) / 1000";
-"è®¡ç®: Duration = moving_time" = "è®¡ç®: Duration = moving_time";
-"è®¡ç®: HR/LTHR = AvgHR / LTHR(date-matched)" = "è®¡ç®: HR/LTHR = AvgHR / LTHR(date-matched)";
-"è®¡ç®: IF = NP / FTP" = "è®¡ç®: IF = NP / FTP";
-"è®¡ç®: NP = (mean(P^4))^(1/4)ï¼è¥æåçåºåï¼" = "è®¡ç®: NP = (mean(P^4))^(1/4)ï¼è¥æåçåºåï¼";
-"è®¡ç®: Pace(min/km) = Duration(min) / Distance(km)" = "è®¡ç®: Pace(min/km) = Duration(min) / Distance(km)";
-"è®¡ç®: PeakPower_t = max(rolling_mean_power(t ç§çªå£))" = "è®¡ç®: PeakPower_t = max(rolling_mean_power(t ç§çªå£))";
-"è®¡ç®: Sleep(h)=å¹³å°ä¸æ¥ç¡ç æ¶é¿(ç§/å)æ¢ç®ä¸ºå°æ¶" = "è®¡ç®: Sleep(h)=å¹³å°ä¸æ¥ç¡ç æ¶é¿(ç§/å)æ¢ç®ä¸ºå°æ¶";
-"è®¡ç®: Sleep(h)=å¹³å°ç§/åéæ¢ç®; åæ°: Sleep_today=%@h, Sleep_7d=%@h, SleepScore=%@" = "è®¡ç®: Sleep(h)=å¹³å°ç§/åéæ¢ç®; åæ°: Sleep_today=%@h, Sleep_7d=%@h, SleepScore=%@";
-"è®¡ç®: SwimPace(min/100m) = Duration(min) / Distance(100m)" = "è®¡ç®: SwimPace(min/100m) = Duration(min) / Distance(100m)";
-"è®¡ç®: TSB = CTL - ATL" = "è®¡ç®: TSB = CTL - ATL";
-"è®¡ç®: TSS = h Ã (AvgHR / LTHR)^2 Ã 100 (å¿çä¼°ç®)" = "è®¡ç®: TSS = h Ã (AvgHR / LTHR)^2 Ã 100 (å¿çä¼°ç®)";
-"è®¡ç®: TSS = h Ã (NP / FTP)^2 Ã 100" = "è®¡ç®: TSS = h Ã (NP / FTP)^2 Ã 100";
-"è®¡ç®: TSS = h Ã 45 (ååºä¼°ç®)" = "è®¡ç®: TSS = h Ã 45 (ååºä¼°ç®)";
-"è®¡ç®: TSS/h = TSS / h" = "è®¡ç®: TSS/h = TSS / h";
-"è®¡ç®: Today=ææ°æ ·æ¬; 7d=æè¿7å¤©æææ ·æ¬å¹³å; åæ°: HRV_today=%@, HRV_7d=%@, Baseline=%.1f" = "è®¡ç®: Today=ææ°æ ·æ¬; 7d=æè¿7å¤©æææ ·æ¬å¹³å; åæ°: HRV_today=%@, HRV_7d=%@, Baseline=%.1f";
-"è®¡ç®: Today=ææ°æ ·æ¬; 7d=æè¿7å¤©æææ ·æ¬å¹³å; åæ°: RHR_today=%@, RHR_7d=%@" = "è®¡ç®: Today=ææ°æ ·æ¬; 7d=æè¿7å¤©æææ ·æ¬å¹³å; åæ°: RHR_today=%@, RHR_7d=%@";
-"è®¡ç®: Work(kJ) = NP Ã Duration(s) / 1000" = "è®¡ç®: Work(kJ) = NP Ã Duration(s) / 1000";
-"è®¡ç®: å¨æ»å¨ TSS = æè¿7å¤© DailyTSS æ±å" = "è®¡ç®: å¨æ»å¨ TSS = æè¿7å¤© DailyTSS æ±å";
-"è®¡ç®: æ¬å¨æ¯æ¥ TSS æ±å" = "è®¡ç®: æ¬å¨æ¯æ¥ TSS æ±å";
-"è®¡ç®: æ¯æ¥HRVæ ·æ¬åå¼ï¼7å¤©åå¼ç¨äºå¯¹æ¯åºçº¿" = "è®¡ç®: æ¯æ¥HRVæ ·æ¬åå¼ï¼7å¤©åå¼ç¨äºå¯¹æ¯åºçº¿";
-"èµå­£A" = "èµå­£A";
-"èµå­£B" = "èµå­£B";
-"è¿æ¬¡æ´»å¨çæ°æ®å­æ®µè¾å°ãå¯¼å¥åå«åç/å¿çç FIT æä»¶åå¯çææ´å®æ´æäºã" = "è¿æ¬¡æ´»å¨çæ°æ®å­æ®µè¾å°ãå¯¼å¥åå«åç/å¿çç FIT æä»¶åå¯çææ´å®æ´æäºã";
-"åæ°: h=%.2f, AvgHR=%dbpm, LTHR=%dbpm, HR/LTHR=%.2f
-%@" = "åæ°: h=%.2f, AvgHR=%dbpm, LTHR=%dbpm, HR/LTHR=%.2f
-%@";
-
-"app.chrome.pagePicker" = "é¡µé¢";
-"app.chrome.close" = "å³é­";
-"app.chrome.close.help" = "å³é­å½åçªå£";

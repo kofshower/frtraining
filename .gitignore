@@ -4,3 +4,7 @@ build/
 dist/
 *.log
 .env
+
+.build/
+dist/
+.DS_Store
