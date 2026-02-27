@@ -139,6 +139,17 @@ struct LactateLabView: View {
     @State private var draftLactate = ""
     @State private var draftPoints: [LactateSamplePoint] = []
 
+    private var canSaveDraftRecord: Bool {
+        switch selectedHistoryType {
+        case .ramp:
+            return draftPoints.count >= 2 && (draftPoints.last?.lactate ?? 0) > 6
+        case .mlss:
+            return draftPoints.count >= 2
+        case .custom:
+            return !draftPoints.isEmpty
+        }
+    }
+
     private var labSport: SportType {
         store.selectedSportFilter ?? .cycling
     }
@@ -232,7 +243,7 @@ struct LactateLabView: View {
                     saveHistoryRecord()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(draftPoints.count < 2)
+                .disabled(!canSaveDraftRecord)
             }
         }
     }
@@ -1361,7 +1372,7 @@ struct LactateLabView: View {
 
     private func saveHistoryRecord() {
         let name = store.selectedAthleteNameForWrite.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, draftPoints.count >= 2 else { return }
+        guard !name.isEmpty, canSaveDraftRecord else { return }
         historyRecords.append(
             LactateHistoryRecord(
                 tester: name,
