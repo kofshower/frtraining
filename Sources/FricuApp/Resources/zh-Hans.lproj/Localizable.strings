@@ -1,5 +1,6 @@
 "app.section.dashboard" = "仪表盘";
 "app.section.trainer" = "骑行台";
+"app.section.lactateLab" = "乳酸实验室";
 "app.section.prosuite" = "专业套件";
 "app.section.nutrition" = "饮食";
 "app.section.workoutBuilder" = "训练构建";
