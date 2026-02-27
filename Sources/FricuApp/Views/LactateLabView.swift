@@ -92,7 +92,7 @@ struct LactateLabView: View {
         .padding(24)
         .background(
             LinearGradient(
-                colors: [Color(.systemGray6), Color(.systemBackground)],
+                colors: [Color.white.opacity(0.94), Color.white],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -264,7 +264,7 @@ struct LactateLabView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func decisionNodeButton(_ node: DecisionNode) -> some View {
@@ -289,7 +289,7 @@ struct LactateLabView: View {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(selectedNode == node ? Color.teal : Color(.secondarySystemBackground))
+                    .fill(selectedNode == node ? Color.teal : Color.primary.opacity(0.06))
             )
         }
         .buttonStyle(.plain)
@@ -317,7 +317,7 @@ struct LactateLabView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func simpleDetailCard(title: String, description: String) -> some View {
