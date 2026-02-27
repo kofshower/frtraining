@@ -166,13 +166,7 @@ struct LactateLabView: View {
         case .bloodSampling:
             bloodSamplingGuideView
         case .preTestNutrition:
-            simpleDetailCard(
-                title: L10n.t("测前营养", "Pre-Test Nutrition"),
-                description: L10n.t(
-                    "点击后将进入测前营养页：包含测试前 24 小时碳水、咖啡因和补水一致性策略。",
-                    "Open pre-test nutrition: 24-hour carbohydrate, caffeine, and hydration consistency strategy."
-                )
-            )
+            preTestNutritionView
         case .aerobicPath:
             aerobicPathwayView
         case .anaerobicPath:
@@ -228,6 +222,48 @@ struct LactateLabView: View {
                 Text(L10n.t("最终统一汇总到结果解释。", "Results are merged into Shared Interpretation."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var preTestNutritionView: some View {
+        sectionCard(title: L10n.t("测试前营养控制", "Pre-Test Nutrition Control"), icon: "fork.knife") {
+            VStack(alignment: .leading, spacing: 12) {
+                emphasisCard(
+                    title: L10n.t("测试前 1 小时", "1 Hour Before Test"),
+                    body: L10n.t("请不要进食，避免任何含热量饮料。", "Do not eat and avoid any caloric drinks."),
+                    highlight: L10n.t("✔️ 仅允许：水 / 无糖饮料", "✔️ Only allowed: water / sugar-free drinks")
+                )
+
+                emphasisCard(
+                    title: L10n.t("测试过程中", "During Test"),
+                    body: L10n.t("全程不摄入任何热量：能量饮料、碳水补给、含糖液体都应避免。", "No calories during the test: avoid energy drinks, carbohydrate fueling, and sugary liquids."),
+                    highlight: L10n.t("👉 否则会直接影响乳酸读数", "👉 Calorie intake directly alters lactate readings")
+                )
+
+                stepCard(
+                    number: "1",
+                    title: L10n.t("记录营养状态", "Log Nutrition Status"),
+                    points: [
+                        L10n.t("上一次进食时间", "Last meal time"),
+                        L10n.t("食物类型", "Food type"),
+                        L10n.t("饮品类型", "Drink type")
+                    ]
+                )
+
+                emphasisCard(
+                    title: L10n.t("记录目的", "Why Record This"),
+                    body: L10n.t("在测试开始前记录饮食状态，可用于后续复测对照。", "Recording pre-test nutrition enables reliable future comparisons."),
+                    highlight: L10n.t("👉 让未来测试可复现", "👉 Make future tests reproducible")
+                )
+
+                simpleInlineInfoCard(
+                    title: L10n.t("核心原则", "Core Principle"),
+                    description: L10n.t(
+                        "保持每次测试前的饮食条件一致，才能保证乳酸结果具有可比性。",
+                        "Keep pre-test nutrition conditions consistent to ensure comparable lactate results."
+                    )
+                )
             }
         }
     }
