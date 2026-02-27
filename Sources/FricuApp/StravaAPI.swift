@@ -164,7 +164,7 @@ final class StravaAPIClient {
         .joined(separator: "&")
         req.httpBody = body.data(using: .utf8)
 
-        let data = try await send(req)
+        let data = try await send(req, debugLabel: "POST /oauth/token (authorization_code)")
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StravaAPIError.malformedPayload
         }
@@ -212,7 +212,7 @@ final class StravaAPIClient {
             req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
             req.setValue("application/json", forHTTPHeaderField: "Accept")
 
-            let data = try await send(req)
+            let data = try await send(req, debugLabel: "GET /api/v3/athlete/activities")
             guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
                 throw StravaAPIError.malformedPayload
             }
@@ -366,7 +366,7 @@ final class StravaAPIClient {
         req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let data = try await send(req)
+        let data = try await send(req, debugLabel: "POST /oauth/token (refresh_token)")
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StravaAPIError.malformedPayload
         }
@@ -467,7 +467,7 @@ final class StravaAPIClient {
 
         req.httpBody = body.data(using: .utf8)
 
-        let data = try await send(req)
+        let data = try await send(req, debugLabel: "POST /oauth/token (refresh_token)")
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StravaAPIError.malformedPayload
         }
@@ -483,7 +483,7 @@ final class StravaAPIClient {
         )
     }
 
-    private func send(_ request: URLRequest) async throws -> Data {
+    private func send(_ request: URLRequest, debugLabel: String? = nil) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw StravaAPIError.badResponse
@@ -491,10 +491,41 @@ final class StravaAPIClient {
 
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            if let diagnostic = diagnosticMessage(for: request, label: debugLabel, responseBody: body) {
+                throw StravaAPIError.requestFailed(http.statusCode, diagnostic)
+            }
             throw StravaAPIError.requestFailed(http.statusCode, body)
         }
 
         return data
+    }
+
+    private func diagnosticMessage(for request: URLRequest, label: String?, responseBody: String) -> String? {
+        var fields = Set<String>()
+        if let items = URLComponents(url: request.url ?? apiBase, resolvingAgainstBaseURL: false)?.queryItems {
+            for item in items where !item.name.isEmpty {
+                fields.insert(item.name)
+            }
+        }
+        if
+            let body = request.httpBody,
+            let bodyString = String(data: body, encoding: .utf8),
+            let contentType = request.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
+            contentType.contains("application/x-www-form-urlencoded")
+        {
+            for pair in bodyString.split(separator: "&") {
+                let key = pair.split(separator: "=", maxSplits: 1).first?.removingPercentEncoding ?? ""
+                if !key.isEmpty {
+                    fields.insert(key)
+                }
+            }
+        }
+        guard !fields.isEmpty || !(label?.isEmpty ?? true) else {
+            return nil
+        }
+        let sortedFields = fields.sorted().joined(separator: ",")
+        let requestLine = "request=\(label ?? request.httpMethod ?? "HTTP") fields=[\(sortedFields)]"
+        return "\(requestLine); response=\(responseBody)"
     }
 
     private func pollUploadUntilReady(accessToken: String, uploadID: Int) async throws -> String? {
