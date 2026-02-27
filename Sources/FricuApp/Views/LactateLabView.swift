@@ -132,13 +132,7 @@ struct LactateLabView: View {
         case .materials:
             setupMaterialsView
         case .bloodSampling:
-            simpleDetailCard(
-                title: L10n.t("采血说明", "Blood Sampling Guide"),
-                description: L10n.t(
-                    "点击后将进入采血步骤页：包含手指加温、第一滴弃样、采样时机与污染规避。",
-                    "Open blood sampling steps: finger warming, first-drop discard, timing, and contamination control."
-                )
-            )
+            bloodSamplingGuideView
         case .preTestNutrition:
             simpleDetailCard(
                 title: L10n.t("测前营养", "Pre-Test Nutrition"),
@@ -172,6 +166,132 @@ struct LactateLabView: View {
                 )
             )
         }
+    }
+
+    private var bloodSamplingGuideView: some View {
+        sectionCard(title: L10n.t("采血流程", "Blood Sampling Workflow"), icon: "drop.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                emphasisCard(
+                    title: L10n.t("采血位置", "Sampling Site"),
+                    body: L10n.t("乳酸可采手指或耳垂；但自测必须使用手指。", "Lactate can be sampled from finger or earlobe; self-testing should use finger only."),
+                    highlight: L10n.t("👉 自测必须用手指", "👉 Self-test: finger only")
+                )
+
+                emphasisCard(
+                    title: L10n.t("最大误差来源", "Largest Error Source"),
+                    body: L10n.t("最常见错误来自血样污染：汗、酒精、组织液或皮肤接触。", "The most common error is sample contamination: sweat, alcohol, tissue fluid, or skin contact."),
+                    highlight: L10n.t("👉 关键不是取血，而是防污染", "👉 The key is contamination control")
+                )
+
+                stepCard(
+                    number: "1",
+                    title: L10n.t("先准备设备", "Prepare Equipment"),
+                    points: [
+                        L10n.t("打开酒精棉，准备采血针，提前插入试纸。", "Open alcohol swab, prepare lancet, and insert strip in advance."),
+                        L10n.t("❌ 不要触碰试纸两端，避免污染导致误读。", "❌ Do not touch strip ends; contamination causes wrong readings.")
+                    ]
+                )
+
+                stepCard(
+                    number: "2",
+                    title: L10n.t("先擦汗", "Dry Sweat First"),
+                    points: [
+                        L10n.t("采血前擦干手指及周围区域。", "Dry finger and surrounding area before sampling."),
+                        L10n.t("出汗多时需擦手、手臂甚至脸，防止汗滴污染。", "If sweating heavily, dry hand/arm/face to avoid sweat-drop contamination.")
+                    ]
+                )
+
+                stepCard(
+                    number: "3",
+                    title: L10n.t("酒精消毒", "Alcohol Disinfection"),
+                    points: [
+                        L10n.t("用酒精棉清洁采血位置。", "Clean site with alcohol swab."),
+                        L10n.t("👉 必须完全干燥后再继续。", "👉 Must be fully dry before continuing.")
+                    ]
+                )
+
+                stepCard(
+                    number: "4",
+                    title: L10n.t("扎针位置", "Lancing Site"),
+                    points: [
+                        L10n.t("扎手指侧面，不扎指腹正中。", "Lance the side of finger, not the finger pad center.")
+                    ]
+                )
+
+                stepCard(
+                    number: "5",
+                    title: L10n.t("丢弃第一滴血", "Discard First Drop"),
+                    points: [
+                        L10n.t("第一滴常含组织液，不可靠，必须擦掉。", "First drop may contain tissue fluid; wipe it away.")
+                    ]
+                )
+
+                stepCard(
+                    number: "6",
+                    title: L10n.t("取第二滴血", "Take Second Drop"),
+                    points: [
+                        L10n.t("轻挤形成圆形血珠；若血流下来，擦掉后重取。", "Gently form a round drop; if it runs, wipe and retry.")
+                    ]
+                )
+
+                stepCard(
+                    number: "7",
+                    title: L10n.t("试纸接触血滴", "Strip Contact"),
+                    points: [
+                        L10n.t("✔️ 只碰血滴，❌ 不碰皮肤。", "✔️ Touch blood drop only, ❌ never touch skin."),
+                        L10n.t("成功后分析仪会吸血并提示。", "Analyzer will draw blood and prompt when successful.")
+                    ]
+                )
+
+                stepCard(
+                    number: "8",
+                    title: L10n.t("记录结果", "Record Result"),
+                    points: [
+                        L10n.t("等待读数并立即记录。", "Wait for reading and record immediately.")
+                    ]
+                )
+
+                emphasisCard(
+                    title: L10n.t("实战注意事项", "Field Notes"),
+                    body: L10n.t("血出不来可先暖手、摇臂或热水预热；避免用力挤压以防组织液稀释乳酸。", "If blood flow is poor, warm hands, swing arm, or pre-warm with hot water; avoid hard squeezing to prevent dilution."),
+                    highlight: L10n.t("👉 采血时手要有支撑；乳酸异常跳升建议复测", "👉 Keep hand supported; retest if values jump abnormally")
+                )
+            }
+        }
+    }
+
+    private func stepCard(number: String, title: String, points: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(number)️⃣ \(title)")
+                .font(.headline)
+            ForEach(points, id: \.self) { point in
+                Text("• \(point)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func emphasisCard(title: String, body: String, highlight: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(body)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(highlight)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.teal)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var setupMaterialsView: some View {
