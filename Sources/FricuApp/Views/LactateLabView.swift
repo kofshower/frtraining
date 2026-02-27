@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct LactateLabView: View {
+    @EnvironmentObject private var store: AppStore
+
     private enum LabTab: String, CaseIterable, Identifiable {
         case latest
         case history
@@ -98,6 +100,10 @@ struct LactateLabView: View {
     @State private var showChecklistMode = false
     @State private var selectedAerobicTest: AerobicTest? = nil
 
+    private var labSport: SportType {
+        store.selectedSportFilter ?? .cycling
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text(L10n.t("乳酸实验室", "Lactate Lab"))
@@ -135,35 +141,113 @@ struct LactateLabView: View {
     private var latestTestView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                sectionCard(title: L10n.t("决策树", "Decision Tree"), icon: "point.topleft.down.curvedto.point.bottomright.up") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        decisionNodeButton(.materials)
-                        flowArrow
-                        decisionNodeButton(.bloodSampling)
-                        flowArrow
-                        decisionNodeButton(.preTestNutrition)
+                sportHeaderCard
 
-                        Divider().padding(.vertical, 6)
-
-                        HStack(spacing: 10) {
-                            decisionNodeButton(.aerobicPath)
-                                .frame(maxWidth: .infinity)
-                            decisionNodeButton(.anaerobicPath)
-                                .frame(maxWidth: .infinity)
-                        }
-
-                        if selectedNode == .aerobicPath {
-                            aerobicSubtestPanel
-                        }
-
-                        decisionNodeButton(.sharedInterpretation)
-                    }
+                if labSport == .running {
+                    runningLactateProtocolView
+                } else {
+                    cyclingLactateProtocolView
                 }
-
-                selectedNodeContent
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 8)
+        }
+    }
+
+    private var sportHeaderCard: some View {
+        HStack(spacing: 8) {
+            Image(systemName: labSport == .running ? "figure.run" : "bicycle")
+                .foregroundStyle(.teal)
+            Text(
+                L10n.t(
+                    "当前运动：\(labSport.label)（可在顶部工具栏切换）",
+                    "Current sport: \(labSport.label) (switch from toolbar)"
+                )
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var cyclingLactateProtocolView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionCard(title: L10n.t("决策树", "Decision Tree"), icon: "point.topleft.down.curvedto.point.bottomright.up") {
+                VStack(alignment: .leading, spacing: 10) {
+                    decisionNodeButton(.materials)
+                    flowArrow
+                    decisionNodeButton(.bloodSampling)
+                    flowArrow
+                    decisionNodeButton(.preTestNutrition)
+
+                    Divider().padding(.vertical, 6)
+
+                    HStack(spacing: 10) {
+                        decisionNodeButton(.aerobicPath)
+                            .frame(maxWidth: .infinity)
+                        decisionNodeButton(.anaerobicPath)
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    if selectedNode == .aerobicPath {
+                        aerobicSubtestPanel
+                    }
+
+                    decisionNodeButton(.sharedInterpretation)
+                }
+            }
+
+            selectedNodeContent
+        }
+    }
+
+    private var runningLactateProtocolView: some View {
+        sectionCard(title: L10n.t("跑步乳酸测试流程", "Running Lactate Test Protocol"), icon: "figure.run") {
+            VStack(alignment: .leading, spacing: 12) {
+                simpleInlineInfoCard(
+                    title: L10n.t("适用场景", "Use Case"),
+                    description: L10n.t(
+                        "用于跑步阈值评估，得到 LT1/LT2 对应配速与心率，指导跑步分区训练。",
+                        "Evaluate running thresholds and map LT1/LT2 to pace and heart rate for zone-based run training."
+                    )
+                )
+
+                stepCard(
+                    number: "1",
+                    title: L10n.t("热身 15–20 分钟", "Warm Up 15–20 min"),
+                    points: [
+                        L10n.t("轻松跑 + 3 次 20 秒加速跑", "Easy jog + 3 × 20s strides"),
+                        L10n.t("准备好乳酸仪、采血针和记录表", "Prepare lactate meter, lancet, and recording sheet")
+                    ]
+                )
+
+                stepCard(
+                    number: "2",
+                    title: L10n.t("递增阶段（每级 4 分钟）", "Incremental Stages (4 min each)"),
+                    points: [
+                        L10n.t("建议每级提速 0.5 km/h（或约 10–15 秒/km）", "Increase by 0.5 km/h each stage (or ~10–15 sec/km)"),
+                        L10n.t("每级末 30 秒内完成采血并记录乳酸、心率、主观强度", "Collect blood within 30s at stage end and log lactate, HR, and RPE")
+                    ]
+                )
+
+                stepCard(
+                    number: "3",
+                    title: L10n.t("终止标准", "Stop Criteria"),
+                    points: [
+                        L10n.t("RPE ≥ 19 或无法维持目标配速", "RPE ≥ 19 or unable to hold target pace"),
+                        L10n.t("乳酸急剧上升并伴随跑姿明显破坏", "Sharp lactate rise with obvious form breakdown")
+                    ]
+                )
+
+                emphasisCard(
+                    title: L10n.t("测试输出", "Outputs"),
+                    body: L10n.t(
+                        "按乳酸-配速曲线拟合 LT1/LT2，并换算为训练区间配速与阈值心率。",
+                        "Fit lactate-vs-pace curve to derive LT1/LT2 and convert them into pace zones and threshold HR."
+                    ),
+                    highlight: L10n.t("建议每 4–6 周复测一次", "Retest every 4–6 weeks")
+                )
+            }
         }
     }
 
