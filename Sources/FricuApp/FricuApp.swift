@@ -305,11 +305,7 @@ struct SettingsView: View {
     @State private var hrvBaseline = ""
     @State private var hrvToday = ""
     @State private var intervalsKey = ""
-    @State private var stravaClientID = ""
-    @State private var stravaClientSecret = ""
-    @State private var stravaRefreshToken = ""
-    @State private var stravaAccessToken = ""
-    @State private var stravaOAuthRedirectURI = "http://127.0.0.1:53682/callback"
+    private let stravaOAuthRedirectURI = "http://127.0.0.1:53682/callback"
     @State private var stravaPullRecentDays = 30
     @State private var garminAccessToken = ""
     @State private var garminCSRFToken = ""
@@ -464,10 +460,6 @@ struct SettingsView: View {
         profile.hrvToday = Double(hrvToday) ?? profile.hrvToday
         profile.goalRaceDate = hasGoalDate ? goalDate : nil
         profile.intervalsAPIKey = intervalsKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.stravaClientID = stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.stravaClientSecret = stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.stravaRefreshToken = stravaRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.stravaAccessToken = stravaAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.garminConnectAccessToken = garminAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.garminConnectCSRFToken = garminCSRFToken.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.ouraPersonalAccessToken = ouraAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -480,16 +472,6 @@ struct SettingsView: View {
             return
         }
         profile.hrThresholdRanges = ranges
-        store.profile = profile
-        store.persistProfile()
-    }
-
-    private func persistStravaFieldsOnly() {
-        var profile = store.profile
-        profile.stravaClientID = stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.stravaClientSecret = stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.stravaRefreshToken = stravaRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.stravaAccessToken = stravaAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         store.profile = profile
         store.persistProfile()
     }
@@ -551,10 +533,6 @@ struct SettingsView: View {
         hrvBaseline = String(format: "%.1f", store.profile.hrvBaseline)
         hrvToday = String(format: "%.1f", store.profile.hrvToday)
         intervalsKey = store.profile.intervalsAPIKey
-        stravaClientID = store.profile.stravaClientID
-        stravaClientSecret = store.profile.stravaClientSecret
-        stravaRefreshToken = store.profile.stravaRefreshToken
-        stravaAccessToken = store.profile.stravaAccessToken
         garminAccessToken = store.profile.garminConnectAccessToken
         garminCSRFToken = store.profile.garminConnectCSRFToken
         ouraAccessToken = store.profile.ouraPersonalAccessToken
@@ -924,19 +902,16 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Strava")
                         .font(.headline)
-                    TextField("Client ID", text: $stravaClientID)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("Client Secret", text: $stravaClientSecret)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("Refresh Token", text: $stravaRefreshToken)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("Access Token (optional)", text: $stravaAccessToken)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("OAuth Redirect URI", text: $stravaOAuthRedirectURI)
-                        .textFieldStyle(.roundedBorder)
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "同步仅需 OAuth 授权，无需手动填写 Client/Token。",
+                            english: "Sync now only requires OAuth authorization. No manual client/token fields needed."
+                        )
+                    )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     HStack {
                         Button(L10n.choose(simplifiedChinese: "OAuth 登录并回调", english: "OAuth Login + Callback")) {
-                            persistStravaFieldsOnly()
                             Task {
                                 await store.syncAuthorizeStravaOAuth(redirectURI: stravaOAuthRedirectURI) { authURL in
                                     openURL(authURL)
@@ -954,8 +929,8 @@ struct SettingsView: View {
                     }
                     Text(
                         L10n.choose(
-                            simplifiedChinese: "建议填 client/secret/refresh token，access token 过期后可自动续期。",
-                            english: "Recommended: provide client/secret/refresh token so expired access tokens can auto-refresh."
+                            simplifiedChinese: "回调地址：\(stravaOAuthRedirectURI)",
+                            english: "Redirect URI: \(stravaOAuthRedirectURI)"
                         )
                     )
                         .font(.caption)
