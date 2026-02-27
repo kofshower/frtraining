@@ -62,51 +62,6 @@ struct LactateLabView: View {
         }
     }
 
-    private enum DecisionNode: String, Identifiable {
-        case materials
-        case bloodSampling
-        case preTestNutrition
-        case aerobicPath
-        case anaerobicPath
-        case sharedInterpretation
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .materials:
-                return "所需材料"
-            case .bloodSampling:
-                return "如何采血"
-            case .preTestNutrition:
-                return "测前营养"
-            case .aerobicPath:
-                return "有氧测试"
-            case .anaerobicPath:
-                return "无氧能力和清除测试"
-            case .sharedInterpretation:
-                return "统一结果解释"
-            }
-        }
-
-        var icon: String {
-            switch self {
-            case .materials:
-                return "shippingbox.fill"
-            case .bloodSampling:
-                return "drop.fill"
-            case .preTestNutrition:
-                return "fork.knife"
-            case .aerobicPath:
-                return "lungs.fill"
-            case .anaerobicPath:
-                return "flame.fill"
-            case .sharedInterpretation:
-                return "chart.xyaxis.line"
-            }
-        }
-    }
-
     @State private var selectedTab: LabTab = .latest
     @State private var selectedNode: DecisionNode = .materials
     @State private var showChecklistMode = false
@@ -262,7 +217,7 @@ struct LactateLabView: View {
         VStack(alignment: .leading, spacing: 10) {
             equipmentCard(
                 title: L10n.t("带功率的室内骑行设备", "Indoor Trainer with Power"),
-                body: L10n.t("• 智能骑行台\nor\n• 配功率计的自行车", "• Smart trainer\nor\n• Bike with power meter")
+                body: L10n.t("• 智能骑行台\n或\n• 配功率计的自行车", "• Smart trainer\nor\n• Bike with power meter")
             )
 
             equipmentCard(
@@ -308,8 +263,8 @@ struct LactateLabView: View {
                 .padding(.top, 4)
 
             equipmentCard(
-                title: "ERG Mode Software",
-                body: "e.g.\n• Zwift\n• TrainerRoad"
+                title: L10n.t("功率稳定软件（ERG 模式）", "ERG Mode Software"),
+                body: L10n.t("例如：\n• Zwift\n• TrainerRoad", "e.g.\n• Zwift\n• TrainerRoad")
             )
 
             equipmentCard(
@@ -332,159 +287,6 @@ struct LactateLabView: View {
                 Text(L10n.t("☑ 酒精棉片已准备", "☑ Alcohol swabs ready"))
                 Text(L10n.t("☑ 计时工具已就绪", "☑ Timer ready"))
                 Text(L10n.t("☑ 记录方式已就绪", "☑ Recording method ready"))
-            }
-            .font(.body)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func decisionNodeButton(_ node: DecisionNode) -> some View {
-        Button {
-            selectedNode = node
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: node.icon)
-                    .frame(width: 24)
-                    .foregroundStyle(selectedNode == node ? .white : .teal)
-
-                Text(node.title)
-                    .font(.headline)
-                    .foregroundStyle(selectedNode == node ? .white : .primary)
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(selectedNode == node ? .white.opacity(0.8) : .secondary)
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(selectedNode == node ? Color.teal : Color.primary.opacity(0.06))
-            )
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var flowArrow: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "arrow.down")
-                .foregroundStyle(.secondary)
-            Spacer()
-        }
-    }
-
-    private func equipmentCard(title: String, body: String) -> some View {
-        VStack(alignment: .leading, spacing: body.isEmpty ? 0 : 6) {
-            Text(title)
-                .font(.headline)
-            if !body.isEmpty {
-                Text(body)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private func simpleDetailCard(title: String, description: String) -> some View {
-        sectionCard(title: title, icon: "doc.text.magnifyingglass") {
-            Text(description)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func sectionCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.title3.weight(.semibold))
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private var setupDetailCards: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            equipmentCard(
-                title: "Indoor Trainer with Power",
-                body: "• Smart trainer\nor\n• Bike with power meter"
-            )
-
-            equipmentCard(
-                title: "Lactate Analyzer",
-                body: "Recommended:\nLactate Pro 2\n\n• Easy to use\n• No calibration needed\n• Works with small blood samples\n• Low error rate"
-            )
-
-            equipmentCard(
-                title: "Lactate Test Strips",
-                body: "Must be compatible with your analyzer"
-            )
-
-            equipmentCard(
-                title: "Safety Lancets",
-                body: "Tip for beginners:\nUse lower gauge lancets\n→ Helps produce larger blood drops"
-            )
-
-            equipmentCard(title: "Alcohol Swabs", body: "")
-
-            equipmentCard(
-                title: "Support Items",
-                body: "• Tissues\n• Towel (to remove sweat)"
-            )
-
-            equipmentCard(
-                title: "Timer",
-                body: "(e.g. phone)"
-            )
-
-            equipmentCard(
-                title: "Results Recording",
-                body: "• Notebook\n• Laptop\n• Spreadsheet\n\nUse our Results Template"
-            )
-
-            Text("推荐设备（可选）")
-                .font(.headline)
-                .padding(.top, 4)
-
-            equipmentCard(
-                title: "ERG Mode Software",
-                body: "e.g.\n• Zwift\n• TrainerRoad"
-            )
-
-            equipmentCard(
-                title: "Helper (recommended)",
-                body: "Disposable gloves advised\nAvoid latex\nUse nitrile instead"
-            )
-        }
-    }
-
-    private var checklistCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Pre-Test Checklist")
-                .font(.headline)
-
-            Group {
-                Text("☑ Trainer ready")
-                Text("☑ Analyzer ready")
-                Text("☑ Strips available")
-                Text("☑ Lancets prepared")
-                Text("☑ Alcohol swabs ready")
-                Text("☑ Timer ready")
-                Text("☑ Recording method ready")
             }
             .font(.body)
         }
