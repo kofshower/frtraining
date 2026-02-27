@@ -234,7 +234,7 @@ private final class LactateLabStore: ObservableObject {
 }
 
 private enum LactateFlowPage: String, CaseIterable, Identifiable {
-    case hub, protocols, setup, checklist, live, results, history, settings, prdV1
+    case hub, protocols, setup, checklist, live, results, history, settings, prdV1, nextGen
     var id: String { rawValue }
 
     var title: String {
@@ -248,6 +248,7 @@ private enum LactateFlowPage: String, CaseIterable, Identifiable {
         case .history: return L10n.choose(simplifiedChinese: "历史", english: "History")
         case .settings: return L10n.choose(simplifiedChinese: "设置", english: "Settings")
         case .prdV1: return L10n.choose(simplifiedChinese: "PRD 新界面", english: "PRD V1")
+        case .nextGen: return L10n.choose(simplifiedChinese: "全新实验室", english: "Next Gen Lab")
         }
     }
 }
@@ -905,6 +906,8 @@ struct LactateLabView: View {
                     settingsPage
                 case .prdV1:
                     LactatePRDV1View()
+                case .nextGen:
+                    LactateLabNextView()
                 }
             }
         }
