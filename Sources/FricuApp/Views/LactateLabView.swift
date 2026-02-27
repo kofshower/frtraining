@@ -226,10 +226,7 @@ struct LactateLabView: View {
                 }
 
                 if let selectedAerobicTest {
-                    simpleInlineInfoCard(
-                        title: selectedAerobicTest.title,
-                        description: selectedAerobicTest.summary
-                    )
+                    aerobicSelectedDetailView(selectedAerobicTest)
                 }
 
                 Text(L10n.t("最终统一汇总到结果解释。", "Results are merged into Shared Interpretation."))
@@ -640,6 +637,153 @@ Precise threshold targeting → Protocol 2"))
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func aerobicSelectedDetailView(_ test: AerobicTest) -> some View {
+        switch test {
+        case .fullRamp:
+            fullRampProtocolCard
+        case .mlss:
+            simpleInlineInfoCard(
+                title: test.title,
+                description: test.summary
+            )
+        }
+    }
+
+    private var fullRampProtocolCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.t("🧪 Protocol 1", "🧪 Protocol 1"))
+                .font(.headline)
+            Text(L10n.t("全递增乳酸测试", "Full Ramp Lactate Test"))
+                .font(.title3.weight(.semibold))
+
+            simpleInlineInfoCard(
+                title: L10n.t("📌 测试目的", "📌 Purpose"),
+                description: L10n.t(
+                    "了解整体乳酸曲线、有氧能力变化趋势，以及 LT1 / LT2 的大致位置。",
+                    "Understand the full lactate curve, aerobic trend changes, and approximate LT1/LT2 positions."
+                )
+            )
+
+            simpleInlineInfoCard(
+                title: L10n.t("适用场景", "Best For"),
+                description: L10n.t(
+                    "✔️ 第一次乳酸测试
+✔️ 长时间未测试
+✔️ 了解整体代谢状态",
+                    "✔️ First lactate test
+✔️ Long gap since last test
+✔️ Overall metabolic status review"
+                )
+            )
+
+            simpleInlineInfoCard(
+                title: L10n.t("⏱ 测试时长", "⏱ Duration"),
+                description: L10n.t("约 1 小时 + 冷身，通常需要 9–13 次乳酸采样。", "About 1 hour + cooldown, typically 9–13 lactate samples.")
+            )
+
+            fullRampSchematic
+
+            stepCard(
+                number: "1",
+                title: L10n.t("热身", "Warm-up"),
+                points: [
+                    L10n.t("低强度骑行 15 分钟，建议从约 40% FTP 开始。", "Ride easy for 15 minutes, starting around 40% FTP."),
+                    L10n.t("目的：避免起点过高错过 LT1。", "Goal: avoid starting too high and missing LT1.")
+                ]
+            )
+
+            stepCard(
+                number: "2",
+                title: L10n.t("热身末采样", "End-Warmup Sample"),
+                points: [
+                    L10n.t("在第 10–14 分钟进行一次乳酸采样并记录功率。", "Take one lactate sample at minute 10–14 and record power.")
+                ]
+            )
+
+            stepCard(
+                number: "3",
+                title: L10n.t("进入递增阶段", "Start Ramp Stages"),
+                points: [
+                    L10n.t("每阶段持续 6 分钟，第 5 分钟采血。", "Each stage lasts 6 minutes; sample at minute 5.")
+                ]
+            )
+
+            stepCard(
+                number: "4",
+                title: L10n.t("功率递增", "Increase Power"),
+                points: [
+                    L10n.t("每阶段增加约 10% FTP，并持续记录功率与乳酸值。", "Increase by ~10% FTP per stage and keep logging power + lactate.")
+                ]
+            )
+
+            stepCard(
+                number: "5",
+                title: L10n.t("停止条件", "Stop Conditions"),
+                points: [
+                    L10n.t("🛑 乳酸 > 6 mmol/L，或 🛑 心率 > 95% 最大心率时立即停止。", "🛑 Stop immediately if lactate > 6 mmol/L or HR > 95% max HR.")
+                ]
+            )
+
+            emphasisCard(
+                title: L10n.t("🧠 测试提示", "🧠 Practical Tips"),
+                body: L10n.t("建议 ERG 模式保持稳定功率；坐姿/站姿全程一致；若乳酸跳升 > 2 mmol 建议复测。", "Use ERG mode for stable power; keep posture consistent; retest if lactate jumps > 2 mmol."),
+                highlight: L10n.t("👉 单人测试可在阶段末短暂停止采血，6 分钟阶段仍稳定", "👉 Solo test can pause briefly for sampling at stage end without losing 6-min stage stability")
+            )
+
+            simpleInlineInfoCard(
+                title: L10n.t("📊 结果用途", "📊 Result Usage"),
+                description: L10n.t(
+                    "用于观察乳酸曲线形态、代谢变化趋势和训练效果。
+⚠️ 不用于精准确定阈值功率。",
+                    "Used to observe lactate curve shape, metabolic trends, and training effects.
+⚠️ Not for precise threshold power determination."
+                )
+            )
+        }
+    }
+
+    private var fullRampSchematic: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.t("示意图", "Schematic"))
+                .font(.subheadline.weight(.semibold))
+
+            HStack(alignment: .bottom, spacing: 4) {
+                rampBlock(label: "40%", height: 28)
+                rampBlock(label: "50%", height: 34)
+                rampBlock(label: "60%", height: 40)
+                rampBlock(label: "70%", height: 46)
+                rampBlock(label: "80%", height: 52)
+                rampBlock(label: "90%", height: 58)
+                rampBlock(label: "100%", height: 64)
+                rampBlock(label: "110%", height: 70)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(L10n.t("15 分钟热身（40% FTP）→ 每 6 分钟 +10% FTP，阶段第 5 分钟采血。", "15-min warm-up (40% FTP) → +10% FTP every 6 minutes, sample at minute 5 of each stage."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func rampBlock(label: String, height: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 8, height: 8)
+            Rectangle()
+                .fill(Color.teal.opacity(0.75))
+                .frame(width: 44, height: height)
+                .overlay(
+                    Text(label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.black)
+                )
+        }
     }
 
     private func simpleInlineInfoCard(title: String, description: String) -> some View {
