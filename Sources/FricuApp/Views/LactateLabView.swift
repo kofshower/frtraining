@@ -57,23 +57,27 @@ struct LactateLabView: View {
                 Text("↓")
                 Text("测前营养")
                 Text("↓")
-                Text("有氧测试")
+
+                Text("测试路径")
                     .font(.headline)
 
-                decisionNode(
-                    title: "Full ramp test",
-                    children: [
-                        DecisionTreeNode(
-                            title: "Maximal lactate steady state",
-                            children: [DecisionTreeNode(title: "结果解释")]
-                        )
-                    ]
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("→ 有氧测试")
+                        .font(.headline)
+                    Text("    ↳ Full ramp test")
+                    Text("    ↳ Maximal lactate steady state")
+                    Text("    ↳ 结果解释")
+                }
 
-                decisionNode(
-                    title: "无氧能力和清除测试",
-                    children: [DecisionTreeNode(title: "结果解释")]
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("→ 无氧能力和清除测试")
+                        .font(.headline)
+                    Text("    ↳ 结果解释")
+                }
+
+                Text("说明：有氧测试与无氧能力和清除测试最终都汇总到“结果解释”。")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -85,30 +89,5 @@ struct LactateLabView: View {
             systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90",
             description: Text("完成乳酸测试后，历史结果会在这里展示。")
         )
-    }
-
-    private func decisionNode(title: String, children: [DecisionTreeNode], level: Int = 0) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Text(String(repeating: "    ", count: level) + "→")
-                    .foregroundStyle(.secondary)
-                Text(title)
-            }
-
-            ForEach(children) { child in
-                decisionNode(title: child.title, children: child.children, level: level + 1)
-            }
-        }
-    }
-}
-
-private struct DecisionTreeNode: Identifiable {
-    let id = UUID()
-    let title: String
-    let children: [DecisionTreeNode] = []
-
-    init(title: String, children: [DecisionTreeNode] = []) {
-        self.title = title
-        self.children = children
     }
 }
