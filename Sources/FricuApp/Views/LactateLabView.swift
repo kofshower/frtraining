@@ -201,25 +201,28 @@ struct LactateLabView: View {
         VStack(alignment: .leading, spacing: 10) {
                 aerobicProtocolIntroCard
 
-                ForEach(AerobicTest.allCases) { test in
-                    Button {
-                        selectedAerobicTest = test
-                    } label: {
-                        HStack {
-                            Text(test.title)
-                                .font(.headline)
-                                .foregroundStyle(selectedAerobicTest == test ? .white : .primary)
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .foregroundStyle(selectedAerobicTest == test ? .white.opacity(0.8) : .secondary)
+                HStack(spacing: 10) {
+                    ForEach(AerobicTest.allCases) { test in
+                        Button {
+                            selectedAerobicTest = test
+                        } label: {
+                            HStack {
+                                Text(test.title)
+                                    .font(.headline)
+                                    .foregroundStyle(selectedAerobicTest == test ? .white : .primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .foregroundStyle(selectedAerobicTest == test ? .white.opacity(0.8) : .secondary)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(selectedAerobicTest == test ? Color.teal : Color.primary.opacity(0.06))
+                            )
                         }
-                        .padding(12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(selectedAerobicTest == test ? Color.teal : Color.primary.opacity(0.06))
-                        )
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
 
                 if let selectedAerobicTest {
