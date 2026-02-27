@@ -62,9 +62,41 @@ struct LactateLabView: View {
         }
     }
 
+    private enum AerobicTest: String, Identifiable, CaseIterable {
+        case fullRamp
+        case mlss
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .fullRamp:
+                return "Full ramp test"
+            case .mlss:
+                return "Maximal lactate steady state"
+            }
+        }
+
+        var summary: String {
+            switch self {
+            case .fullRamp:
+                return L10n.t(
+                    "连续递增负荷，快速定位乳酸上升拐点和最大有氧能力范围。",
+                    "Progressive ramp protocol to quickly identify lactate rise breakpoint and upper aerobic capacity range."
+                )
+            case .mlss:
+                return L10n.t(
+                    "在近阈值强度下持续稳定输出，确认可持续的最高乳酸稳态功率。",
+                    "Sustained near-threshold protocol to confirm maximal sustainable power at lactate steady state."
+                )
+            }
+        }
+    }
+
     @State private var selectedTab: LabTab = .latest
     @State private var selectedNode: DecisionNode = .materials
     @State private var showChecklistMode = false
+    @State private var selectedAerobicTest: AerobicTest? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -142,13 +174,7 @@ struct LactateLabView: View {
                 )
             )
         case .aerobicPath:
-            simpleDetailCard(
-                title: L10n.t("有氧测试路径", "Aerobic Pathway"),
-                description: L10n.t(
-                    "• Full ramp test\n• Maximal lactate steady state\n\n最终统一汇总到结果解释。",
-                    "• Full ramp test\n• Maximal lactate steady state\n\nResults are merged into Shared Interpretation."
-                )
-            )
+            aerobicPathwayView
         case .anaerobicPath:
             simpleDetailCard(
                 title: L10n.t("无氧与清除路径", "Anaerobic + Clearance Pathway"),
@@ -165,6 +191,44 @@ struct LactateLabView: View {
                     "All test data is consolidated into one interpretation report for aerobic/anaerobic comparison and follow-up training suggestions."
                 )
             )
+        }
+    }
+
+    private var aerobicPathwayView: some View {
+        sectionCard(title: L10n.t("有氧测试路径", "Aerobic Pathway"), icon: "lungs.fill") {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(AerobicTest.allCases) { test in
+                    Button {
+                        selectedAerobicTest = test
+                    } label: {
+                        HStack {
+                            Text(test.title)
+                                .font(.headline)
+                                .foregroundStyle(selectedAerobicTest == test ? .white : .primary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(selectedAerobicTest == test ? .white.opacity(0.8) : .secondary)
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(selectedAerobicTest == test ? Color.teal : Color.primary.opacity(0.06))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let selectedAerobicTest {
+                    simpleInlineInfoCard(
+                        title: selectedAerobicTest.title,
+                        description: selectedAerobicTest.summary
+                    )
+                }
+
+                Text(L10n.t("最终统一汇总到结果解释。", "Results are merged into Shared Interpretation."))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -418,6 +482,9 @@ struct LactateLabView: View {
     private func decisionNodeButton(_ node: DecisionNode) -> some View {
         Button {
             selectedNode = node
+            if node != .aerobicPath {
+                selectedAerobicTest = nil
+            }
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: node.icon)
@@ -475,6 +542,20 @@ struct LactateLabView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func simpleInlineInfoCard(title: String, description: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(description)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func sectionCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
