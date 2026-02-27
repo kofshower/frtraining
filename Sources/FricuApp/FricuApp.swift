@@ -52,7 +52,6 @@ enum AppSection: String, CaseIterable, Identifiable {
     case workoutBuilder
     case library
     case insights
-    case lactateLab
     case settings
 
     var id: String { rawValue }
@@ -66,7 +65,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .workoutBuilder: return "app.section.workoutBuilder"
         case .library: return "app.section.library"
         case .insights: return "app.section.insights"
-        case .lactateLab: return "app.section.lactateLab"
         case .settings: return "app.section.settings"
         }
     }
@@ -87,8 +85,6 @@ enum AppSection: String, CaseIterable, Identifiable {
             return L10n.choose(simplifiedChinese: "活动库", english: "Library")
         case .insights:
             return L10n.choose(simplifiedChinese: "洞察", english: "Insights")
-        case .lactateLab:
-            return L10n.choose(simplifiedChinese: "乳酸实验室", english: "Lactate Lab")
         case .settings:
             return L10n.choose(simplifiedChinese: "设置", english: "Settings")
         }
@@ -103,7 +99,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .workoutBuilder: return "pencil.and.ruler"
         case .library: return "calendar"
         case .insights: return "chart.xyaxis.line"
-        case .lactateLab: return "drop.fill"
         case .settings: return "gearshape"
         }
     }
@@ -130,8 +125,6 @@ struct RootView: View {
                 ActivityLibraryView()
             case .insights:
                 InsightsView()
-            case .lactateLab:
-                LactateLabView()
             case .settings:
                 SettingsView()
             }
