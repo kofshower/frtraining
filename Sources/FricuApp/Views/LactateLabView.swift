@@ -199,6 +199,8 @@ struct LactateLabView: View {
 
     private var aerobicSubtestPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
+                aerobicProtocolIntroCard
+
                 ForEach(AerobicTest.allCases) { test in
                     Button {
                         selectedAerobicTest = test
@@ -587,6 +589,54 @@ struct LactateLabView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var aerobicProtocolIntroCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.t("🧪 选择你的测试类型", "🧪 Choose Your Test Type"))
+                .font(.headline)
+
+            Text(L10n.t("Protocol 1 · 📊 有氧全貌测试", "Protocol 1 · 📊 Aerobic Overview"))
+                .font(.subheadline.weight(.semibold))
+            Text(L10n.t(
+                "用于了解不同强度下乳酸生成情况、整体代谢特征与长期变化趋势。适合初次测试、周期性追踪与训练效果观察。",
+                "Used to understand lactate production across intensities, whole metabolic profile, and long-term changes. Best for first test, periodic tracking, and observing training effects."
+            ))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+
+            Text(L10n.t("⚠️ 注意：不能精准确定阈值功率", "⚠️ Limitation: cannot precisely define threshold power"))
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.orange)
+
+            Divider()
+
+            Text(L10n.t("Protocol 2 · 🎯 阈值精准测试", "Protocol 2 · 🎯 Threshold Precision"))
+                .font(.subheadline.weight(.semibold))
+            Text(L10n.t(
+                "用于确定真实乳酸阈值功率（MLSS），即乳酸生成与清除的最大稳定点。适合精准设置间歇强度、阈值训练与阈值变化监测。",
+                "Used to determine true lactate threshold power (MLSS), the maximal steady balance between lactate production and clearance. Best for precise interval targets, threshold training, and threshold monitoring."
+            ))
+            .font(.callout)
+            .foregroundStyle(.secondary)
+
+            Divider()
+
+            Text(L10n.t("🟢 如何选择？", "🟢 How to choose?"))
+                .font(.subheadline.weight(.semibold))
+            Text(L10n.t("了解整体能力 → 选 Protocol 1
+精准训练阈值 → 选 Protocol 2", "Overall capability insight → Protocol 1
+Precise threshold targeting → Protocol 2"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            Text(L10n.t("📌 一句话总结：Protocol 1 看趋势，Protocol 2 定阈值", "📌 One-liner: Protocol 1 tracks trends, Protocol 2 sets threshold."))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.teal)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func simpleInlineInfoCard(title: String, description: String) -> some View {
