@@ -179,13 +179,7 @@ struct LactateLabView: View {
         case .aerobicPath:
             EmptyView()
         case .anaerobicPath:
-            simpleDetailCard(
-                title: L10n.t("无氧与清除路径", "Anaerobic + Clearance Pathway"),
-                description: L10n.t(
-                    "• 清除能力评估\n• 重复冲刺恢复评估\n\n最终统一汇总到结果解释。",
-                    "• Clearance capacity assessment\n• Repeated sprint recovery assessment\n\nResults are merged into Shared Interpretation."
-                )
-            )
+            anaerobicProtocolCard
         case .sharedInterpretation:
             simpleDetailCard(
                 title: L10n.t("统一结果解释", "Shared Interpretation"),
@@ -235,6 +229,134 @@ struct LactateLabView: View {
         }
         .padding(12)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var anaerobicProtocolCard: some View {
+        sectionCard(title: L10n.t("⚡ 无氧能力测试", "⚡ Anaerobic Capacity + Clearance"), icon: "flame.fill") {
+            VStack(alignment: .leading, spacing: 12) {
+                simpleInlineInfoCard(
+                    title: L10n.t("📌 测试目的", "📌 Purpose"),
+                    description: L10n.t(
+                        "了解无氧能力（VLaMax）、糖酵解速率、乳酸生成能力与乳酸清除能力。
+
+✔️ 建议与有氧测试搭配进行，完整评估体能结构。",
+                        "Understand anaerobic capacity (VLaMax), glycolytic rate, lactate production, and clearance.
+
+✔️ Pair with aerobic testing for a complete fitness profile."
+                    )
+                )
+
+                simpleInlineInfoCard(
+                    title: L10n.t("⏱ 测试时长", "⏱ Duration"),
+                    description: L10n.t("约 30–40 分钟，通常需要 4–5 次采样。", "About 30–40 minutes, typically 4–5 samples.")
+                )
+
+                anaerobicSchematic
+
+                stepCard(
+                    number: "1",
+                    title: L10n.t("低强度恢复", "Low-Intensity Recovery"),
+                    points: [
+                        L10n.t("有氧测试后轻松骑行 15 分钟，强度约 40–50% FTP。", "After aerobic test, ride easy for 15 minutes at ~40–50% FTP."),
+                        L10n.t("目的：清除残余乳酸。", "Goal: clear residual lactate.")
+                    ]
+                )
+
+                stepCard(
+                    number: "2",
+                    title: L10n.t("静息准备", "Rest Preparation"),
+                    points: [
+                        L10n.t("完全休息 5 分钟，采样需 < 2.5 mmol/L。", "Rest fully for 5 minutes; sample should be < 2.5 mmol/L."),
+                        L10n.t("若偏高：继续休息再测。", "If higher: keep resting and re-test.")
+                    ]
+                )
+
+                stepCard(
+                    number: "3",
+                    title: L10n.t("20 秒全力冲刺", "20s Max Sprint"),
+                    points: [
+                        L10n.t("进行 20 秒最大努力冲刺。", "Perform a 20-second all-out sprint."),
+                        L10n.t("❌ 不使用 ERG；✔️ 预先调高阻力。", "❌ No ERG mode; ✔️ pre-set higher resistance.")
+                    ]
+                )
+
+                stepCard(
+                    number: "4",
+                    title: L10n.t("冲刺后完全停止", "Full Stop After Sprint"),
+                    points: [
+                        L10n.t("冲刺结束后立即停止踩踏。", "Stop pedaling immediately after sprint."),
+                        L10n.t("原因：继续骑行会降低乳酸读数。", "Reason: continued pedaling can lower lactate readings.")
+                    ]
+                )
+
+                stepCard(
+                    number: "5",
+                    title: L10n.t("恢复期采样", "Recovery Sampling"),
+                    points: [
+                        L10n.t("保持静止，在 3/5/7 分钟采样。", "Stay still and sample at 3/5/7 minutes."),
+                        L10n.t("可加测 4/6 分钟提高精度。", "Optional 4/6-minute samples can improve precision.")
+                    ]
+                )
+
+                stepCard(
+                    number: "6",
+                    title: L10n.t("可选清除能力测试", "Optional Clearance Check"),
+                    points: [
+                        L10n.t("继续休息至 20 分钟，再采样一次评估清除能力。", "Continue resting to minute 20, then sample once more for clearance assessment.")
+                    ]
+                )
+
+                emphasisCard(
+                    title: L10n.t("⚙️ 测试提示", "⚙️ Test Tips"),
+                    body: L10n.t("建议选择大齿比进行冲刺，避免踩空；可提前测试齿比以保证冲刺稳定输出。", "Use a larger gear to avoid spinning out; pre-test gear choice to keep sprint output stable."),
+                    highlight: L10n.t("📊 结果可用于评估最大乳酸生成能力、无氧爆发潜力与乳酸代谢能力", "📊 Results estimate max lactate production, anaerobic explosiveness, and lactate metabolism capacity")
+                )
+            }
+        }
+    }
+
+    private var anaerobicSchematic: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.t("示意图", "Schematic"))
+                .font(.subheadline.weight(.semibold))
+
+            HStack(alignment: .bottom, spacing: 6) {
+                Rectangle()
+                    .fill(Color.teal.opacity(0.75))
+                    .frame(width: 130, height: 34)
+                    .overlay(Text("40–50% FTP").font(.caption2.weight(.semibold)))
+
+                VStack(spacing: 2) {
+                    Text("5 min").font(.caption2)
+                    Circle().fill(Color.red).frame(width: 8, height: 8)
+                    Rectangle().fill(Color.teal.opacity(0.85)).frame(width: 24, height: 80)
+                    Text("20s").font(.caption2.weight(.semibold))
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                    }
+                    Text(L10n.t("采样 @ 3 / 5 / 7 分钟", "Samples @ 3 / 5 / 7 min"))
+                        .font(.caption2)
+                    HStack {
+                        Rectangle().fill(Color.teal.opacity(0.35)).frame(height: 2)
+                        Circle().fill(Color.red).frame(width: 8, height: 8)
+                    }
+                    Text(L10n.t("可选 20 分钟终末采样", "Optional final sample @ 20 min"))
+                        .font(.caption2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Text(L10n.t("15 分钟恢复（40–50% FTP）→ 5 分钟静息 → 20 秒冲刺 → 静止恢复并定时采样。", "15-min recovery (40–50% FTP) → 5-min rest → 20s sprint → passive recovery with timed sampling."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var preTestNutritionView: some View {
@@ -900,13 +1022,6 @@ struct LactateLabView: View {
                         .foregroundStyle(.black)
                 )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
     }
 
     private func simpleInlineInfoCard(title: String, description: String) -> some View {
