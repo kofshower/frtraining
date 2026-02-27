@@ -624,9 +624,7 @@ struct LactateLabView: View {
 
             Text(L10n.t("🟢 如何选择？", "🟢 How to choose?"))
                 .font(.subheadline.weight(.semibold))
-            Text(L10n.t("了解整体能力 → 选 Protocol 1
-精准训练阈值 → 选 Protocol 2", "Overall capability insight → Protocol 1
-Precise threshold targeting → Protocol 2"))
+            Text(L10n.t("了解整体能力 → 选 Protocol 1\n精准训练阈值 → 选 Protocol 2", "Overall capability insight → Protocol 1\nPrecise threshold targeting → Protocol 2"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -667,12 +665,8 @@ Precise threshold targeting → Protocol 2"))
             simpleInlineInfoCard(
                 title: L10n.t("适用场景", "Best For"),
                 description: L10n.t(
-                    "✔️ 精准设定阈值训练
-✔️ 制定间歇强度
-✔️ 监测阈值变化",
-                    "✔️ Precise threshold training setup
-✔️ Interval intensity prescription
-✔️ Threshold change monitoring"
+                    "✔️ 精准设定阈值训练\n✔️ 制定间歇强度\n✔️ 监测阈值变化",
+                    "✔️ Precise threshold training setup\n✔️ Interval intensity prescription\n✔️ Threshold change monitoring"
                 )
             )
 
@@ -752,12 +746,8 @@ Precise threshold targeting → Protocol 2"))
             simpleInlineInfoCard(
                 title: L10n.t("适用场景", "Best For"),
                 description: L10n.t(
-                    "✔️ 第一次乳酸测试
-✔️ 长时间未测试
-✔️ 了解整体代谢状态",
-                    "✔️ First lactate test
-✔️ Long gap since last test
-✔️ Overall metabolic status review"
+                    "✔️ 第一次乳酸测试\n✔️ 长时间未测试\n✔️ 了解整体代谢状态",
+                    "✔️ First lactate test\n✔️ Long gap since last test\n✔️ Overall metabolic status review"
                 )
             )
 
@@ -818,10 +808,8 @@ Precise threshold targeting → Protocol 2"))
             simpleInlineInfoCard(
                 title: L10n.t("📊 结果用途", "📊 Result Usage"),
                 description: L10n.t(
-                    "用于观察乳酸曲线形态、代谢变化趋势和训练效果。
-⚠️ 不用于精准确定阈值功率。",
-                    "Used to observe lactate curve shape, metabolic trends, and training effects.
-⚠️ Not for precise threshold power determination."
+                    "用于观察乳酸曲线形态、代谢变化趋势和训练效果。\n⚠️ 不用于精准确定阈值功率。",
+                    "Used to observe lactate curve shape, metabolic trends, and training effects.\n⚠️ Not for precise threshold power determination."
                 )
             )
         }
@@ -911,46 +899,6 @@ Precise threshold targeting → Protocol 2"))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.black)
                 )
-        }
-        .padding(10)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private func rampBlock(label: String, height: CGFloat) -> some View {
-        VStack(spacing: 4) {
-            Circle()
-                .fill(Color.red)
-                .frame(width: 8, height: 8)
-            Rectangle()
-                .fill(Color.teal.opacity(0.75))
-                .frame(width: 44, height: height)
-                .overlay(
-                    Text(label)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.black)
-                )
-        }
-    }
-
-    private func simpleInlineInfoCard(title: String, description: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.headline)
-            Text(description)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func sectionCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.title3.weight(.semibold))
-            content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
