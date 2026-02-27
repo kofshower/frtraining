@@ -145,8 +145,17 @@ struct LactateLabView: View {
 
                         Divider().padding(.vertical, 6)
 
-                        decisionNodeButton(.aerobicPath)
-                        decisionNodeButton(.anaerobicPath)
+                        HStack(spacing: 10) {
+                            decisionNodeButton(.aerobicPath)
+                                .frame(maxWidth: .infinity)
+                            decisionNodeButton(.anaerobicPath)
+                                .frame(maxWidth: .infinity)
+                        }
+
+                        if selectedNode == .aerobicPath {
+                            aerobicSubtestPanel
+                        }
+
                         decisionNodeButton(.sharedInterpretation)
                     }
                 }
@@ -168,7 +177,7 @@ struct LactateLabView: View {
         case .preTestNutrition:
             preTestNutritionView
         case .aerobicPath:
-            aerobicPathwayView
+            EmptyView()
         case .anaerobicPath:
             simpleDetailCard(
                 title: L10n.t("无氧与清除路径", "Anaerobic + Clearance Pathway"),
@@ -188,9 +197,8 @@ struct LactateLabView: View {
         }
     }
 
-    private var aerobicPathwayView: some View {
-        sectionCard(title: L10n.t("有氧测试路径", "Aerobic Pathway"), icon: "lungs.fill") {
-            VStack(alignment: .leading, spacing: 10) {
+    private var aerobicSubtestPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
                 ForEach(AerobicTest.allCases) { test in
                     Button {
                         selectedAerobicTest = test
@@ -222,8 +230,9 @@ struct LactateLabView: View {
                 Text(L10n.t("最终统一汇总到结果解释。", "Results are merged into Shared Interpretation."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-            }
         }
+        .padding(12)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var preTestNutritionView: some View {
