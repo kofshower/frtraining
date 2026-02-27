@@ -88,31 +88,33 @@ final class StravaAPIClient {
     func ensureAccessToken(profile: AthleteProfile) async throws -> StravaAuthUpdate {
         let now = Int(Date().timeIntervalSince1970)
         let hasRefreshConfig = hasRefreshConfig(profile)
+        let sanitizedAccessToken = normalizeAccessToken(profile.stravaAccessToken)
+        let sanitizedRefreshToken = profile.stravaRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if hasRefreshConfig {
-            let accessValid = !profile.stravaAccessToken.isEmpty && ((profile.stravaAccessTokenExpiresAt ?? 0) > now + 120)
+            let accessValid = !sanitizedAccessToken.isEmpty && ((profile.stravaAccessTokenExpiresAt ?? 0) > now + 120)
             if accessValid {
                 return StravaAuthUpdate(
-                    accessToken: profile.stravaAccessToken,
-                    refreshToken: profile.stravaRefreshToken,
+                    accessToken: sanitizedAccessToken,
+                    refreshToken: sanitizedRefreshToken,
                     expiresAt: profile.stravaAccessTokenExpiresAt
                 )
             }
 
             return try await refreshToken(
-                clientID: profile.stravaClientID,
-                clientSecret: profile.stravaClientSecret,
-                refreshToken: profile.stravaRefreshToken
+                clientID: profile.stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines),
+                clientSecret: profile.stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines),
+                refreshToken: sanitizedRefreshToken
             )
         }
 
-        guard !profile.stravaAccessToken.isEmpty else {
+        guard !sanitizedAccessToken.isEmpty else {
             throw StravaAPIError.missingRefreshConfig
         }
 
         return StravaAuthUpdate(
-            accessToken: profile.stravaAccessToken,
-            refreshToken: profile.stravaRefreshToken,
+            accessToken: sanitizedAccessToken,
+            refreshToken: sanitizedRefreshToken,
             expiresAt: profile.stravaAccessTokenExpiresAt
         )
     }
@@ -123,9 +125,9 @@ final class StravaAPIClient {
         }
 
         return try await refreshToken(
-            clientID: profile.stravaClientID,
-            clientSecret: profile.stravaClientSecret,
-            refreshToken: profile.stravaRefreshToken
+            clientID: profile.stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines),
+            clientSecret: profile.stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines),
+            refreshToken: profile.stravaRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
         )
     }
 
@@ -607,9 +609,20 @@ final class StravaAPIClient {
     }
 
     private func hasRefreshConfig(_ profile: AthleteProfile) -> Bool {
-        !profile.stravaClientID.isEmpty &&
-        !profile.stravaClientSecret.isEmpty &&
-        !profile.stravaRefreshToken.isEmpty
+        !profile.stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !profile.stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !profile.stravaRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func normalizeAccessToken(_ token: String) -> String {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let prefix = "bearer "
+        if trimmed.lowercased().hasPrefix(prefix) {
+            return String(trimmed.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return trimmed
     }
 }
 
