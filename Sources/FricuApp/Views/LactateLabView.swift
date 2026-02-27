@@ -1132,10 +1132,38 @@ struct LactateLabView: View {
         Group {
             if let session = Binding($store.currentSession) {
                 VStack(alignment: .leading, spacing: 12) {
-                    GroupBox("本页引导（填完这些再进入下一步）") {
+                    GroupBox("前置准备（第 1 步）") {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("推荐协议：\(session.protocolType.wrappedValue.title)")
                                 .font(.subheadline.bold())
+
+                            Text("做乳酸测试前，先准备好以下物品。")
+                                .font(.subheadline)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("【必需设备】")
+                                    .font(.subheadline.bold())
+                                Text("• 室内骑行台（可测功率：智能骑行台或自带功率计车辆）")
+                                Text("• 乳酸测试仪（如 Lactate Pro 2）")
+                                Text("• 匹配测试仪的乳酸试纸")
+                                Text("• 一次性安全采血针")
+                                Text("• 酒精棉片（采血前消毒）")
+                                Text("• 纸巾（擦血/擦汗）")
+                                Text("• 计时工具（手机即可）")
+                                Text("• 毛巾（防止汗水污染血样）")
+                                Text("• 记录工具（纸笔、电脑或 Excel 模板，用于记录功率 + 乳酸值）")
+                            }
+                            .font(.subheadline)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("【推荐但非必须】")
+                                    .font(.subheadline.bold())
+                                Text("• ERG 模式软件（如 Zwift、TrainerRoad，用于稳定功率）")
+                                Text("• 一个助手（协助取血）")
+                                Text("• 一次性手套（建议丁腈，避免乳胶）")
+                            }
+                            .font(.subheadline)
+
                             ForEach(setupGuideItems(for: session)) { item in
                                 Label {
                                     Text(item.text)
