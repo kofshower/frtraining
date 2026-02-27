@@ -1308,9 +1308,22 @@ struct LactateLabView: View {
     }
 
     private func sectionCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        sectionCard(title: title, icon: icon, trailing: { EmptyView() }, content: content)
+    }
+
+    private func sectionCard<Content: View, Trailing: View>(
+        title: String,
+        icon: String,
+        @ViewBuilder trailing: () -> Trailing,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(title, systemImage: icon)
-                .font(.title3.weight(.semibold))
+            HStack(alignment: .center, spacing: 12) {
+                Label(title, systemImage: icon)
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                trailing()
+            }
             content()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1333,7 +1346,18 @@ struct LactateLabView: View {
                     )
                 } else {
                     ForEach(historyRecords.reversed()) { record in
-                        sectionCard(title: "\(record.type.title) · \(record.tester)", icon: "chart.xyaxis.line") {
+                        sectionCard(
+                            title: "\(record.type.title) · \(record.tester)",
+                            icon: "chart.xyaxis.line",
+                            trailing: {
+                                Button(role: .destructive) {
+                                    deleteHistoryRecord(recordID: record.id)
+                                } label: {
+                                    Label(L10n.t("删除记录", "Delete Record"), systemImage: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        ) {
                             Text("\(L10n.t("测试人", "Tester")): \(record.tester)    \(L10n.t("测试类型", "Type")): \(record.type.title)")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -1383,5 +1407,9 @@ struct LactateLabView: View {
         )
         selectedHistoryType = .ramp
         draftPoints = []
+    }
+
+    private func deleteHistoryRecord(recordID: UUID) {
+        historyRecords.removeAll { $0.id == recordID }
     }
 }
