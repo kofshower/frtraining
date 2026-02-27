@@ -900,6 +900,13 @@ struct LactateLabView: View {
                         .foregroundStyle(.black)
                 )
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func simpleInlineInfoCard(title: String, description: String) -> some View {
