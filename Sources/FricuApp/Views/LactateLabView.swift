@@ -133,22 +133,7 @@ struct LactateLabView: View {
     @State private var selectedNode: DecisionNode = .materials
     @State private var showChecklistMode = false
     @State private var selectedAerobicTest: AerobicTest? = nil
-    @State private var historyRecords: [LactateHistoryRecord] = [
-        LactateHistoryRecord(
-            tester: "Alex",
-            type: .ramp,
-            createdAt: .now,
-            points: [
-                LactateSamplePoint(power: 125, lactate: 1.6),
-                LactateSamplePoint(power: 148, lactate: 1.3),
-                LactateSamplePoint(power: 169, lactate: 1.4),
-                LactateSamplePoint(power: 200, lactate: 3.1),
-                LactateSamplePoint(power: 223, lactate: 4.5),
-                LactateSamplePoint(power: 230, lactate: 6.2)
-            ]
-        )
-    ]
-    @State private var testerName = ""
+    @State private var historyRecords: [LactateHistoryRecord] = []
     @State private var selectedHistoryType: LactateTestType = .ramp
     @State private var draftPower = ""
     @State private var draftLactate = ""
@@ -202,9 +187,53 @@ struct LactateLabView: View {
                 } else {
                     cyclingLactateProtocolView
                 }
+
+                addHistoryRecordCard
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 8)
+        }
+    }
+
+    private var addHistoryRecordCard: some View {
+        sectionCard(title: L10n.t("新增历史测试记录", "Add Historical Test Record"), icon: "square.and.pencil") {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("\(L10n.t("测试人", "Tester")): \(store.selectedAthleteNameForWrite)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Picker(L10n.t("测试类型", "Test Type"), selection: $selectedHistoryType) {
+                    ForEach(LactateTestType.allCases) { type in
+                        Text(type.title).tag(type)
+                    }
+                }
+
+                HStack {
+                    TextField("Power (W)", text: $draftPower)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Lactate (mmol/L)", text: $draftLactate)
+                        .textFieldStyle(.roundedBorder)
+                    Button(L10n.t("添加点", "Add Point")) {
+                        appendDraftPoint()
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if !draftPoints.isEmpty {
+                    Text(L10n.t("当前结果点", "Current Result Points"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(draftPoints.map { "\(Int($0.power))W / \(String(format: "%.1f", $0.lactate))" }.joined(separator: "  ·  "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(L10n.t("保存历史记录", "Save Record")) {
+                    saveHistoryRecord()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(draftPoints.count < 2)
+            }
         }
     }
 
@@ -1285,45 +1314,6 @@ struct LactateLabView: View {
     private var historyTestView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                sectionCard(title: L10n.t("新增历史测试记录", "Add Historical Test Record"), icon: "square.and.pencil") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        TextField(L10n.t("测试人", "Tester"), text: $testerName)
-                            .textFieldStyle(.roundedBorder)
-
-                        Picker(L10n.t("测试类型", "Test Type"), selection: $selectedHistoryType) {
-                            ForEach(LactateTestType.allCases) { type in
-                                Text(type.title).tag(type)
-                            }
-                        }
-
-                        HStack {
-                            TextField("Power (W)", text: $draftPower)
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Lactate (mmol/L)", text: $draftLactate)
-                                .textFieldStyle(.roundedBorder)
-                            Button(L10n.t("添加点", "Add Point")) {
-                                appendDraftPoint()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        if !draftPoints.isEmpty {
-                            Text(L10n.t("当前结果点", "Current Result Points"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(draftPoints.map { "\(Int($0.power))W / \(String(format: "%.1f", $0.lactate))" }.joined(separator: "  ·  "))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Button(L10n.t("保存历史记录", "Save Record")) {
-                            saveHistoryRecord()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(testerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftPoints.count < 2)
-                    }
-                }
-
                 if historyRecords.isEmpty {
                     ContentUnavailableView(
                         L10n.t("暂无历史测试结果", "No historical test results"),
@@ -1370,7 +1360,7 @@ struct LactateLabView: View {
     }
 
     private func saveHistoryRecord() {
-        let name = testerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = store.selectedAthleteNameForWrite.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, draftPoints.count >= 2 else { return }
         historyRecords.append(
             LactateHistoryRecord(
@@ -1380,7 +1370,6 @@ struct LactateLabView: View {
                 points: draftPoints
             )
         )
-        testerName = ""
         selectedHistoryType = .ramp
         draftPoints = []
     }
