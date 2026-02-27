@@ -181,13 +181,7 @@ struct LactateLabView: View {
         case .anaerobicPath:
             anaerobicProtocolCard
         case .sharedInterpretation:
-            simpleDetailCard(
-                title: L10n.t("统一结果解释", "Shared Interpretation"),
-                description: L10n.t(
-                    "所有测试数据会统一汇总到同一份“结果解释”中，便于对比有氧与无氧能力，并生成后续训练建议。",
-                    "All test data is consolidated into one interpretation report for aerobic/anaerobic comparison and follow-up training suggestions."
-                )
-            )
+            sharedInterpretationView
         }
     }
 
@@ -231,18 +225,113 @@ struct LactateLabView: View {
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
+    private var sharedInterpretationView: some View {
+        sectionCard(title: L10n.t("📊 测试结果解读", "📊 Test Result Interpretation"), icon: "chart.xyaxis.line") {
+            VStack(alignment: .leading, spacing: 12) {
+                simpleInlineInfoCard(
+                    title: L10n.t("LT1 有氧阈", "LT1 Aerobic Threshold"),
+                    description: L10n.t(
+                        "LT1 代表有氧效率水平。\n提升意味着：脂肪利用增强、有氧能力提升、乳酸转运增强。\n训练应用：LT1 ≈ Zone 1 上限。",
+                        "LT1 represents aerobic efficiency.\nHigher LT1 means better fat use, stronger aerobic base, and better lactate transport.\nTraining use: LT1 ≈ upper limit of Zone 1."
+                    )
+                )
+
+                simpleInlineInfoCard(
+                    title: L10n.t("LT2 乳酸阈", "LT2 Lactate Threshold"),
+                    description: L10n.t(
+                        "LT2 代表最大稳态能力（MLSS），即乳酸生成 = 乳酸清除。\n提升意味着：有氧增强、代谢效率更高、持续输出更强。\n训练应用：LT2 ≈ Zone 2 上限。",
+                        "LT2 represents maximal steady-state ability (MLSS), where lactate production equals clearance.\nHigher LT2 means better aerobic power, efficiency, and sustained output.\nTraining use: LT2 ≈ upper limit of Zone 2."
+                    )
+                )
+
+                simpleInlineInfoCard(
+                    title: L10n.t("VLaMax 无氧能力", "VLaMax Anaerobic Capacity"),
+                    description: L10n.t(
+                        "冲刺测试后最高乳酸值反映糖酵解能力（无氧潜力）。\n提升意味着无氧爆发增强，但可能降低脂肪供能比例。",
+                        "Peak lactate after sprint reflects glycolytic power (anaerobic potential).\nHigher VLaMax often means stronger explosiveness, but may reduce relative fat-fueling share."
+                    )
+                )
+
+                emphasisCard(
+                    title: L10n.t("🧠 综合解读", "🧠 Combined Interpretation"),
+                    body: L10n.t("单个指标意义有限，关键看组合变化。", "Single metrics are limited; the key is the combined pattern."),
+                    highlight: L10n.t("趋势 > 单次数值", "Trend > single value")
+                )
+
+                stepCard(
+                    number: "1",
+                    title: L10n.t("LT1 ↑ LT2 ↑ VLaMax ↓", "LT1 ↑ LT2 ↑ VLaMax ↓"),
+                    points: [
+                        L10n.t("➡️ 更强脂代谢", "➡️ Stronger fat metabolism"),
+                        L10n.t("➡️ 更耐久型能力", "➡️ Better endurance profile")
+                    ]
+                )
+
+                stepCard(
+                    number: "2",
+                    title: L10n.t("LT1 ↑ LT2 ↑ VLaMax →", "LT1 ↑ LT2 ↑ VLaMax →"),
+                    points: [
+                        L10n.t("➡️ 有氧能力提升", "➡️ Aerobic performance improved")
+                    ]
+                )
+
+                stepCard(
+                    number: "3",
+                    title: L10n.t("LT1 ↑ LT2 ↑ VLaMax ↑", "LT1 ↑ LT2 ↑ VLaMax ↑"),
+                    points: [
+                        L10n.t("➡️ VO2max 提升", "➡️ VO2max likely improved"),
+                        L10n.t("➡️ 无氧能力增强", "➡️ Anaerobic capacity increased")
+                    ]
+                )
+
+                stepCard(
+                    number: "4",
+                    title: L10n.t("LT1 ↓ LT2 ↓ VLaMax →", "LT1 ↓ LT2 ↓ VLaMax →"),
+                    points: [
+                        L10n.t("➡️ 有氧能力下降", "➡️ Aerobic ability declined")
+                    ]
+                )
+
+                stepCard(
+                    number: "5",
+                    title: L10n.t("LT1 ↓ LT2 ↓ VLaMax ↑", "LT1 ↓ LT2 ↓ VLaMax ↑"),
+                    points: [
+                        L10n.t("➡️ 糖酵解增强", "➡️ Glycolytic contribution increased"),
+                        L10n.t("➡️ 脂代谢下降", "➡️ Fat metabolism contribution decreased")
+                    ]
+                )
+
+                stepCard(
+                    number: "6",
+                    title: L10n.t("LT1 ↓ LT2 ↓ VLaMax ↓", "LT1 ↓ LT2 ↓ VLaMax ↓"),
+                    points: [
+                        L10n.t("➡️ 整体有氧能力下降", "➡️ Overall aerobic profile declined")
+                    ]
+                )
+
+                simpleInlineInfoCard(
+                    title: L10n.t("⚠️ 结果限制", "⚠️ Result Limits"),
+                    description: L10n.t(
+                        "结果会受营养状态、疲劳、咖啡因、测试时间与压力影响。\n建议至少进行 3–4 次测试形成可靠趋势。",
+                        "Results are affected by nutrition, fatigue, caffeine, testing time, and stress.\nUse at least 3–4 tests to build a reliable trend."
+                    )
+                )
+
+                Text(L10n.t("🟢 一句话总结：看变化组合，而不是单个指标", "🟢 One-line summary: read combinations of change, not isolated metrics."))
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.teal)
+            }
+        }
+    }
+
     private var anaerobicProtocolCard: some View {
         sectionCard(title: L10n.t("⚡ 无氧能力测试", "⚡ Anaerobic Capacity + Clearance"), icon: "flame.fill") {
             VStack(alignment: .leading, spacing: 12) {
                 simpleInlineInfoCard(
                     title: L10n.t("📌 测试目的", "📌 Purpose"),
                     description: L10n.t(
-                        "了解无氧能力（VLaMax）、糖酵解速率、乳酸生成能力与乳酸清除能力。
-
-✔️ 建议与有氧测试搭配进行，完整评估体能结构。",
-                        "Understand anaerobic capacity (VLaMax), glycolytic rate, lactate production, and clearance.
-
-✔️ Pair with aerobic testing for a complete fitness profile."
+                        "了解无氧能力（VLaMax）、糖酵解速率、乳酸生成能力与乳酸清除能力。\n\n✔️ 建议与有氧测试搭配进行，完整评估体能结构。",
+                        "Understand anaerobic capacity (VLaMax), glycolytic rate, lactate production, and clearance.\n\n✔️ Pair with aerobic testing for a complete fitness profile."
                     )
                 )
 
@@ -1022,6 +1111,53 @@ struct LactateLabView: View {
                         .foregroundStyle(.black)
                 )
         }
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func rampBlock(label: String, height: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 8, height: 8)
+            Rectangle()
+                .fill(Color.teal.opacity(0.75))
+                .frame(width: 44, height: height)
+                .overlay(
+                    Text(label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.black)
+                )
+        }
+    }
+
+    private func simpleInlineInfoCard(title: String, description: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(description)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func sectionCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: icon)
+                .font(.title3.weight(.semibold))
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func simpleInlineInfoCard(title: String, description: String) -> some View {
