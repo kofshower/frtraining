@@ -196,7 +196,7 @@ struct LactateLabView: View {
     }
 
     private var addHistoryRecordCard: some View {
-        sectionCard(title: L10n.t("新增历史测试记录", "Add Historical Test Record"), icon: "square.and.pencil") {
+        sectionCard(title: L10n.t("新增测试记录", "Add Test Record"), icon: "square.and.pencil") {
             VStack(alignment: .leading, spacing: 10) {
                 Text("\(L10n.t("测试人", "Tester")): \(store.selectedAthleteNameForWrite)")
                     .font(.subheadline)
