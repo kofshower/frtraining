@@ -3274,22 +3274,6 @@ final class AppStore: ObservableObject {
         let defaults = AthleteProfile.default
         var changed = false
 
-        if updated.stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            updated.stravaClientID = defaults.stravaClientID
-            changed = true
-        }
-        if updated.stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            updated.stravaClientSecret = defaults.stravaClientSecret
-            changed = true
-        }
-        if updated.stravaRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            updated.stravaRefreshToken = defaults.stravaRefreshToken
-            changed = true
-        }
-        if updated.stravaAccessToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            updated.stravaAccessToken = defaults.stravaAccessToken
-            changed = true
-        }
         if updated.openAIAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             updated.openAIAPIKey = defaults.openAIAPIKey
             changed = true
