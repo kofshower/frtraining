@@ -645,9 +645,91 @@ Precise threshold targeting → Protocol 2"))
         case .fullRamp:
             fullRampProtocolCard
         case .mlss:
+            mlssProtocolCard
+        }
+    }
+
+    private var mlssProtocolCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(L10n.t("🎯 Protocol 2", "🎯 Protocol 2"))
+                .font(.headline)
+            Text(L10n.t("MLSS 精准阈值测试", "MLSS Precision Threshold Test"))
+                .font(.title3.weight(.semibold))
+
             simpleInlineInfoCard(
-                title: test.title,
-                description: test.summary
+                title: L10n.t("📌 测试目的", "📌 Purpose"),
+                description: L10n.t(
+                    "确定最大乳酸稳态（MLSS）：即乳酸生成 = 乳酸清除时的最大稳定功率。",
+                    "Determine maximal lactate steady state (MLSS): the highest stable power where lactate production equals clearance."
+                )
+            )
+
+            simpleInlineInfoCard(
+                title: L10n.t("适用场景", "Best For"),
+                description: L10n.t(
+                    "✔️ 精准设定阈值训练
+✔️ 制定间歇强度
+✔️ 监测阈值变化",
+                    "✔️ Precise threshold training setup
+✔️ Interval intensity prescription
+✔️ Threshold change monitoring"
+                )
+            )
+
+            simpleInlineInfoCard(
+                title: L10n.t("⏱ 测试时长", "⏱ Duration"),
+                description: L10n.t("约 40 分钟 +，通常需要 4 次以上采样。", "About 40+ minutes, typically 4+ lactate samples.")
+            )
+
+            mlssSchematic
+
+            stepCard(
+                number: "1",
+                title: L10n.t("准备 MLSS 估计值", "Estimate MLSS"),
+                points: [
+                    L10n.t("可参考 FTP、Ramp Test 与主观骑行感觉。", "Use FTP, ramp test outcomes, and perceived exertion as references."),
+                    L10n.t("👉 MLSS 通常低于 FTP。", "👉 MLSS is usually lower than FTP.")
+                ]
+            )
+
+            stepCard(
+                number: "2",
+                title: L10n.t("热身", "Warm-up"),
+                points: [
+                    L10n.t("热身 15 分钟，逐步提升到目标功率的 80–90%。", "Warm up 15 minutes, ramping to 80–90% of target power."),
+                    L10n.t("目的：避免突然强度跳升导致初始乳酸失真。", "Goal: avoid initial lactate distortion from abrupt intensity jumps.")
+                ]
+            )
+
+            stepCard(
+                number: "3",
+                title: L10n.t("Stage 1", "Stage 1"),
+                points: [
+                    L10n.t("10 分钟稳定骑行，功率≈估算 MLSS -10W（不确定可 -15~20W）。", "10-min steady ride at estimated MLSS -10W (or -15~20W if unsure)."),
+                    L10n.t("在第 3 分钟与第 9 分钟采样。", "Sample at minute 3 and minute 9."),
+                    L10n.t("若乳酸升高 ≤ 1 mmol/L：进入下一阶段；> 1 mmol/L：休息 10 分钟降功率重试。", "If rise ≤ 1 mmol/L: continue; if > 1 mmol/L: rest 10 min and restart with lower power.")
+                ]
+            )
+
+            stepCard(
+                number: "4",
+                title: L10n.t("Stage 2+", "Stage 2+"),
+                points: [
+                    L10n.t("每阶段再增加约 10W，继续 10 分钟稳定骑行。", "Increase ~10W per stage, continue 10-min steady riding."),
+                    L10n.t("同样在第 3 分钟与第 9 分钟采样。", "Again sample at minute 3 and minute 9.")
+                ]
+            )
+
+            emphasisCard(
+                title: L10n.t("🧠 关键判断逻辑", "🧠 Key Decision Logic"),
+                body: L10n.t("当某阶段乳酸升高 > 1 mmol/L，说明已超过 MLSS；MLSS 位于当前阶段与前一阶段之间，可停止测试。", "When lactate rise in a stage exceeds 1 mmol/L, MLSS has been exceeded; MLSS lies between current and previous stage."),
+                highlight: L10n.t("👉 若乳酸仍稳定可继续 +10W，或改日继续测试", "👉 If stable, continue +10W or continue on another day")
+            )
+
+            emphasisCard(
+                title: L10n.t("⚙️ 测试提示", "⚙️ Test Tips"),
+                body: L10n.t("建议使用 ERG 模式、保持功率稳定，并避免功率波动影响乳酸值。", "Use ERG mode, keep power steady, and avoid fluctuations that perturb lactate values."),
+                highlight: L10n.t("🎯 该协议通常可将 MLSS 定位至 ±10W；后续可用更小增量提精度", "🎯 This protocol typically locates MLSS within ±10W; use smaller increments later for higher precision")
             )
         }
     }
@@ -745,6 +827,52 @@ Precise threshold targeting → Protocol 2"))
         }
     }
 
+    private var mlssSchematic: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.t("示意图", "Schematic"))
+                .font(.subheadline.weight(.semibold))
+
+            HStack(spacing: 6) {
+                mlssStageBlock(title: L10n.t("Stage 1", "Stage 1"), subtitle: L10n.t("~10W 低于估算 MLSS", "~10W below estimated MLSS"))
+                mlssStageBlock(title: L10n.t("Stage 2", "Stage 2"), subtitle: L10n.t("+10W", "+10W"))
+                mlssStageBlock(title: L10n.t("Stage 3", "Stage 3"), subtitle: L10n.t("+10W", "+10W"))
+            }
+
+            Text(L10n.t("每个 Stage 10 分钟；第 3 分钟与第 9 分钟各采样 1 次。", "Each stage is 10 minutes; sample once at minute 3 and minute 9."))
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func mlssStageBlock(title: String, subtitle: String) -> some View {
+        VStack(spacing: 5) {
+            HStack(spacing: 12) {
+                Text("3m")
+                    .font(.caption2)
+                Circle().fill(Color.red).frame(width: 8, height: 8)
+                Text("9m")
+                    .font(.caption2)
+                Circle().fill(Color.red).frame(width: 8, height: 8)
+            }
+            Rectangle()
+                .fill(Color.teal.opacity(0.75))
+                .frame(height: 42)
+                .overlay(
+                    VStack(spacing: 2) {
+                        Text(subtitle)
+                            .font(.caption2.weight(.semibold))
+                        Text("10 min")
+                            .font(.caption2)
+                    }
+                )
+            Text(title)
+                .font(.caption.weight(.semibold))
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     private var fullRampSchematic: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(L10n.t("示意图", "Schematic"))
@@ -784,6 +912,53 @@ Precise threshold targeting → Protocol 2"))
                         .foregroundStyle(.black)
                 )
         }
+        .padding(10)
+        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func rampBlock(label: String, height: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 8, height: 8)
+            Rectangle()
+                .fill(Color.teal.opacity(0.75))
+                .frame(width: 44, height: height)
+                .overlay(
+                    Text(label)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.black)
+                )
+        }
+    }
+
+    private func simpleInlineInfoCard(title: String, description: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            Text(description)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func sectionCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(title, systemImage: icon)
+                .font(.title3.weight(.semibold))
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func simpleInlineInfoCard(title: String, description: String) -> some View {
