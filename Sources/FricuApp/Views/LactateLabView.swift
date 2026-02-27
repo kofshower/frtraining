@@ -1246,10 +1246,31 @@ struct LactateLabView: View {
         Group {
             if let session = Binding($store.currentSession) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("样本污染是错误读数最常见原因")
-                        .font(.headline)
-                    Text("测试前约 1 小时避免摄入含热量饮料/食物；测试中避免含热量补给。")
+                    GroupBox("第 2 步：如何正确取血（防污染）") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("乳酸可取自手指或耳垂；自测通常以手指为主。")
+                            Text("核心原则：不是扎针难，而是要避免污染。")
+                            Text("1) 先备齐：酒精棉、采血针、试纸；试纸两端不要触碰。")
+                            Text("2) 先擦汗：手指、整只手、手臂与面部都要擦干。")
+                            Text("3) 酒精消毒后必须等完全干燥，再进行穿刺。")
+                            Text("4) 建议扎手指侧面；第一滴血擦掉，仅用第二滴完整血珠。")
+                            Text("5) 若血珠流淌，先擦掉再重新挤；试纸只接触血珠，不碰皮肤。")
+                            Text("6) 读数异常跳高时优先怀疑污染，立刻重测并记录。")
+                        }
+                        .font(.subheadline)
+                    }
+
+                    GroupBox("误差控制与测试前饮食") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("• 血流不足时：可先温热双手或轻摇手臂促进出血。")
+                            Text("• 避免用力挤压，防止组织液混入导致乳酸被稀释。")
+                            Text("• 自测时手臂可靠在车把上，尽量减少抖动。")
+                            Text("• 测试前 1 小时避免任何热量摄入；仅可饮水或无糖饮料。")
+                            Text("• 测试过程中不补给热量，并记录测试前饮食，复测时保持可复制。")
+                        }
+                        .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    }
 
                     checklistRow("已准备乳酸仪/试纸/采血针/酒精棉/纸巾/毛巾", binding: session.checklistItems[0])
                     checklistRow("已知晓：擦汗→酒精干燥→丢弃第一滴血", binding: session.checklistItems[1])
