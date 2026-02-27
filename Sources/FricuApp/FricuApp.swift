@@ -121,7 +121,7 @@ struct RootView: View {
             case .trainer:
                 TrainerPageView()
             case .lactateLab:
-                LactateLabBlankPageView()
+                LactateLabView()
             case .proSuite:
                 ProSuiteView()
             case .nutrition:
