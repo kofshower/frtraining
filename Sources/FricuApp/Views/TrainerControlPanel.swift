@@ -2446,7 +2446,7 @@ private struct BikeComputerSparklineCard: View {
                         .tag(mode)
                     }
                 }
-                .appDropdownTheme(width: 128)
+                .appDropdownTheme(width: 112, compact: true)
             }
             HStack(alignment: .firstTextBaseline) {
                 Text(value)
@@ -2457,7 +2457,7 @@ private struct BikeComputerSparklineCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            if points.count >= 2 {
+            if points.count >= 1 {
                 let renderPoints = Array(points.suffix(60))
                 let piePoints = Array(renderPoints.suffix(24))
                 Chart(chartDisplayMode == .pie ? piePoints : renderPoints) { point in
@@ -2576,7 +2576,7 @@ private struct BikeComputerBalanceCompositeCard: View {
                         .tag(mode)
                     }
                 }
-                .appDropdownTheme(width: 128)
+                .appDropdownTheme(width: 112, compact: true)
             }
             HStack(alignment: .firstTextBaseline) {
                 Text(value)
@@ -2588,7 +2588,7 @@ private struct BikeComputerBalanceCompositeCard: View {
             }
 
             HStack(spacing: 10) {
-                if leftPoints.count >= 2 || rightPoints.count >= 2 {
+                if !leftPoints.isEmpty || !rightPoints.isEmpty {
                     let leftRender = Array(leftPoints.suffix(60))
                     let rightRender = Array(rightPoints.suffix(60))
                     Chart {
