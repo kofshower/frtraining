@@ -1,5 +1,11 @@
 import Foundation
 import Combine
+#if canImport(SwiftUI)
+import SwiftUI
+#endif
+#if canImport(AppKit)
+import AppKit
+#endif
 
 struct TrainerRiderSession: Identifiable {
     let id: UUID
@@ -1335,6 +1341,7 @@ final class AppStore: ObservableObject {
 
         let powerValues = samples.compactMap { $0.powerWatts }.filter { $0 > 0 }
         let hrValues = samples.compactMap { $0.heartRateBPM }.filter { $0 > 0 }
+        let cadenceValues = samples.compactMap { $0.cadenceRPM }.filter { $0 > 0 }
         let avgPower = powerValues.isEmpty ? nil : Int((Double(powerValues.reduce(0, +)) / Double(powerValues.count)).rounded())
         let maxPower = powerValues.max()
         let normalizedPower = TSSEstimator.normalizedPower(from: powerValues.map(Double.init)) ?? avgPower
@@ -1360,6 +1367,16 @@ final class AppStore: ObservableObject {
         do {
             let fitData = LiveRideFITWriter.export(samples: samples, summary: summary)
             let fitURL = try saveTrainerFITToDist(fitData: fitData, startDate: session.startedAt)
+            let bikeComputerSnapshot = try captureTrainerBikeComputerSnapshot(
+                samples: samples,
+                riderName: riderName,
+                startDate: session.startedAt,
+                endDate: end,
+                elapsedSec: elapsedSec,
+                averagePower: avgPower,
+                averageHeartRate: avgHeartRate,
+                averageCadence: cadenceValues.isEmpty ? nil : Int((Double(cadenceValues.reduce(0, +)) / Double(cadenceValues.count)).rounded())
+            )
 
             var activity = Activity(
                 date: session.startedAt,
@@ -1383,7 +1400,10 @@ final class AppStore: ObservableObject {
                 externalID: "fricu:trainer:\(sessionID.uuidString):\(Int(session.startedAt.timeIntervalSince1970))",
                 sourceFileName: fitURL.lastPathComponent,
                 sourceFileType: "fit",
-                sourceFileBase64: fitData.base64EncodedString()
+                sourceFileBase64: fitData.base64EncodedString(),
+                bikeComputerScreenshotBase64: bikeComputerSnapshot?.data.base64EncodedString(),
+                bikeComputerScreenshotFileName: bikeComputerSnapshot?.fileName,
+                bikeComputerScreenshotMimeType: bikeComputerSnapshot?.mimeType
             )
 
             let merged = mergeActivities(imported: [activity])
@@ -1397,7 +1417,8 @@ final class AppStore: ObservableObject {
                 fitData: fitData,
                 fitFileName: fitURL.lastPathComponent
             )
-            let finalSummary = "\(riderName) · \(reason)。已保存 FIT：\(fitURL.lastPathComponent)。\(syncSummary)"
+            let snapshotSummary = bikeComputerSnapshot?.savedPath.map { "已保存码表截图：\($0)" } ?? "未生成码表截图"
+            let finalSummary = "\(riderName) · \(reason)。已保存 FIT：\(fitURL.lastPathComponent)。\(snapshotSummary)。\(syncSummary)"
 
             var status = trainerRecordingStatus(for: sessionID)
             status.lastFitPath = fitURL.path
@@ -1434,6 +1455,88 @@ final class AppStore: ObservableObject {
         }
 
         try fitData.write(to: candidate, options: .atomic)
+        return candidate
+    }
+
+    private struct TrainerBikeComputerSnapshot {
+        let data: Data
+        let fileName: String
+        let mimeType: String
+        let savedPath: String?
+    }
+
+    private func captureTrainerBikeComputerSnapshot(
+        samples: [LiveRideSample],
+        riderName: String,
+        startDate: Date,
+        endDate: Date,
+        elapsedSec: Int,
+        averagePower: Int?,
+        averageHeartRate: Int?,
+        averageCadence: Int?
+    ) throws -> TrainerBikeComputerSnapshot? {
+        #if canImport(SwiftUI) && canImport(AppKit)
+        let payload = TrainerBikeComputerSnapshotPayload(
+            riderName: riderName,
+            startDate: startDate,
+            endDate: endDate,
+            elapsedSec: elapsedSec,
+            latestPower: samples.last?.powerWatts,
+            latestHeartRate: samples.last?.heartRateBPM,
+            latestCadence: samples.last?.cadenceRPM.map { Int($0.rounded()) },
+            averagePower: averagePower,
+            averageHeartRate: averageHeartRate,
+            averageCadence: averageCadence,
+            powerTrace: Array(samples.suffix(120)).compactMap(\.powerWatts).map(Double.init),
+            heartRateTrace: Array(samples.suffix(120)).compactMap(\.heartRateBPM).map(Double.init),
+            cadenceTrace: Array(samples.suffix(120)).compactMap { $0.cadenceRPM }
+        )
+
+        guard let imageData = Self.renderTrainerBikeComputerSnapshot(payload: payload) else {
+            return nil
+        }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let fileName = "bike-computer-\(formatter.string(from: startDate)).png"
+
+        var savedPath: String?
+        do {
+            let screenshotURL = try saveTrainerSnapshotToDist(imageData: imageData, preferredFileName: fileName)
+            savedPath = screenshotURL.path
+        } catch {
+            savedPath = nil
+        }
+
+        return TrainerBikeComputerSnapshot(
+            data: imageData,
+            fileName: fileName,
+            mimeType: "image/png",
+            savedPath: savedPath
+        )
+        #else
+        return nil
+        #endif
+    }
+
+    private func saveTrainerSnapshotToDist(imageData: Data, preferredFileName: String) throws -> URL {
+        let fm = FileManager.default
+        let distDir = try resolveWritableTrainerRecordingDirectory()
+        let sanitizedName = preferredFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseName = sanitizedName.isEmpty ? "bike-computer.png" : sanitizedName
+        let ext = (baseName as NSString).pathExtension.isEmpty ? "png" : (baseName as NSString).pathExtension
+        let stem = (baseName as NSString).deletingPathExtension
+
+        var candidate = distDir.appendingPathComponent("\(stem).\(ext)")
+        var suffix = 1
+        while fm.fileExists(atPath: candidate.path) {
+            candidate = distDir.appendingPathComponent("\(stem)-\(suffix).\(ext)")
+            suffix += 1
+        }
+
+        try imageData.write(to: candidate, options: .atomic)
         return candidate
     }
 
@@ -1721,6 +1824,45 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func uploadScreenshotToStravaWithAuthRetry(
+        client: StravaAPIClient,
+        auth: inout StravaAuthUpdate,
+        activityID: Int,
+        screenshotData: Data,
+        fileName: String,
+        mimeType: String,
+        caption: String
+    ) async throws {
+        do {
+            try await client.uploadActivityPhoto(
+                accessToken: auth.accessToken,
+                activityID: activityID,
+                photoData: screenshotData,
+                fileName: fileName,
+                mimeType: mimeType,
+                caption: caption
+            )
+        } catch let StravaAPIError.requestFailed(code, _) where code == 401 {
+            auth = try await client.forceRefreshAccessToken(profile: profile)
+            applyStravaAuthUpdate(auth)
+            try await client.uploadActivityPhoto(
+                accessToken: auth.accessToken,
+                activityID: activityID,
+                photoData: screenshotData,
+                fileName: fileName,
+                mimeType: mimeType,
+                caption: caption
+            )
+        }
+    }
+
+    private func extractStravaActivityID(from externalID: String) -> Int? {
+        guard externalID.hasPrefix("strava:") else { return nil }
+        let raw = String(externalID.dropFirst("strava:".count))
+        if raw.hasPrefix("upload:") { return nil }
+        return Int(raw)
+    }
+
     private func pushActivityPayloadToStrava(
         activity: Activity,
         payload: (data: Data, `extension`: String, fileName: String),
@@ -1736,8 +1878,9 @@ final class AppStore: ObservableObject {
         let externalID = "\(externalIDPrefix)-\(activity.id.uuidString)"
         let dataType = payload.extension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
+        let uploadedExternalID: String
         do {
-            return try await uploadToStravaWithAuthRetry(
+            uploadedExternalID = try await uploadToStravaWithAuthRetry(
                 client: client,
                 auth: &auth,
                 payload: (payload.data, dataType),
@@ -1750,7 +1893,7 @@ final class AppStore: ObservableObject {
                 throw error
             }
             let tcx = TCXWriter.export(activity: activity)
-            return try await uploadToStravaWithAuthRetry(
+            uploadedExternalID = try await uploadToStravaWithAuthRetry(
                 client: client,
                 auth: &auth,
                 payload: (tcx, "tcx"),
@@ -1759,6 +1902,27 @@ final class AppStore: ObservableObject {
                 externalID: externalID + "-tcx"
             )
         }
+
+        if
+            let screenshotBase64 = activity.bikeComputerScreenshotBase64,
+            let screenshotData = Data(base64Encoded: screenshotBase64),
+            !screenshotData.isEmpty,
+            let stravaActivityID = extractStravaActivityID(from: uploadedExternalID)
+        {
+            let fileName = activity.bikeComputerScreenshotFileName ?? "bike-computer.png"
+            let mimeType = activity.bikeComputerScreenshotMimeType ?? "image/png"
+            try await uploadScreenshotToStravaWithAuthRetry(
+                client: client,
+                auth: &auth,
+                activityID: stravaActivityID,
+                screenshotData: screenshotData,
+                fileName: fileName,
+                mimeType: mimeType,
+                caption: "Fricu 实时码表截图"
+            )
+        }
+
+        return uploadedExternalID
     }
 
     func ensureAICoachReady() async {
@@ -2971,6 +3135,17 @@ final class AppStore: ObservableObject {
         if merged.sourceFileBase64 == nil {
             merged.sourceFileBase64 = fallback.sourceFileBase64
         }
+        if merged.bikeComputerScreenshotBase64 == nil {
+            merged.bikeComputerScreenshotBase64 = fallback.bikeComputerScreenshotBase64
+        }
+        merged.bikeComputerScreenshotFileName = firstNonEmpty(
+            merged.bikeComputerScreenshotFileName,
+            fallback.bikeComputerScreenshotFileName
+        )
+        merged.bikeComputerScreenshotMimeType = firstNonEmpty(
+            merged.bikeComputerScreenshotMimeType,
+            fallback.bikeComputerScreenshotMimeType
+        )
         if normalizedNonEmptyString(merged.platformPayloadJSON) == nil {
             merged.platformPayloadJSON = fallback.platformPayloadJSON
         }
@@ -3970,3 +4145,143 @@ final class AppStore: ObservableObject {
         }
     }
 }
+
+#if canImport(SwiftUI) && canImport(AppKit)
+private struct TrainerBikeComputerSnapshotPayload {
+    let riderName: String
+    let startDate: Date
+    let endDate: Date
+    let elapsedSec: Int
+    let latestPower: Int?
+    let latestHeartRate: Int?
+    let latestCadence: Int?
+    let averagePower: Int?
+    let averageHeartRate: Int?
+    let averageCadence: Int?
+    let powerTrace: [Double]
+    let heartRateTrace: [Double]
+    let cadenceTrace: [Double]
+}
+
+private struct TrainerBikeComputerSnapshotView: View {
+    let payload: TrainerBikeComputerSnapshotPayload
+
+    private var durationText: String {
+        let total = max(0, payload.elapsedSec)
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
+        return String(format: "%02d:%02d", m, s)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Fricu 实时码表截图")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundStyle(.white)
+                    Text("\(payload.riderName) · \(IntervalsDateFormatter.dateTimeLocal.string(from: payload.startDate))")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                Spacer()
+                Text("时长 \(durationText)")
+                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white)
+            }
+
+            HStack(spacing: 10) {
+                snapshotMetricCard(title: "功率", latest: payload.latestPower.map { "\($0) W" } ?? "--", avg: payload.averagePower.map { "\($0) W" } ?? "--", color: .orange)
+                snapshotMetricCard(title: "心率", latest: payload.latestHeartRate.map { "\($0) bpm" } ?? "--", avg: payload.averageHeartRate.map { "\($0) bpm" } ?? "--", color: .red)
+                snapshotMetricCard(title: "踏频", latest: payload.latestCadence.map { "\($0) rpm" } ?? "--", avg: payload.averageCadence.map { "\($0) rpm" } ?? "--", color: .green)
+            }
+
+            HStack(spacing: 10) {
+                snapshotSparkline(title: "Power", points: payload.powerTrace, color: .orange)
+                snapshotSparkline(title: "Heart Rate", points: payload.heartRateTrace, color: .red)
+                snapshotSparkline(title: "Cadence", points: payload.cadenceTrace, color: .green)
+            }
+        }
+        .padding(22)
+        .frame(width: 1280, height: 720, alignment: .topLeading)
+        .background(
+            LinearGradient(colors: [Color(red: 0.11, green: 0.12, blue: 0.16), Color(red: 0.08, green: 0.09, blue: 0.12)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+    }
+
+    @ViewBuilder
+    private func snapshotMetricCard(title: String, latest: String, avg: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+            Text(latest)
+                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .foregroundStyle(.white)
+            Text("均值 \(avg)")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(.white.opacity(0.75))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.55), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func snapshotSparkline(title: String, points: [Double], color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+            SnapshotSparkline(points: points)
+                .stroke(color, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                .frame(height: 96)
+                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct SnapshotSparkline: Shape {
+    let points: [Double]
+
+    func path(in rect: CGRect) -> Path {
+        guard points.count >= 2 else { return Path() }
+        let minValue = points.min() ?? 0
+        let maxValue = points.max() ?? 1
+        let span = max(1e-6, maxValue - minValue)
+        var path = Path()
+        for (index, value) in points.enumerated() {
+            let x = rect.minX + (CGFloat(index) / CGFloat(max(points.count - 1, 1))) * rect.width
+            let normalized = (value - minValue) / span
+            let y = rect.maxY - CGFloat(normalized) * rect.height
+            if index == 0 {
+                path.move(to: CGPoint(x: x, y: y))
+            } else {
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+        }
+        return path
+    }
+}
+
+private extension AppStore {
+    static func renderTrainerBikeComputerSnapshot(payload: TrainerBikeComputerSnapshotPayload) -> Data? {
+        let renderer = ImageRenderer(content: TrainerBikeComputerSnapshotView(payload: payload))
+        renderer.proposedSize = ProposedViewSize(width: 1280, height: 720)
+        renderer.scale = 1
+        guard let nsImage = renderer.nsImage else { return nil }
+        guard let tiff = nsImage.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        return png
+    }
+}
+#endif

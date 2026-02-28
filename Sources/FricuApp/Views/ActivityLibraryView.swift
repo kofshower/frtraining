@@ -945,16 +945,11 @@ private struct ActivityDetailSheet: View {
     let activity: Activity
     let profile: AthleteProfile
     let loadSeries: [DailyLoadPoint]
-    @State private var isGCMetricsExpanded = false
     @State private var preloadedSensorSamples: [ActivitySensorSample] = []
     @State private var hasLoadedSensorSamples = false
-    @State private var gcActivityMetricsCache: [ActivityMetricCardModel] = []
-    @State private var hasLoadedGCMetrics = false
     @State private var derived = ActivityDetailDerived.empty
     @State private var derivedComputationGeneration: UInt64 = 0
-    @State private var gcMetricsComputationGeneration: UInt64 = 0
     @State private var isComputingDerived = false
-    @State private var isComputingGCMetrics = false
     @State private var showDeleteActivityConfirm = false
 
     private var activityFTP: Int {
@@ -1233,6 +1228,44 @@ private struct ActivityDetailSheet: View {
 
     private var heartRateAverageValue: Double? {
         derived.heartRateAverageValue
+    }
+
+    private var powerDistributionBins: [ActivityDistributionBin] {
+        distributionBins(from: powerTracePoints, binCount: 12, unit: "W")
+    }
+
+    private var heartRateDistributionBins: [ActivityDistributionBin] {
+        distributionBins(from: heartRateTracePoints, binCount: 12, unit: "bpm")
+    }
+
+    private func distributionBins(from points: [ActivityTracePoint], binCount: Int, unit: String) -> [ActivityDistributionBin] {
+        let values = points.map(\.value).filter { $0.isFinite && $0 > 0 }
+        guard values.count >= 2 else { return [] }
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 0
+        let span = max(1.0, maxValue - minValue)
+        let safeBinCount = max(4, binCount)
+        let binWidth = span / Double(safeBinCount)
+
+        var counts = Array(repeating: 0, count: safeBinCount)
+        for value in values {
+            let rawIndex = Int((value - minValue) / binWidth)
+            let index = min(max(rawIndex, 0), safeBinCount - 1)
+            counts[index] += 1
+        }
+
+        let total = max(1, counts.reduce(0, +))
+        return counts.enumerated().map { idx, count in
+            let lower = minValue + Double(idx) * binWidth
+            let upper = idx == safeBinCount - 1 ? maxValue : lower + binWidth
+            return ActivityDistributionBin(
+                id: idx,
+                rangeLabel: "\(Int(lower.rounded()))-\(Int(upper.rounded())) \(unit)",
+                valueMidpoint: (lower + upper) * 0.5,
+                sampleCount: count,
+                fraction: Double(count) / Double(total)
+            )
+        }
     }
 
     private var durationHours: Double {
@@ -1853,85 +1886,6 @@ private struct ActivityDetailSheet: View {
         return rows
     }
 
-    private var gcActivityMetricsCount: Int {
-        let existingTitles = Set(metrics.map { $0.title.lowercased() })
-        let duplicateCount = GoldenCheetahMetricCatalog.activity.reduce(into: 0) { count, spec in
-            if existingTitles.contains(spec.name.lowercased()) {
-                count += 1
-            }
-        }
-        return max(0, GoldenCheetahMetricCatalog.activity.count - duplicateCount)
-    }
-
-    private func computeGCActivityMetrics(existingTitles: Set<String>) -> [ActivityMetricCardModel] {
-        Self.computeGCActivityMetrics(
-            activity: activity,
-            profile: profile,
-            dayLoadPoint: dayLoadPoint,
-            leftRightBalancePercent: balanceSummary?.averageLeftPercent,
-            existingTitles: existingTitles
-        )
-    }
-
-    private static func computeGCActivityMetrics(
-        activity: Activity,
-        profile: AthleteProfile,
-        dayLoadPoint: DailyLoadPoint?,
-        leftRightBalancePercent: Double?,
-        existingTitles: Set<String>
-    ) -> [ActivityMetricCardModel] {
-        let calendar = Calendar.current
-        let context = MetricDayContext(
-            date: calendar.startOfDay(for: activity.date),
-            activities: [activity],
-            load: dayLoadPoint,
-            profile: profile
-        )
-
-        return GoldenCheetahMetricCatalog.activity.compactMap { spec in
-            if existingTitles.contains(spec.name.lowercased()) { return nil }
-            let raw: Double
-            if spec.symbol == "left_right_balance", let leftRightBalancePercent {
-                raw = leftRightBalancePercent
-            } else {
-                raw = GoldenCheetahMetricCatalog.value(symbol: spec.symbol, context: context)
-            }
-            return ActivityMetricCardModel(
-                title: spec.name,
-                value: formatGCValue(raw, unit: spec.unit),
-                hint: "GC Activity 指标",
-                method: "GC Symbol: \(spec.symbol)",
-                inputs: spec.symbol == "left_right_balance" && leftRightBalancePercent != nil
-                    ? "口径: 来自当前活动原始 L/R 采样均值"
-                    : "口径: 按当前活动数据做兼容估算（与 GC 同名指标）"
-            )
-        }
-    }
-
-    private var gcActivityMetrics: [ActivityMetricCardModel] {
-        gcActivityMetricsCache
-    }
-
-    private static func formatGCValue(_ value: Double, unit: String) -> String {
-        if unit == "%" {
-            return String(format: "%.1f%%", value)
-        }
-        if unit == "min/km" {
-            let minutes = Int(max(0, floor(value)))
-            let seconds = Int(max(0, round((value - floor(value)) * 60)))
-            return String(format: "%d:%02d /km", minutes, seconds)
-        }
-        if unit.isEmpty {
-            if abs(value) >= 100 {
-                return String(format: "%.0f", value)
-            }
-            return String(format: "%.2f", value)
-        }
-        if abs(value) >= 100 {
-            return String(format: "%.0f %@", value, unit)
-        }
-        return String(format: "%.2f %@", value, unit)
-    }
 
     private var stories: [ActivityStory] {
         derived.stories
@@ -2035,28 +1989,6 @@ private struct ActivityDetailSheet: View {
         }
         preloadedSensorSamples = samples
         hasLoadedSensorSamples = true
-    }
-
-    private func ensureGCMetricsLoadedIfNeeded() {
-        guard !hasLoadedGCMetrics else { return }
-        guard !isComputingGCMetrics else { return }
-        isComputingGCMetrics = true
-
-        // 预先排除已展示的核心指标，避免 GC 同名指标重复。
-        let existingTitles = Set(buildMetrics(decouplingSummary: nil, balanceSummary: nil).map { $0.title.lowercased() })
-        gcMetricsComputationGeneration &+= 1
-        let generation = gcMetricsComputationGeneration
-        let computed = computeGCActivityMetrics
-
-        DispatchQueue.global(qos: .utility).async {
-            let rows = computed(existingTitles)
-            DispatchQueue.main.async {
-                guard generation == gcMetricsComputationGeneration else { return }
-                gcActivityMetricsCache = rows
-                hasLoadedGCMetrics = true
-                isComputingGCMetrics = false
-            }
-        }
     }
 
     private func buildDerived(sensorSamples: [ActivitySensorSample]) -> ActivityDetailDerived {
@@ -2376,49 +2308,6 @@ private struct ActivityDetailSheet: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Button {
-                        isGCMetricsExpanded.toggle()
-                        if isGCMetricsExpanded {
-                            ensureGCMetricsLoadedIfNeeded()
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: isGCMetricsExpanded ? "chevron.down" : "chevron.right")
-                                .font(.caption.bold())
-                                .foregroundStyle(.secondary)
-                            Text("Golden Cheetah Activity Metrics (\(gcActivityMetricsCount))")
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    if isGCMetricsExpanded {
-                        if isComputingGCMetrics {
-                            ProgressView(L10n.choose(simplifiedChinese: "正在计算 GC 指标…", english: "Computing GC metrics..."))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            LazyVGrid(
-                                columns: [
-                                    GridItem(.flexible(minimum: 170)),
-                                    GridItem(.flexible(minimum: 170)),
-                                    GridItem(.flexible(minimum: 170)),
-                                    GridItem(.flexible(minimum: 170))
-                                ],
-                                alignment: .leading,
-                                spacing: 10
-                            ) {
-                                ForEach(gcActivityMetrics) { metric in
-                                    ActivityMetricCard(metric: metric)
-                                }
-                            }
-                        }
-                    }
-                }
-
                 Text("活动小图")
                     .font(.title3.bold())
 
@@ -2440,6 +2329,27 @@ private struct ActivityDetailSheet: View {
                         points: heartRateTracePoints,
                         average: heartRateAverageValue,
                         sourceText: heartRateSourceText
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+
+                Text("分布图")
+                    .font(.title3.bold())
+
+                HStack(alignment: .top, spacing: 12) {
+                    ActivityDistributionCard(
+                        title: "Power Distribution",
+                        unitLabel: "W",
+                        color: .orange,
+                        bins: powerDistributionBins
+                    )
+                    .frame(maxWidth: .infinity)
+
+                    ActivityDistributionCard(
+                        title: "Heart Rate Distribution",
+                        unitLabel: "bpm",
+                        color: .red,
+                        bins: heartRateDistributionBins
                     )
                     .frame(maxWidth: .infinity)
                 }
@@ -2774,16 +2684,11 @@ private struct ActivityDetailSheet: View {
         .task(id: activity.id) {
             hasLoadedSensorSamples = false
             preloadedSensorSamples = []
-            hasLoadedGCMetrics = false
-            gcActivityMetricsCache = []
-            gcMetricsComputationGeneration &+= 1
-            isComputingGCMetrics = false
             derivedComputationGeneration &+= 1
             isComputingDerived = false
             derived = .empty
             await preloadSensorSamplesIfNeeded()
             recomputeDerivedCaches()
-            if isGCMetricsExpanded { ensureGCMetricsLoadedIfNeeded() }
             await store.ensureActivityMetricInsightCached(for: activity)
         }
         .confirmationDialog(
@@ -3058,6 +2963,14 @@ private struct ActivityPowerZoneBand: Identifiable {
     let color: Color
 }
 
+private struct ActivityDistributionBin: Identifiable {
+    let id: Int
+    let rangeLabel: String
+    let valueMidpoint: Double
+    let sampleCount: Int
+    let fraction: Double
+}
+
 private struct ActivityHrPwRegression {
     let slope: Double
     let intercept: Double
@@ -3065,6 +2978,46 @@ private struct ActivityHrPwRegression {
 
     func predicted(at power: Double) -> Double {
         slope * power + intercept
+    }
+}
+
+private struct ActivityDistributionCard: View {
+    let title: String
+    let unitLabel: String
+    let color: Color
+    let bins: [ActivityDistributionBin]
+
+    var body: some View {
+        GroupBox(title) {
+            VStack(alignment: .leading, spacing: 8) {
+                if bins.isEmpty {
+                    Text("No \(title.lowercased()) data")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Chart(bins) { bin in
+                        BarMark(
+                            x: .value("Range", bin.rangeLabel),
+                            y: .value("Samples", bin.sampleCount)
+                        )
+                        .foregroundStyle(color.gradient)
+                    }
+                    .chartXAxis {
+                        AxisMarks(values: .automatic(desiredCount: 4))
+                    }
+                    .frame(height: 120)
+
+                    HStack {
+                        Text("Peak: \(Int((bins.max(by: { $0.sampleCount < $1.sampleCount })?.valueMidpoint ?? 0).rounded())) \(unitLabel)")
+                        Spacer()
+                        Text("Bins: \(bins.count)")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 

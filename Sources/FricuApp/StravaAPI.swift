@@ -360,6 +360,35 @@ final class StravaAPIClient {
         return activityID.map { "strava:\($0)" } ?? "strava:upload:\(uploadID)"
     }
 
+    func uploadActivityPhoto(
+        accessToken: String,
+        activityID: Int,
+        photoData: Data,
+        fileName: String,
+        mimeType: String,
+        caption: String?
+    ) async throws {
+        guard !accessToken.isEmpty else {
+            throw StravaAPIError.missingAccessToken
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: apiBase.appending(path: "/activities/\(activityID)/photos"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = 60
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.httpBody = buildPhotoUploadBody(
+            boundary: boundary,
+            photoData: photoData,
+            fileName: fileName,
+            mimeType: mimeType,
+            caption: caption
+        )
+        _ = try await send(req, debugLabel: "POST /api/v3/activities/{id}/photos")
+    }
+
     private func fetchActivityDetail(accessToken: String, activityID: String) async throws -> [String: Any] {
         var components = URLComponents(url: apiBase.appending(path: "/activities/\(activityID)"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "include_all_efforts", value: "true")]
@@ -597,6 +626,35 @@ final class StravaAPIClient {
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"activity.\(fileExtension)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
         body.append(fileData)
+        body.append("\r\n".data(using: .utf8)!)
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        return body
+    }
+
+    private func buildPhotoUploadBody(
+        boundary: String,
+        photoData: Data,
+        fileName: String,
+        mimeType: String,
+        caption: String?
+    ) -> Data {
+        func field(_ key: String, _ value: String) -> Data {
+            var data = Data()
+            data.append("--\(boundary)\r\n".data(using: .utf8)!)
+            data.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n".data(using: .utf8)!)
+            data.append("\(value)\r\n".data(using: .utf8)!)
+            return data
+        }
+
+        var body = Data()
+        if let caption, !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body.append(field("caption", caption))
+        }
+
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(photoData)
         body.append("\r\n".data(using: .utf8)!)
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
         return body
