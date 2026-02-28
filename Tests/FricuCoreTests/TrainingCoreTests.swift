@@ -149,6 +149,22 @@ final class TrainingCoreTests: XCTestCase {
         XCTAssertNil(CyclingPowerMeasurementParser.parse(Data([0x00, 0x00, 0x10])))
     }
 
+    func testCyclingPowerParserIgnoresInvalidPedalBalanceByte() throws {
+        let flags: UInt16 = CyclingPowerMeasurementFlags.pedalPowerBalancePresent.rawValue
+            | CyclingPowerMeasurementFlags.pedalPowerBalanceReference.rawValue
+        let payload: [UInt8] = [
+            UInt8(flags & 0xFF),
+            UInt8((flags >> 8) & 0xFF),
+            0xC8, 0x00, // 200W
+            0xFF // invalid/reserved for 0.5% pedal balance (valid max is 200)
+        ]
+        let measurement = try XCTUnwrap(CyclingPowerMeasurementParser.parse(Data(payload)))
+        XCTAssertNil(measurement.pedalPowerBalancePercent)
+        XCTAssertNil(measurement.pedalPowerBalanceReferenceIsRight)
+        XCTAssertNil(measurement.estimatedLeftBalancePercent)
+        XCTAssertNil(measurement.estimatedRightBalancePercent)
+    }
+
     func testFitnessMachineIndoorBikeParsesFullFields() throws {
         let flags: UInt16 = 0b0001_1111_1111_1110 // avg speed + all optional fields, instantaneous speed present
         var payload: [UInt8] = []

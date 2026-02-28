@@ -128,14 +128,18 @@ public enum CyclingPowerMeasurementParser {
 
         if flags.contains(.pedalPowerBalancePresent) {
             guard let raw = reader.readUInt8() else { return nil }
-            let balancePercent = max(0.0, min(100.0, Double(raw) * 0.5))
-            let referenceIsRight = flags.contains(.pedalPowerBalanceReference)
-            let right = referenceIsRight ? balancePercent : (100.0 - balancePercent)
-            let left = 100.0 - right
-            pedalPowerBalancePercent = balancePercent
-            pedalPowerBalanceReferenceIsRight = referenceIsRight
-            estimatedLeftBalancePercent = max(0.0, min(100.0, left))
-            estimatedRightBalancePercent = max(0.0, min(100.0, right))
+            // CPS pedal balance uses 0.5% resolution and valid range 0...200.
+            // Values above 200 are reserved/invalid and should be ignored.
+            if raw <= 200 {
+                let balancePercent = Double(raw) * 0.5
+                let referenceIsRight = flags.contains(.pedalPowerBalanceReference)
+                let right = referenceIsRight ? balancePercent : (100.0 - balancePercent)
+                let left = 100.0 - right
+                pedalPowerBalancePercent = balancePercent
+                pedalPowerBalanceReferenceIsRight = referenceIsRight
+                estimatedLeftBalancePercent = max(0.0, min(100.0, left))
+                estimatedRightBalancePercent = max(0.0, min(100.0, right))
+            }
         }
 
         var accumulatedTorqueNm: Double?

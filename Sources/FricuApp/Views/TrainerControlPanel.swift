@@ -325,12 +325,25 @@ struct TrainerControlPanel: View {
         heartRateMonitor.liveHeartRateBPM
     }
 
+    private var bikeComputerBalancePair: (left: Double, right: Double)? {
+        if let pair = normalizedBalancePair(
+            left: powerMeter.liveLeftBalancePercent,
+            right: powerMeter.liveRightBalancePercent
+        ) {
+            return pair
+        }
+        return normalizedBalancePair(
+            left: trainer.liveLeftBalancePercent,
+            right: trainer.liveRightBalancePercent
+        )
+    }
+
     private var bikeComputerBalanceLeftPercent: Double? {
-        powerMeter.liveLeftBalancePercent ?? trainer.liveLeftBalancePercent
+        bikeComputerBalancePair?.left
     }
 
     private var bikeComputerBalanceRightPercent: Double? {
-        powerMeter.liveRightBalancePercent ?? trainer.liveRightBalancePercent
+        bikeComputerBalancePair?.right
     }
 
     private var bikeComputerBalanceText: String {
@@ -375,9 +388,8 @@ struct TrainerControlPanel: View {
         trainer.liveSpeedKPH.map { String(format: "%.1f km/h", $0) } ?? "--"
     }
 
-    private var bikeComputerClimbText: String {
-        guard recordingActive else { return "--" }
-        return String(format: "%.0f m", recordingElevationGainMeters)
+    private var bikeComputerCadenceText: String {
+        bikeComputerCadenceRPM.map { String(format: "%.0f rpm", $0) } ?? "--"
     }
 
     private var bikeComputerCaloriesText: String {
@@ -955,16 +967,9 @@ struct TrainerControlPanel: View {
         }
     }
 
-    private var speedSparkline: [SparklinePoint] {
+    private var cadenceSparkline: [SparklinePoint] {
         recentBikeComputerTrace.compactMap { point in
-            guard let value = point.speedKPH else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
-    }
-
-    private var climbSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.elevationMeters else { return nil }
+            guard let value = point.cadenceRPM else { return nil }
             return SparklinePoint(timestamp: point.timestamp, value: value)
         }
     }
@@ -1010,6 +1015,28 @@ struct TrainerControlPanel: View {
         let values = points.filter { $0.timestamp >= cutoff }.map(\.value)
         guard !values.isEmpty else { return nil }
         return values.reduce(0, +) / Double(values.count)
+    }
+
+    private func normalizedBalancePair(left: Double?, right: Double?) -> (left: Double, right: Double)? {
+        let leftValue = left?.isFinite == true ? left : nil
+        let rightValue = right?.isFinite == true ? right : nil
+
+        switch (leftValue, rightValue) {
+        case let (l?, r?):
+            guard (0...100).contains(l), (0...100).contains(r) else { return nil }
+            let sum = l + r
+            guard sum > 0 else { return nil }
+            let normalizedLeft = max(0, min(100, (l / sum) * 100))
+            return (normalizedLeft, 100 - normalizedLeft)
+        case let (l?, nil):
+            guard (0...100).contains(l) else { return nil }
+            return (l, 100 - l)
+        case let (nil, r?):
+            guard (0...100).contains(r) else { return nil }
+            return (100 - r, r)
+        default:
+            return nil
+        }
     }
 
     private func appendBikeComputerTraceSample(at timestamp: Date = Date()) {
@@ -1071,6 +1098,7 @@ struct TrainerControlPanel: View {
             timestamp: timestamp,
             elapsedSec: elapsedSec,
             powerWatts: bikeComputerPowerWatts.map(Double.init),
+            cadenceRPM: bikeComputerCadenceRPM,
             heartRateBPM: bikeComputerHeartRateBPM.map(Double.init),
             speedKPH: trainer.liveSpeedKPH,
             elevationMeters: recordingActive ? recordingElevationGainMeters : nil,
@@ -2216,18 +2244,11 @@ struct TrainerControlPanel: View {
                                 points: heartRateSparkline
                             )
                             BikeComputerSparklineCard(
-                                label: "速度",
-                                value: bikeComputerSpeedText,
-                                averageText: oneMinuteAverage(from: speedSparkline).map { String(format: "1m %.1f km/h", $0) } ?? "1m --",
-                                tint: .mint,
-                                points: speedSparkline
-                            )
-                            BikeComputerSparklineCard(
-                                label: "爬升",
-                                value: bikeComputerClimbText,
-                                averageText: recordingActive ? "累计爬升" : "未记录",
+                                label: "踏频",
+                                value: bikeComputerCadenceText,
+                                averageText: oneMinuteAverage(from: cadenceSparkline).map { String(format: "1m %.0f rpm", $0) } ?? "1m --",
                                 tint: .green,
-                                points: climbSparkline
+                                points: cadenceSparkline
                             )
                             BikeComputerBalanceCompositeCard(
                                 label: "左右平衡",
@@ -2404,6 +2425,7 @@ private struct BikeComputerTracePoint: Identifiable {
     let timestamp: Date
     let elapsedSec: Int
     let powerWatts: Double?
+    let cadenceRPM: Double?
     let heartRateBPM: Double?
     let speedKPH: Double?
     let elevationMeters: Double?
@@ -2421,6 +2443,38 @@ private struct SparklinePoint: Identifiable {
     let value: Double
 }
 
+private struct ChartModeMenuButton: View {
+    @Binding var selection: AppChartDisplayMode
+
+    var body: some View {
+        Menu {
+            ForEach(AppChartDisplayMode.allCases) { mode in
+                Button {
+                    selection = mode
+                } label: {
+                    Label(mode.title, systemImage: mode.symbol)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: selection.symbol)
+                    .font(.caption.weight(.semibold))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(.secondary.opacity(0.22), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 private struct BikeComputerSparklineCard: View {
     @State private var chartDisplayMode: AppChartDisplayMode = .line
     let label: String
@@ -2436,17 +2490,7 @@ private struct BikeComputerSparklineCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker(label, selection: $chartDisplayMode) {
-                    ForEach(AppChartDisplayMode.allCases) { mode in
-                        Label {
-                            Text(mode.title)
-                        } icon: {
-                            Image(systemName: mode.symbol)
-                        }
-                        .tag(mode)
-                    }
-                }
-                .appDropdownTheme(width: 112, compact: true)
+                ChartModeMenuButton(selection: $chartDisplayMode)
             }
             HStack(alignment: .firstTextBaseline) {
                 Text(value)
@@ -2460,7 +2504,8 @@ private struct BikeComputerSparklineCard: View {
             if points.count >= 1 {
                 let renderPoints = Array(points.suffix(60))
                 let piePoints = Array(renderPoints.suffix(24))
-                Chart(chartDisplayMode == .pie ? piePoints : renderPoints) { point in
+                let lineDomain = lineYDomain(points: renderPoints)
+                let chart = Chart(chartDisplayMode == .pie ? piePoints : renderPoints) { point in
                     switch chartDisplayMode {
                     case .line:
                         LineMark(
@@ -2470,6 +2515,14 @@ private struct BikeComputerSparklineCard: View {
                         .foregroundStyle(tint)
                         .interpolationMethod(.linear)
                         .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                        if renderPoints.count == 1 {
+                            PointMark(
+                                x: .value("Time", point.timestamp),
+                                y: .value("Value", point.value)
+                            )
+                            .foregroundStyle(tint)
+                            .symbolSize(26)
+                        }
                     case .bar:
                         BarMark(
                             x: .value("Time", point.timestamp),
@@ -2497,6 +2550,13 @@ private struct BikeComputerSparklineCard: View {
                         )
                     }
                 }
+                Group {
+                    if chartDisplayMode == .line, let domain = lineDomain {
+                        chart.chartYScale(domain: domain)
+                    } else {
+                        chart
+                    }
+                }
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
                 .chartPlotStyle { plotArea in
@@ -2522,6 +2582,19 @@ private struct BikeComputerSparklineCard: View {
         }
         .padding(8)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func lineYDomain(points: [SparklinePoint]) -> ClosedRange<Double>? {
+        guard let minValue = points.map(\.value).min(),
+              let maxValue = points.map(\.value).max() else {
+            return nil
+        }
+        if abs(maxValue - minValue) < 0.0001 {
+            let pad = max(1, abs(maxValue) * 0.06)
+            return (minValue - pad)...(maxValue + pad)
+        }
+        let pad = (maxValue - minValue) * 0.12
+        return (minValue - pad)...(maxValue + pad)
     }
 }
 
@@ -2566,17 +2639,7 @@ private struct BikeComputerBalanceCompositeCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker(label, selection: $chartDisplayMode) {
-                    ForEach(AppChartDisplayMode.allCases) { mode in
-                        Label {
-                            Text(mode.title)
-                        } icon: {
-                            Image(systemName: mode.symbol)
-                        }
-                        .tag(mode)
-                    }
-                }
-                .appDropdownTheme(width: 112, compact: true)
+                ChartModeMenuButton(selection: $chartDisplayMode)
             }
             HStack(alignment: .firstTextBaseline) {
                 Text(value)
@@ -2603,6 +2666,14 @@ private struct BikeComputerBalanceCompositeCard: View {
                                 .interpolationMethod(.linear)
                                 .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
                             }
+                            if leftRender.count == 1, let point = leftRender.first {
+                                PointMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", point.value)
+                                )
+                                .foregroundStyle(.purple)
+                                .symbolSize(22)
+                            }
 
                             ForEach(rightRender) { point in
                                 LineMark(
@@ -2612,6 +2683,14 @@ private struct BikeComputerBalanceCompositeCard: View {
                                 .foregroundStyle(.indigo)
                                 .interpolationMethod(.linear)
                                 .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                            }
+                            if rightRender.count == 1, let point = rightRender.first {
+                                PointMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", point.value)
+                                )
+                                .foregroundStyle(.indigo)
+                                .symbolSize(22)
                             }
                         case .bar:
                             ForEach(leftRender) { point in
@@ -2714,39 +2793,12 @@ private struct BikeComputerBalanceCompositeCard: View {
                             )
                     } else {
                         Chart(pieSlices) { slice in
-                            switch chartDisplayMode {
-                            case .line:
-                                LineMark(
-                                    x: .value("Side", slice.label),
-                                    y: .value("Percent", slice.percent)
-                                )
-                                .foregroundStyle(slice.color)
-                            case .bar:
-                                BarMark(
-                                    x: .value("Side", slice.label),
-                                    y: .value("Percent", slice.percent)
-                                )
-                                .foregroundStyle(slice.color)
-                            case .pie:
-                                SectorMark(
-                                    angle: .value("Percent", slice.percent),
-                                    innerRadius: .ratio(0.56),
-                                    angularInset: 1
-                                )
-                                .foregroundStyle(slice.color)
-                            case .flame:
-                                BarMark(
-                                    x: .value("Side", slice.label),
-                                    y: .value("Percent", slice.percent)
-                                )
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.yellow, .orange, .red],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                            }
+                            SectorMark(
+                                angle: .value("Percent", slice.percent),
+                                innerRadius: .ratio(0.56),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(slice.color)
                         }
                         .chartLegend(.hidden)
                         .frame(width: 64, height: 64)

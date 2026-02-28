@@ -589,11 +589,15 @@ final class SmartTrainerManager: NSObject, ObservableObject {
         let measurement = mergedCyclingPowerMeasurement(current: rawMeasurement, previous: liveCyclingPowerMeasurement)
         liveCyclingPowerMeasurement = measurement
         livePowerWatts = rawMeasurement.instantaneousPowerWatts
-        if let left = rawMeasurement.estimatedLeftBalancePercent {
-            liveLeftBalancePercent = left
-        }
-        if let right = rawMeasurement.estimatedRightBalancePercent {
-            liveRightBalancePercent = right
+        if rawMeasurement.flags.contains(.pedalPowerBalancePresent) {
+            if let left = rawMeasurement.estimatedLeftBalancePercent,
+               let right = rawMeasurement.estimatedRightBalancePercent {
+                liveLeftBalancePercent = left
+                liveRightBalancePercent = right
+            } else {
+                liveLeftBalancePercent = nil
+                liveRightBalancePercent = nil
+            }
         }
 
         if let crankRevs = rawMeasurement.cumulativeCrankRevolutions,
