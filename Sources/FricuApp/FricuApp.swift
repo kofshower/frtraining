@@ -187,13 +187,6 @@ private struct AppPageChrome<Content: View>: View {
         set { chartDisplayModeRawValue = newValue.rawValue }
     }
 
-    private var chartDisplayModeBinding: Binding<AppChartDisplayMode> {
-        Binding(
-            get: { chartDisplayMode },
-            set: { chartDisplayModeRawValue = $0.rawValue }
-        )
-    }
-
     var body: some View {
         ZStack {
             HealthCanvasBackground()
@@ -232,17 +225,6 @@ private struct AppPageChrome<Content: View>: View {
                     }
                     .appDropdownTheme(width: 260)
 
-                    Picker(L10n.choose(simplifiedChinese: "图表", english: "Charts"), selection: chartDisplayModeBinding) {
-                        ForEach(AppChartDisplayMode.allCases) { mode in
-                            Label {
-                                Text(mode.title)
-                            } icon: {
-                                Image(systemName: mode.symbol)
-                            }
-                            .tag(mode)
-                        }
-                    }
-                    .appDropdownTheme(width: 220)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)

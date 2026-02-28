@@ -2422,7 +2422,7 @@ private struct SparklinePoint: Identifiable {
 }
 
 private struct BikeComputerSparklineCard: View {
-    @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    @State private var chartDisplayMode: AppChartDisplayMode = .line
     let label: String
     let value: String
     let averageText: String
@@ -2436,12 +2436,26 @@ private struct BikeComputerSparklineCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Picker(label, selection: $chartDisplayMode) {
+                    ForEach(AppChartDisplayMode.allCases) { mode in
+                        Label {
+                            Text(mode.title)
+                        } icon: {
+                            Image(systemName: mode.symbol)
+                        }
+                        .tag(mode)
+                    }
+                }
+                .appDropdownTheme(width: 128)
+            }
+            HStack(alignment: .firstTextBaseline) {
                 Text(value)
                     .font(.subheadline.monospacedDigit().bold())
+                Spacer()
+                Text(averageText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            Text(averageText)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
 
             if points.count >= 2 {
                 let renderPoints = Array(points.suffix(60))
@@ -2519,7 +2533,7 @@ private struct BalancePieSlice: Identifiable {
 }
 
 private struct BikeComputerBalanceCompositeCard: View {
-    @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    @State private var chartDisplayMode: AppChartDisplayMode = .line
     let label: String
     let value: String
     let detailText: String
@@ -2552,12 +2566,26 @@ private struct BikeComputerBalanceCompositeCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                Picker(label, selection: $chartDisplayMode) {
+                    ForEach(AppChartDisplayMode.allCases) { mode in
+                        Label {
+                            Text(mode.title)
+                        } icon: {
+                            Image(systemName: mode.symbol)
+                        }
+                        .tag(mode)
+                    }
+                }
+                .appDropdownTheme(width: 128)
+            }
+            HStack(alignment: .firstTextBaseline) {
                 Text(value)
                     .font(.subheadline.monospacedDigit().bold())
+                Spacer()
+                Text(detailText)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            Text(detailText)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
 
             HStack(spacing: 10) {
                 if leftPoints.count >= 2 || rightPoints.count >= 2 {
