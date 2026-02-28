@@ -92,12 +92,16 @@ final class StravaAPIClient {
         let sanitizedRefreshToken = profile.stravaRefreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if hasRefreshConfig {
-            let accessValid = !sanitizedAccessToken.isEmpty && ((profile.stravaAccessTokenExpiresAt ?? 0) > now + 120)
-            if accessValid {
+            let expiresAt = profile.stravaAccessTokenExpiresAt
+            let hasUsableCachedAccessToken =
+                !sanitizedAccessToken.isEmpty &&
+                (expiresAt == nil || (expiresAt ?? 0) > now + 120)
+
+            if hasUsableCachedAccessToken {
                 return StravaAuthUpdate(
                     accessToken: sanitizedAccessToken,
                     refreshToken: sanitizedRefreshToken,
-                    expiresAt: profile.stravaAccessTokenExpiresAt
+                    expiresAt: expiresAt
                 )
             }
 
@@ -366,7 +370,7 @@ final class StravaAPIClient {
         req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let data = try await send(req, debugLabel: "POST /oauth/token (refresh_token)")
+        let data = try await send(req, debugLabel: "GET /api/v3/activities/{id}")
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw StravaAPIError.malformedPayload
         }
