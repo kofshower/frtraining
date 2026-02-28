@@ -531,6 +531,9 @@ struct Activity: Codable, Identifiable {
     var sourceFileName: String?
     var sourceFileType: String?
     var sourceFileBase64: String?
+    var bikeComputerScreenshotBase64: String?
+    var bikeComputerScreenshotFileName: String?
+    var bikeComputerScreenshotMimeType: String?
     var platformPayloadJSON: String?
 
     init(
@@ -549,6 +552,9 @@ struct Activity: Codable, Identifiable {
         sourceFileName: String? = nil,
         sourceFileType: String? = nil,
         sourceFileBase64: String? = nil,
+        bikeComputerScreenshotBase64: String? = nil,
+        bikeComputerScreenshotFileName: String? = nil,
+        bikeComputerScreenshotMimeType: String? = nil,
         platformPayloadJSON: String? = nil
     ) {
         self.id = id
@@ -566,6 +572,9 @@ struct Activity: Codable, Identifiable {
         self.sourceFileName = sourceFileName
         self.sourceFileType = sourceFileType
         self.sourceFileBase64 = sourceFileBase64
+        self.bikeComputerScreenshotBase64 = bikeComputerScreenshotBase64
+        self.bikeComputerScreenshotFileName = bikeComputerScreenshotFileName
+        self.bikeComputerScreenshotMimeType = bikeComputerScreenshotMimeType
         self.platformPayloadJSON = platformPayloadJSON
     }
 }
