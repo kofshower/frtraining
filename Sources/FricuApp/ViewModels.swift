@@ -819,6 +819,13 @@ final class AppStore: ObservableObject {
         athleteScopedCalendarEventsCache
     }
 
+    var trainerRiderSessionsForSelectedAthlete: [TrainerRiderSession] {
+        guard selectedAthletePanelID != AthletePanel.allID else {
+            return trainerRiderSessions
+        }
+        return trainerRiderSessions.filter { athletePanelID(forName: $0.name) == selectedAthletePanelID }
+    }
+
     var selectedAthleteTitle: String {
         guard selectedAthletePanelID != AthletePanel.allID else {
             return L10n.choose(simplifiedChinese: "全部运动员", english: "All Athletes")
@@ -1236,7 +1243,9 @@ final class AppStore: ObservableObject {
                 heartRateBPM: nil,
                 cadenceRPM: nil,
                 speedKPH: nil,
-                distanceMeters: max(0, distanceMeters)
+                distanceMeters: max(0, distanceMeters),
+                leftBalancePercent: nil,
+                rightBalancePercent: nil
             )
         }
         return LiveRideSample(
@@ -1245,7 +1254,9 @@ final class AppStore: ObservableObject {
             heartRateBPM: rider.heartRateMonitor.liveHeartRateBPM,
             cadenceRPM: rider.trainer.liveCadenceRPM ?? rider.powerMeter.liveCadenceRPM,
             speedKPH: rider.trainer.liveSpeedKPH,
-            distanceMeters: max(0, distanceMeters)
+            distanceMeters: max(0, distanceMeters),
+            leftBalancePercent: rider.powerMeter.liveLeftBalancePercent ?? rider.trainer.liveLeftBalancePercent,
+            rightBalancePercent: rider.powerMeter.liveRightBalancePercent ?? rider.trainer.liveRightBalancePercent
         )
     }
 

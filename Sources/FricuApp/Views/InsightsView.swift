@@ -2,6 +2,7 @@ import SwiftUI
 import Charts
 
 struct InsightsView: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
 
     struct InsightStatItem: Identifiable {
@@ -484,64 +485,104 @@ struct InsightsView: View {
                         Text(L10n.choose(simplifiedChinese: "暂无负荷数据。", english: "No load data yet."))
                             .foregroundStyle(.secondary)
                     } else {
-                        Chart {
-                            if let first = freshnessSeries.first?.date, let last = freshnessSeries.last?.date {
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", -40),
-                                    yEnd: .value("Y End", -25)
+                        if chartDisplayMode == .pie {
+                            Chart(freshnessSeries) { point in
+                                SectorMark(
+                                    angle: .value("TSB", max(0, abs(point.tsb))),
+                                    innerRadius: .ratio(0.55),
+                                    angularInset: 1
                                 )
-                                .foregroundStyle(.red.opacity(0.10))
-
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", -25),
-                                    yEnd: .value("Y End", -10)
-                                )
-                                .foregroundStyle(.orange.opacity(0.08))
-
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", -10),
-                                    yEnd: .value("Y End", 10)
-                                )
-                                .foregroundStyle(.green.opacity(0.08))
-
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", 10),
-                                    yEnd: .value("Y End", 25)
-                                )
-                                .foregroundStyle(.cyan.opacity(0.08))
+                                .foregroundStyle(point.tsb >= 0 ? .green : .orange)
                             }
+                            .frame(height: 190)
+                            .padding(.top, 6)
+                        } else {
+                            Chart {
+                                if let first = freshnessSeries.first?.date, let last = freshnessSeries.last?.date {
+                                    RectangleMark(
+                                        xStart: .value("Start", first),
+                                        xEnd: .value("End", last),
+                                        yStart: .value("Y Start", -40),
+                                        yEnd: .value("Y End", -25)
+                                    )
+                                    .foregroundStyle(.red.opacity(0.10))
 
-                            RuleMark(y: .value("Baseline", 0))
-                                .foregroundStyle(.secondary.opacity(0.45))
-                                .lineStyle(.init(lineWidth: 1, dash: [4, 4]))
+                                    RectangleMark(
+                                        xStart: .value("Start", first),
+                                        xEnd: .value("End", last),
+                                        yStart: .value("Y Start", -25),
+                                        yEnd: .value("Y End", -10)
+                                    )
+                                    .foregroundStyle(.orange.opacity(0.08))
 
-                            ForEach(freshnessSeries) { point in
-                                LineMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("TSB", point.tsb)
-                                )
-                                .foregroundStyle(.orange)
-                                .interpolationMethod(.stepCenter)
+                                    RectangleMark(
+                                        xStart: .value("Start", first),
+                                        xEnd: .value("End", last),
+                                        yStart: .value("Y Start", -10),
+                                        yEnd: .value("Y End", 10)
+                                    )
+                                    .foregroundStyle(.green.opacity(0.08))
+
+                                    RectangleMark(
+                                        xStart: .value("Start", first),
+                                        xEnd: .value("End", last),
+                                        yStart: .value("Y Start", 10),
+                                        yEnd: .value("Y End", 25)
+                                    )
+                                    .foregroundStyle(.cyan.opacity(0.08))
+                                }
+
+                                RuleMark(y: .value("Baseline", 0))
+                                    .foregroundStyle(.secondary.opacity(0.45))
+                                    .lineStyle(.init(lineWidth: 1, dash: [4, 4]))
+
+                                ForEach(freshnessSeries) { point in
+                                    switch chartDisplayMode {
+                                    case .line:
+                                        LineMark(
+                                            x: .value("Date", point.date, unit: .day),
+                                            y: .value("TSB", point.tsb)
+                                        )
+                                        .foregroundStyle(.orange)
+                                        .interpolationMethod(.stepCenter)
+                                    case .bar:
+                                        BarMark(
+                                            x: .value("Date", point.date, unit: .day),
+                                            y: .value("TSB", point.tsb)
+                                        )
+                                        .foregroundStyle(.orange.opacity(0.85))
+                                    case .pie:
+                                        BarMark(
+                                            x: .value("Date", point.date, unit: .day),
+                                            y: .value("TSB", point.tsb)
+                                        )
+                                        .foregroundStyle(.orange.opacity(0.85))
+                                    case .flame:
+                                        BarMark(
+                                            x: .value("Date", point.date, unit: .day),
+                                            y: .value("TSB", abs(point.tsb))
+                                        )
+                                        .foregroundStyle(
+                                            LinearGradient(
+                                                colors: [.yellow, .orange, .red],
+                                                startPoint: .bottom,
+                                                endPoint: .top
+                                            )
+                                        )
+                                    }
+                                }
                             }
+                            .frame(height: 190)
+                            .chartYScale(domain: freshnessYDomain)
+                            .chartYAxis {
+                                AxisMarks(position: .trailing)
+                            }
+                            .cartesianHoverTip(
+                                xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
+                                yTitle: "TSB"
+                            )
+                            .padding(.top, 6)
                         }
-                        .frame(height: 190)
-                        .chartYScale(domain: freshnessYDomain)
-                        .chartYAxis {
-                            AxisMarks(position: .trailing)
-                        }
-                        .cartesianHoverTip(
-                            xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                            yTitle: "TSB"
-                        )
-                        .padding(.top, 6)
 
                         HStack(spacing: 10) {
                             Text(L10n.choose(simplifiedChinese: "高风险", english: "High Risk"))
@@ -563,12 +604,39 @@ struct InsightsView: View {
                             .foregroundStyle(.secondary)
                     } else {
                         Chart(sportMix) { point in
-                            SectorMark(
-                                angle: .value("TSS", point.totalTSS),
-                                innerRadius: .ratio(0.55),
-                                angularInset: 2
-                            )
-                            .foregroundStyle(by: .value("Sport", point.sport.label))
+                            switch chartDisplayMode {
+                            case .line:
+                                LineMark(
+                                    x: .value("Sport", point.sport.label),
+                                    y: .value("TSS", point.totalTSS)
+                                )
+                                .foregroundStyle(by: .value("Sport", point.sport.label))
+                            case .bar:
+                                BarMark(
+                                    x: .value("Sport", point.sport.label),
+                                    y: .value("TSS", point.totalTSS)
+                                )
+                                .foregroundStyle(by: .value("Sport", point.sport.label))
+                            case .pie:
+                                SectorMark(
+                                    angle: .value("TSS", point.totalTSS),
+                                    innerRadius: .ratio(0.55),
+                                    angularInset: 2
+                                )
+                                .foregroundStyle(by: .value("Sport", point.sport.label))
+                            case .flame:
+                                BarMark(
+                                    x: .value("Sport", point.sport.label),
+                                    y: .value("TSS", point.totalTSS)
+                                )
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.yellow, .orange, .red],
+                                        startPoint: .bottom,
+                                        endPoint: .top
+                                    )
+                                )
+                            }
                         }
                         .chartLegend(position: .trailing, alignment: .center)
                         .frame(height: 240)
@@ -577,12 +645,41 @@ struct InsightsView: View {
 
                 GroupBox(L10n.choose(simplifiedChinese: "计划负荷（未来21天）", english: "Planned Load (Next 21d)")) {
                     Chart(plannedLoad) { point in
-                        BarMark(
-                            x: .value("Date", point.date, unit: .day),
-                            y: .value("Minutes", point.minutes)
-                        )
-                        .foregroundStyle(.blue.gradient)
-                        .opacity(point.minutes > 0 ? 1.0 : 0.2)
+                        switch chartDisplayMode {
+                        case .line:
+                            LineMark(
+                                x: .value("Date", point.date, unit: .day),
+                                y: .value("Minutes", point.minutes)
+                            )
+                            .foregroundStyle(.blue)
+                        case .bar:
+                            BarMark(
+                                x: .value("Date", point.date, unit: .day),
+                                y: .value("Minutes", point.minutes)
+                            )
+                            .foregroundStyle(.blue.gradient)
+                            .opacity(point.minutes > 0 ? 1.0 : 0.2)
+                        case .pie:
+                            SectorMark(
+                                angle: .value("Minutes", max(0, point.minutes)),
+                                innerRadius: .ratio(0.55),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(.blue.opacity(point.minutes > 0 ? 0.85 : 0.22))
+                        case .flame:
+                            BarMark(
+                                x: .value("Date", point.date, unit: .day),
+                                y: .value("Minutes", max(0, point.minutes))
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.yellow, .orange, .red],
+                                    startPoint: .bottom,
+                                    endPoint: .top
+                                )
+                            )
+                            .opacity(point.minutes > 0 ? 1.0 : 0.2)
+                        }
                     }
                     .frame(height: 220)
                     .cartesianHoverTip(

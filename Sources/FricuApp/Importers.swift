@@ -30,6 +30,8 @@ struct ActivitySensorSample {
     let power: Double?
     let heartRate: Double?
     let altitudeMeters: Double?
+    let balanceLeftPercent: Double?
+    let balanceRightPercent: Double?
 }
 
 enum ActivitySourceDataDecoder {
@@ -904,8 +906,9 @@ enum FITActivityParser {
             guard let raw, raw.isFinite else { return nil }
             return raw / 5.0 - 500.0
         }()
+        let balance = decodeLeftRightBalance(values: values)
 
-        guard hr != nil || power != nil || altitudeMeters != nil else {
+        guard hr != nil || power != nil || altitudeMeters != nil || balance != nil else {
             return
         }
         samples.append(
@@ -913,9 +916,78 @@ enum FITActivityParser {
                 timeSec: timeSec,
                 power: power,
                 heartRate: hr,
-                altitudeMeters: altitudeMeters
+                altitudeMeters: altitudeMeters,
+                balanceLeftPercent: balance?.left,
+                balanceRightPercent: balance?.right
             )
         )
+    }
+
+    private static func decodeLeftRightBalance(values: [Int: Value]) -> (left: Double, right: Double)? {
+        // Common FIT record fields seen in the wild:
+        // - 30: left_right_balance
+        // - 62: left_right_balance_100
+        let fields = [30, 62]
+        for field in fields {
+            guard let raw = values[field]?.doubleValue, raw.isFinite else { continue }
+            let allowReferenceBit = field == 30
+            if let decoded = decodeLeftRightBalance(rawValue: raw, allowReferenceBit: allowReferenceBit) {
+                return decoded
+            }
+        }
+        return nil
+    }
+
+    private static func decodeLeftRightBalance(
+        rawValue: Double,
+        allowReferenceBit: Bool
+    ) -> (left: Double, right: Double)? {
+        // Some devices encode "right-referenced" values with the high bit.
+        if allowReferenceBit {
+            let rounded = Int(rawValue.rounded())
+            if abs(rawValue - Double(rounded)) < 0.0001,
+               (0...255).contains(rounded),
+               (rounded & 0x80) != 0 {
+                let payload = rounded & 0x7F
+                if payload <= 100 {
+                    let right = Double(payload)
+                    return normalizeBalance(left: 100.0 - right, right: right)
+                }
+                if payload <= 200 {
+                    let right = Double(payload) * 0.5
+                    return normalizeBalance(left: 100.0 - right, right: right)
+                }
+            }
+        }
+
+        // Flexible decode: plain %, half-percent, or hundredth-percent scales.
+        let candidates: [Double] = [
+            rawValue,
+            rawValue * 0.5,
+            rawValue / 100.0
+        ]
+        for left in candidates {
+            if let normalized = normalizeBalance(left: left, right: 100.0 - left) {
+                return normalized
+            }
+        }
+        return nil
+    }
+
+    private static func normalizeBalance(
+        left: Double,
+        right: Double
+    ) -> (left: Double, right: Double)? {
+        guard left.isFinite, right.isFinite else { return nil }
+        guard left >= 0, right >= 0 else { return nil }
+        let sum = left + right
+        guard sum > 0 else { return nil }
+
+        let normalizedLeft = (left / sum) * 100.0
+        let normalizedRight = 100.0 - normalizedLeft
+        guard normalizedLeft >= 0, normalizedLeft <= 100 else { return nil }
+        guard normalizedRight >= 0, normalizedRight <= 100 else { return nil }
+        return (normalizedLeft, normalizedRight)
     }
 
     private static func minDate(_ lhs: Date?, _ rhs: Date) -> Date {
@@ -1046,7 +1118,9 @@ enum TCXActivityStreamParser {
                     timeSec: row.time.timeIntervalSince(start),
                     power: row.power,
                     heartRate: row.hr,
-                    altitudeMeters: row.altitude
+                    altitudeMeters: row.altitude,
+                    balanceLeftPercent: nil,
+                    balanceRightPercent: nil
                 )
             }.sorted { $0.timeSec < $1.timeSec }
         }
@@ -1149,7 +1223,9 @@ enum GPXActivityStreamParser {
                     timeSec: row.time.timeIntervalSince(start),
                     power: row.power,
                     heartRate: row.hr,
-                    altitudeMeters: row.altitude
+                    altitudeMeters: row.altitude,
+                    balanceLeftPercent: nil,
+                    balanceRightPercent: nil
                 )
             }.sorted { $0.timeSec < $1.timeSec }
         }

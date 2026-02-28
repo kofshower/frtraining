@@ -352,6 +352,7 @@ private struct PlannerWorkoutChip: View {
 }
 
 private struct IntervalLabModuleView: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
 
     @State private var selectedActivityID: UUID?
@@ -489,17 +490,46 @@ private struct IntervalLabModuleView: View {
                                 .foregroundStyle(.secondary)
                         } else {
                             Chart(compareRows) { row in
-                                BarMark(
-                                    x: .value("Interval", row.label),
-                                    y: .value("Power", row.power)
-                                )
-                                .foregroundStyle(.blue.gradient)
+                                switch chartDisplayMode {
+                                case .line:
+                                    LineMark(
+                                        x: .value("Interval", row.label),
+                                        y: .value("Power", row.power)
+                                    )
+                                    .foregroundStyle(.blue)
+                                    .interpolationMethod(.linear)
 
-                                PointMark(
-                                    x: .value("Interval", row.label),
-                                    y: .value("Duration", row.duration / 10.0)
-                                )
-                                .foregroundStyle(.orange)
+                                    PointMark(
+                                        x: .value("Interval", row.label),
+                                        y: .value("Duration", row.duration / 10.0)
+                                    )
+                                    .foregroundStyle(.orange)
+                                case .bar:
+                                    BarMark(
+                                        x: .value("Interval", row.label),
+                                        y: .value("Power", row.power)
+                                    )
+                                    .foregroundStyle(.blue.gradient)
+                                case .pie:
+                                    SectorMark(
+                                        angle: .value("Power", max(0, row.power)),
+                                        innerRadius: .ratio(0.55),
+                                        angularInset: 1
+                                    )
+                                    .foregroundStyle(.blue.opacity(0.82))
+                                case .flame:
+                                    BarMark(
+                                        x: .value("Interval", row.label),
+                                        y: .value("Power", max(0, row.power))
+                                    )
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.yellow, .orange, .red],
+                                            startPoint: .bottom,
+                                            endPoint: .top
+                                        )
+                                    )
+                                }
                             }
                             .frame(height: 210)
                             .cartesianHoverTip(
@@ -588,6 +618,7 @@ private enum MetricScopeFilter: String, CaseIterable, Identifiable {
 }
 
 private struct MetricsLabModuleView: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
 
     @State private var primaryMetricID = ChartMetricCatalog.all.first?.id ?? "daily_tss"
@@ -761,56 +792,90 @@ private struct MetricsLabModuleView: View {
 
             GroupBox("可视化图表引擎") {
                 Chart {
-                    if renderPrimaryAsBars {
+                    switch chartDisplayMode {
+                    case .line:
+                        if renderPrimaryAsBars {
+                            ForEach(resultCache.primary) { point in
+                                BarMark(
+                                    x: .value("Date", point.date, unit: .day),
+                                    y: .value(primaryMetric.name, point.value)
+                                )
+                                .foregroundStyle(.blue)
+                            }
+                        } else {
+                            ForEach(Array(primaryLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
+                                ForEach(segment) { point in
+                                    LineMark(
+                                        x: .value("Date", point.date, unit: .day),
+                                        y: .value(primaryMetric.name, point.value),
+                                        series: .value("Primary Segment", "primary-\(segmentIndex)")
+                                    )
+                                    .foregroundStyle(.blue)
+                                    .interpolationMethod(primaryInterpolation)
+                                    .lineStyle(StrokeStyle(lineWidth: 2))
+                                }
+                            }
+                        }
+
+                        if let secondaryMetric {
+                            ForEach(Array(secondaryLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
+                                ForEach(segment) { point in
+                                    LineMark(
+                                        x: .value("Date", point.date, unit: .day),
+                                        y: .value(secondaryMetric.name, point.value),
+                                        series: .value("Secondary Segment", "secondary-\(segmentIndex)")
+                                    )
+                                    .foregroundStyle(.orange)
+                                    .interpolationMethod(secondaryInterpolation)
+                                    .lineStyle(StrokeStyle(lineWidth: 1.8))
+                                }
+                            }
+                        }
+
+                        if comparePrevious {
+                            ForEach(Array(comparisonLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
+                                ForEach(segment) { point in
+                                    LineMark(
+                                        x: .value("Date", point.date, unit: .day),
+                                        y: .value("Prev", point.value),
+                                        series: .value("Comparison Segment", "comparison-\(segmentIndex)")
+                                    )
+                                    .foregroundStyle(.gray.opacity(0.8))
+                                    .interpolationMethod(comparisonInterpolation)
+                                    .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
+                                }
+                            }
+                        }
+                    case .bar:
                         ForEach(resultCache.primary) { point in
                             BarMark(
                                 x: .value("Date", point.date, unit: .day),
-                                y: .value(primaryMetric.name, point.value)
+                                y: .value(primaryMetric.name, max(0, point.value))
                             )
-                            .foregroundStyle(.blue)
+                            .foregroundStyle(.blue.opacity(0.85))
                         }
-                    } else {
-                        ForEach(Array(primaryLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
-                            ForEach(segment) { point in
-                                LineMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value(primaryMetric.name, point.value),
-                                    series: .value("Primary Segment", "primary-\(segmentIndex)")
-                                )
-                                .foregroundStyle(.blue)
-                                .interpolationMethod(primaryInterpolation)
-                                .lineStyle(StrokeStyle(lineWidth: 2))
-                            }
+                    case .pie:
+                        ForEach(resultCache.primary.suffix(40)) { point in
+                            SectorMark(
+                                angle: .value(primaryMetric.name, max(0, abs(point.value))),
+                                innerRadius: .ratio(0.56),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(.blue.opacity(0.8))
                         }
-                    }
-
-                    if let secondaryMetric {
-                        ForEach(Array(secondaryLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
-                            ForEach(segment) { point in
-                                LineMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value(secondaryMetric.name, point.value),
-                                    series: .value("Secondary Segment", "secondary-\(segmentIndex)")
+                    case .flame:
+                        ForEach(resultCache.primary) { point in
+                            BarMark(
+                                x: .value("Date", point.date, unit: .day),
+                                y: .value(primaryMetric.name, max(0, abs(point.value)))
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.yellow, .orange, .red],
+                                    startPoint: .bottom,
+                                    endPoint: .top
                                 )
-                                .foregroundStyle(.orange)
-                                .interpolationMethod(secondaryInterpolation)
-                                .lineStyle(StrokeStyle(lineWidth: 1.8))
-                            }
-                        }
-                    }
-
-                    if comparePrevious {
-                        ForEach(Array(comparisonLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
-                            ForEach(segment) { point in
-                                LineMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("Prev", point.value),
-                                    series: .value("Comparison Segment", "comparison-\(segmentIndex)")
-                                )
-                                .foregroundStyle(.gray.opacity(0.8))
-                                .interpolationMethod(comparisonInterpolation)
-                                .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
-                            }
+                            )
                         }
                     }
                 }
@@ -941,6 +1006,7 @@ private struct MetricsLabModuleView: View {
 }
 
 private struct PowerModelModuleView: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
 
     @State private var athleteAge = 34
@@ -1072,30 +1138,64 @@ private struct PowerModelModuleView: View {
 
                 GroupBox("CP/W'/Pmax 多模型") {
                     Chart {
-                        ForEach(analysis.observed) { point in
-                            PointMark(
-                                x: .value("Duration", Double(point.durationSec) / 60.0),
-                                y: .value("Power", point.power)
-                            )
-                            .foregroundStyle(.black)
-                        }
+                        switch chartDisplayMode {
+                        case .line:
+                            ForEach(analysis.observed) { point in
+                                PointMark(
+                                    x: .value("Duration", Double(point.durationSec) / 60.0),
+                                    y: .value("Power", point.power)
+                                )
+                                .foregroundStyle(.black)
+                            }
 
-                        ForEach(analysis.comparisonObserved) { point in
-                            PointMark(
-                                x: .value("Prev Duration", Double(point.durationSec) / 60.0),
-                                y: .value("Prev Power", point.power)
-                            )
-                            .foregroundStyle(.gray.opacity(0.35))
-                        }
+                            ForEach(analysis.comparisonObserved) { point in
+                                PointMark(
+                                    x: .value("Prev Duration", Double(point.durationSec) / 60.0),
+                                    y: .value("Prev Power", point.power)
+                                )
+                                .foregroundStyle(.gray.opacity(0.35))
+                            }
 
-                        ForEach(modelCurveRows) { row in
-                            LineMark(
-                                x: .value("Duration", row.durationMin),
-                                y: .value("Model Power", row.power),
-                                series: .value("Model", row.model)
-                            )
-                            .foregroundStyle(by: .value("Model", row.model))
-                            .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                            ForEach(modelCurveRows) { row in
+                                LineMark(
+                                    x: .value("Duration", row.durationMin),
+                                    y: .value("Model Power", row.power),
+                                    series: .value("Model", row.model)
+                                )
+                                .foregroundStyle(by: .value("Model", row.model))
+                                .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                            }
+                        case .bar:
+                            ForEach(modelCurveRows) { row in
+                                BarMark(
+                                    x: .value("Duration", row.durationMin),
+                                    y: .value("Model Power", max(0, row.power))
+                                )
+                                .foregroundStyle(by: .value("Model", row.model))
+                            }
+                        case .pie:
+                            ForEach(modelCurveRows.suffix(40)) { row in
+                                SectorMark(
+                                    angle: .value("Power", max(0, row.power)),
+                                    innerRadius: .ratio(0.56),
+                                    angularInset: 1
+                                )
+                                .foregroundStyle(by: .value("Model", row.model))
+                            }
+                        case .flame:
+                            ForEach(modelCurveRows) { row in
+                                BarMark(
+                                    x: .value("Duration", row.durationMin),
+                                    y: .value("Model Power", max(0, row.power))
+                                )
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.yellow, .orange, .red],
+                                        startPoint: .bottom,
+                                        endPoint: .top
+                                    )
+                                )
+                            }
                         }
                     }
                     .frame(height: 280)
@@ -1464,13 +1564,6 @@ private struct CollaborationModuleView: View {
     @State private var selectedActivityID: UUID?
     @State private var messageInput = ""
     @State private var messagesByActivity: [UUID: [CollabMessage]] = [:]
-    @State private var selectedAthleteIndex = 0
-
-    private let athletes = [
-        "Athlete A · Road",
-        "Athlete B · Triathlon",
-        "Athlete C · Marathon"
-    ]
 
     private let groups = [
         "Elite Build Group",
@@ -1498,12 +1591,11 @@ private struct CollaborationModuleView: View {
             HStack(alignment: .top, spacing: 12) {
                 GroupBox("教练-运动员管理") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Picker("运动员", selection: $selectedAthleteIndex) {
-                            ForEach(athletes.indices, id: \.self) { idx in
-                                Text(athletes[idx]).tag(idx)
-                            }
-                        }
-                        .appDropdownTheme()
+                        Text("运动员：\(store.selectedAthleteTitle)")
+                            .font(.subheadline.weight(.semibold))
+                        Text("请使用页面顶部下拉框切换运动员。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
 
                         Text("教练: Coach Chen")
                             .font(.subheadline)
@@ -1865,6 +1957,7 @@ private struct IntegrationConnectorTokenField: Identifiable {
 }
 
 private struct ForensicModuleView: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
     @State private var compareItems = ["赛季A", "赛季B", "活动组", "区间组", "运动员组"]
 
@@ -1898,12 +1991,40 @@ private struct ForensicModuleView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     Chart(scatterRows) { row in
-                        PointMark(
-                            x: .value("Power", row.power),
-                            y: .value("HeartRate", row.heartRate)
-                        )
-                        .symbolSize(max(18, row.tss * 1.5))
-                        .foregroundStyle(by: .value("Sport", row.sport.label))
+                        switch chartDisplayMode {
+                        case .line:
+                            PointMark(
+                                x: .value("Power", row.power),
+                                y: .value("HeartRate", row.heartRate)
+                            )
+                            .symbolSize(max(18, row.tss * 1.5))
+                            .foregroundStyle(by: .value("Sport", row.sport.label))
+                        case .bar:
+                            BarMark(
+                                x: .value("Power", row.power),
+                                y: .value("HeartRate", row.heartRate)
+                            )
+                            .foregroundStyle(by: .value("Sport", row.sport.label))
+                        case .pie:
+                            SectorMark(
+                                angle: .value("TSS", max(0, row.tss)),
+                                innerRadius: .ratio(0.56),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(by: .value("Sport", row.sport.label))
+                        case .flame:
+                            BarMark(
+                                x: .value("Power", row.power),
+                                y: .value("HeartRate", row.heartRate)
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.yellow, .orange, .red],
+                                    startPoint: .bottom,
+                                    endPoint: .top
+                                )
+                            )
+                        }
                     }
                     .frame(height: 220)
                     .cartesianHoverTip(
@@ -1918,11 +2039,39 @@ private struct ForensicModuleView: View {
 
             GroupBox("Aerolab (CdA 估计轨迹)") {
                 Chart(aeroRows) { row in
-                    LineMark(
-                        x: .value("Session", row.index),
-                        y: .value("CdA", row.cda)
-                    )
-                    .foregroundStyle(.mint)
+                    switch chartDisplayMode {
+                    case .line:
+                        LineMark(
+                            x: .value("Session", row.index),
+                            y: .value("CdA", row.cda)
+                        )
+                        .foregroundStyle(.mint)
+                    case .bar:
+                        BarMark(
+                            x: .value("Session", row.index),
+                            y: .value("CdA", row.cda)
+                        )
+                        .foregroundStyle(.mint.opacity(0.85))
+                    case .pie:
+                        SectorMark(
+                            angle: .value("CdA", max(0, row.cda)),
+                            innerRadius: .ratio(0.56),
+                            angularInset: 1
+                        )
+                        .foregroundStyle(.mint.opacity(0.8))
+                    case .flame:
+                        BarMark(
+                            x: .value("Session", row.index),
+                            y: .value("CdA", row.cda)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.yellow, .orange, .red],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                    }
                 }
                 .frame(height: 160)
                 .cartesianHoverTip(

@@ -169,6 +169,7 @@ struct RootView: View {
 private struct AppPageChrome<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var store: AppStore
+    @AppStorage(AppChartDisplayMode.storageKey) private var chartDisplayModeRawValue = AppChartDisplayMode.line.rawValue
     let section: AppSection
     @Binding var selection: AppSection
     @ViewBuilder var content: () -> Content
@@ -179,6 +180,18 @@ private struct AppPageChrome<Content: View>: View {
         #else
             1480
         #endif
+    }
+
+    private var chartDisplayMode: AppChartDisplayMode {
+        get { AppChartDisplayMode(rawValue: chartDisplayModeRawValue) ?? .line }
+        set { chartDisplayModeRawValue = newValue.rawValue }
+    }
+
+    private var chartDisplayModeBinding: Binding<AppChartDisplayMode> {
+        Binding(
+            get: { chartDisplayMode },
+            set: { chartDisplayModeRawValue = $0.rawValue }
+        )
     }
 
     var body: some View {
@@ -218,6 +231,18 @@ private struct AppPageChrome<Content: View>: View {
                         }
                     }
                     .appDropdownTheme(width: 260)
+
+                    Picker(L10n.choose(simplifiedChinese: "图表", english: "Charts"), selection: chartDisplayModeBinding) {
+                        ForEach(AppChartDisplayMode.allCases) { mode in
+                            Label {
+                                Text(mode.title)
+                            } icon: {
+                                Image(systemName: mode.symbol)
+                            }
+                            .tag(mode)
+                        }
+                    }
+                    .appDropdownTheme(width: 220)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -226,6 +251,7 @@ private struct AppPageChrome<Content: View>: View {
                 .healthSurface(cornerRadius: 20)
 
                 content()
+                    .environment(\.appChartDisplayMode, chartDisplayMode)
                     .frame(maxWidth: contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
@@ -305,6 +331,8 @@ struct SettingsView: View {
     @State private var hrvBaseline = ""
     @State private var hrvToday = ""
     @State private var intervalsKey = ""
+    @State private var stravaClientID = ""
+    @State private var stravaClientSecret = ""
     private let stravaOAuthRedirectURI = "http://127.0.0.1:53682/callback"
     @State private var stravaPullRecentDays = 30
     @State private var garminAccessToken = ""
@@ -321,12 +349,40 @@ struct SettingsView: View {
     @State private var estimateStatus: String?
     @State private var thresholdRangeEditorRows: [ThresholdRangeEditorRow] = []
     @State private var thresholdRangeValidationMessage: String?
+    @State private var newAthletePanelName = ""
+    @State private var showDeleteAthletePanelConfirm = false
+    @State private var pendingDeleteAthletePanel: AthletePanel?
 
     private var appLanguageBinding: Binding<AppLanguageOption> {
         Binding<AppLanguageOption>(
             get: { AppLanguageOption(rawValue: appLanguageRawValue) ?? .system },
             set: { appLanguageRawValue = $0.rawValue }
         )
+    }
+
+    private var manageableAthletePanels: [AthletePanel] {
+        store.athletePanels.filter { !$0.isAll }
+    }
+
+    private func addAthletePanelFromSettings() {
+        let trimmed = newAthletePanelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        if let existing = manageableAthletePanels.first(where: {
+            $0.title.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            store.selectedAthletePanelID = existing.id
+            newAthletePanelName = ""
+            return
+        }
+
+        store.addTrainerRiderSession(named: trimmed)
+        if let created = store.athletePanels.first(where: {
+            !$0.isAll && $0.title.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
+        }) {
+            store.selectedAthletePanelID = created.id
+        }
+        newAthletePanelName = ""
     }
 
     private func parseOptionalIntField(_ value: String, fallback: Int) -> Int {
@@ -460,6 +516,8 @@ struct SettingsView: View {
         profile.hrvToday = Double(hrvToday) ?? profile.hrvToday
         profile.goalRaceDate = hasGoalDate ? goalDate : nil
         profile.intervalsAPIKey = intervalsKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.stravaClientID = stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.stravaClientSecret = stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.garminConnectAccessToken = garminAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.garminConnectCSRFToken = garminCSRFToken.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.ouraPersonalAccessToken = ouraAccessToken.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -472,6 +530,14 @@ struct SettingsView: View {
             return
         }
         profile.hrThresholdRanges = ranges
+        store.profile = profile
+        store.persistProfile()
+    }
+
+    private func persistStravaOAuthConfigFromFields() {
+        var profile = store.profile
+        profile.stravaClientID = stravaClientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.stravaClientSecret = stravaClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         store.profile = profile
         store.persistProfile()
     }
@@ -533,6 +599,8 @@ struct SettingsView: View {
         hrvBaseline = String(format: "%.1f", store.profile.hrvBaseline)
         hrvToday = String(format: "%.1f", store.profile.hrvToday)
         intervalsKey = store.profile.intervalsAPIKey
+        stravaClientID = store.profile.stravaClientID
+        stravaClientSecret = store.profile.stravaClientSecret
         garminAccessToken = store.profile.garminConnectAccessToken
         garminCSRFToken = store.profile.garminConnectCSRFToken
         ouraAccessToken = store.profile.ouraPersonalAccessToken
@@ -573,6 +641,91 @@ struct SettingsView: View {
                         }
                     }
                     .appDropdownTheme()
+                }
+
+                GroupBox(L10n.choose(simplifiedChinese: "运动员面板管理", english: "Athlete Panel Management")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(
+                            L10n.choose(
+                                simplifiedChinese: "新增/删除入口统一在此处。页面顶部下拉框用于切换当前运动员。",
+                                english: "Add/delete athlete panels only here. Use the top dropdown to switch current athlete."
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                        HStack(spacing: 8) {
+                            TextField(
+                                L10n.choose(simplifiedChinese: "新运动员名称", english: "New athlete name"),
+                                text: $newAthletePanelName
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                addAthletePanelFromSettings()
+                            }
+
+                            Button(
+                                L10n.choose(
+                                    simplifiedChinese: "新增运动员面板",
+                                    english: "Add Athlete Panel"
+                                )
+                            ) {
+                                addAthletePanelFromSettings()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(newAthletePanelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }
+
+                        if manageableAthletePanels.isEmpty {
+                            Text(L10n.choose(simplifiedChinese: "暂无运动员面板", english: "No athlete panels"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(manageableAthletePanels) { panel in
+                                HStack(spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(panel.title)
+                                            .font(.subheadline.weight(.semibold))
+                                        Text(
+                                            L10n.choose(
+                                                simplifiedChinese: "活动数 \(panel.count)",
+                                                english: "Activities \(panel.count)"
+                                            )
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    if panel.id == store.selectedAthletePanelID {
+                                        Text(L10n.choose(simplifiedChinese: "当前", english: "Current"))
+                                            .font(.caption2)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(.blue.opacity(0.14), in: Capsule())
+                                    }
+
+                                    if store.canDeleteAthletePanel(panelID: panel.id) {
+                                        Button(
+                                            L10n.choose(simplifiedChinese: "删除", english: "Delete"),
+                                            role: .destructive
+                                        ) {
+                                            pendingDeleteAthletePanel = panel
+                                            showDeleteAthletePanelConfirm = true
+                                        }
+                                        .buttonStyle(.bordered)
+                                    } else {
+                                        Text(L10n.choose(simplifiedChinese: "主骑手", english: "Primary Rider"))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
                 }
 
                 GroupBox("Cycling") {
@@ -904,14 +1057,19 @@ struct SettingsView: View {
                         .font(.headline)
                     Text(
                         L10n.choose(
-                            simplifiedChinese: "同步仅需 OAuth 授权，无需手动填写 Client/Token。",
-                            english: "Sync now only requires OAuth authorization. No manual client/token fields needed."
+                            simplifiedChinese: "先填写 Strava App 的 Client ID / Client Secret，然后执行 OAuth 授权。",
+                            english: "Fill Strava App Client ID / Client Secret first, then run OAuth authorization."
                         )
                     )
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    TextField("Strava Client ID", text: $stravaClientID)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("Strava Client Secret", text: $stravaClientSecret)
+                        .textFieldStyle(.roundedBorder)
                     HStack {
                         Button(L10n.choose(simplifiedChinese: "OAuth 登录并回调", english: "OAuth Login + Callback")) {
+                            persistStravaOAuthConfigFromFields()
                             Task {
                                 await store.syncAuthorizeStravaOAuth(redirectURI: stravaOAuthRedirectURI) { authURL in
                                     openURL(authURL)
@@ -1133,6 +1291,33 @@ struct SettingsView: View {
             profileEstimate = nil
             estimateStatus = nil
             loadFieldsFromProfile()
+        }
+        .confirmationDialog(
+            L10n.choose(simplifiedChinese: "删除运动员面板？", english: "Delete athlete panel?"),
+            isPresented: $showDeleteAthletePanelConfirm,
+            titleVisibility: .visible
+        ) {
+            if let panel = pendingDeleteAthletePanel {
+                Button(
+                    L10n.choose(simplifiedChinese: "删除面板与相关数据", english: "Delete Panel + Data"),
+                    role: .destructive
+                ) {
+                    store.deleteAthletePanelAndAssociatedData(panelID: panel.id)
+                    pendingDeleteAthletePanel = nil
+                }
+            }
+            Button(L10n.choose(simplifiedChinese: "取消", english: "Cancel"), role: .cancel) {
+                pendingDeleteAthletePanel = nil
+            }
+        } message: {
+            if let panel = pendingDeleteAthletePanel {
+                Text(
+                    L10n.choose(
+                        simplifiedChinese: "将删除 \(panel.title) 的活动、训练计划、饮食计划、wellness 数据和日历事件。此操作不可撤销。",
+                        english: "This will delete activities, workouts, meal plans, wellness data, and calendar events for \(panel.title). This cannot be undone."
+                    )
+                )
+            }
         }
     }
 }

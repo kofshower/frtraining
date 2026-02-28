@@ -47,6 +47,12 @@ let package = Package(
             dependencies: [
                 "FricuCore"
             ]
+        ),
+        .testTarget(
+            name: "FricuAppTests",
+            dependencies: [
+                "FricuApp"
+            ]
         )
     ]
 )

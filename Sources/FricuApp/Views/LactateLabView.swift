@@ -2,6 +2,7 @@ import SwiftUI
 import Charts
 
 struct LactateLabView: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
 
     private enum LabTab: String, CaseIterable, Identifiable {
@@ -110,7 +111,7 @@ struct LactateLabView: View {
             case .mlss:
                 return L10n.t("最大乳酸稳态测试", "MLSS Test")
             case .custom:
-                return L10n.t("自定义测试", "Custom Test")
+                return L10n.t("无氧能力和清除测试", "Anaerobic + Clearance Test")
             }
         }
     }
@@ -1363,17 +1364,45 @@ struct LactateLabView: View {
                                 .foregroundStyle(.secondary)
 
                             Chart(record.points) { point in
-                                LineMark(
-                                    x: .value("Power", point.power),
-                                    y: .value("Lactate", point.lactate)
-                                )
-                                .foregroundStyle(.orange)
+                                switch chartDisplayMode {
+                                case .line:
+                                    LineMark(
+                                        x: .value("Power", point.power),
+                                        y: .value("Lactate", point.lactate)
+                                    )
+                                    .foregroundStyle(.orange)
 
-                                PointMark(
-                                    x: .value("Power", point.power),
-                                    y: .value("Lactate", point.lactate)
-                                )
-                                .foregroundStyle(.orange)
+                                    PointMark(
+                                        x: .value("Power", point.power),
+                                        y: .value("Lactate", point.lactate)
+                                    )
+                                    .foregroundStyle(.orange)
+                                case .bar:
+                                    BarMark(
+                                        x: .value("Power", point.power),
+                                        y: .value("Lactate", point.lactate)
+                                    )
+                                    .foregroundStyle(.orange.opacity(0.85))
+                                case .pie:
+                                    SectorMark(
+                                        angle: .value("Lactate", max(0, point.lactate)),
+                                        innerRadius: .ratio(0.55),
+                                        angularInset: 1.0
+                                    )
+                                    .foregroundStyle(.orange.opacity(0.75))
+                                case .flame:
+                                    BarMark(
+                                        x: .value("Power", point.power),
+                                        y: .value("Lactate", max(0, point.lactate))
+                                    )
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.yellow, .orange, .red],
+                                            startPoint: .bottom,
+                                            endPoint: .top
+                                        )
+                                    )
+                                }
                             }
                             .frame(height: 220)
                             .chartXAxisLabel("Power (W)")

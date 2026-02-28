@@ -218,11 +218,13 @@ private enum WhooshRoutePreset: String, CaseIterable, Identifiable {
 }
 
 struct TrainerControlPanel: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
     let session: TrainerRiderSession
     @ObservedObject private var trainer: SmartTrainerManager
     @ObservedObject private var heartRateMonitor: HeartRateMonitorManager
     @ObservedObject private var powerMeter: PowerMeterManager
+    private static let whooshMiniGameEnabled = false
 
     @State private var executionMode: TrainerExecutionMode = .erg
     @State private var targetPowerText = "200"
@@ -231,6 +233,15 @@ struct TrainerControlPanel: View {
     @State private var selectedSimulationActivityID: UUID?
     @State private var simulationSpeedText = "8"
     @State private var bikeComputerTrace: [BikeComputerTracePoint] = []
+    @State private var bikeComputerSessionStartedAt: Date?
+    @State private var bikeComputerLastIntegrationAt: Date?
+    @State private var bikeComputerCumulativeMechanicalWorkKJ: Double = 0
+    @State private var bikeComputerCumulativeCaloriesKCal: Double = 0
+    @State private var bikeComputerCumulativeLeftWorkKJ: Double = 0
+    @State private var bikeComputerCumulativeRightWorkKJ: Double = 0
+    @State private var bikeComputerCumulativeLeftPercentSum: Double = 0
+    @State private var bikeComputerCumulativeRightPercentSum: Double = 0
+    @State private var bikeComputerCumulativeBalanceSamples: Int = 0
     @State private var isTrainerFTMSFieldsExpanded = false
     @State private var isTrainerCPSFieldsExpanded = false
     @State private var isPowerMeterCPSFieldsExpanded = false
@@ -349,8 +360,15 @@ struct TrainerControlPanel: View {
         recordingActive ? recordingStatus.elevationGainMeters : 0
     }
 
+    private var bikeComputerElapsedSec: Int {
+        if recordingActive {
+            return recordingElapsedSec
+        }
+        return bikeComputerTrace.last?.elapsedSec ?? 0
+    }
+
     private var bikeComputerElapsedText: String {
-        recordingActive ? recordingElapsedSec.asDuration : "--"
+        bikeComputerElapsedSec > 0 ? bikeComputerElapsedSec.asDuration : "--"
     }
 
     private var bikeComputerSpeedText: String {
@@ -362,9 +380,53 @@ struct TrainerControlPanel: View {
         return String(format: "%.0f m", recordingElevationGainMeters)
     }
 
-    private var bikeComputerTimeText: String {
-        guard recordingActive else { return "--" }
-        return "\(recordingElapsedSec / 60)m"
+    private var bikeComputerCaloriesText: String {
+        guard bikeComputerCumulativeCaloriesKCal > 0 else { return "--" }
+        return String(format: "%.0f kcal", bikeComputerCumulativeCaloriesKCal)
+    }
+
+    private var bikeComputerCaloriesContextText: String {
+        guard bikeComputerCumulativeMechanicalWorkKJ > 0 else {
+            return "功率估算"
+        }
+        return String(format: "做功 %.0f kJ", bikeComputerCumulativeMechanicalWorkKJ)
+    }
+
+    private var bikeComputerCumulativeBalanceLeftPercent: Double? {
+        let totalWork = bikeComputerCumulativeLeftWorkKJ + bikeComputerCumulativeRightWorkKJ
+        if totalWork > 0 {
+            return (bikeComputerCumulativeLeftWorkKJ / totalWork) * 100.0
+        }
+        guard bikeComputerCumulativeBalanceSamples > 0 else { return nil }
+        return bikeComputerCumulativeLeftPercentSum / Double(bikeComputerCumulativeBalanceSamples)
+    }
+
+    private var bikeComputerCumulativeBalanceRightPercent: Double? {
+        let totalWork = bikeComputerCumulativeLeftWorkKJ + bikeComputerCumulativeRightWorkKJ
+        if totalWork > 0 {
+            return (bikeComputerCumulativeRightWorkKJ / totalWork) * 100.0
+        }
+        guard bikeComputerCumulativeBalanceSamples > 0 else { return nil }
+        return bikeComputerCumulativeRightPercentSum / Double(bikeComputerCumulativeBalanceSamples)
+    }
+
+    private var bikeComputerBalanceContextText: String {
+        let left1m = oneMinuteAverage(from: balanceLeftSparkline)
+        let right1m = oneMinuteAverage(from: balanceRightSparkline)
+        let minuteText: String
+        if let left1m, let right1m {
+            minuteText = String(format: "1m L%.0f%% / R%.0f%%", left1m, right1m)
+        } else {
+            minuteText = "1m --"
+        }
+        let cumulativeText: String
+        if let left = bikeComputerCumulativeBalanceLeftPercent,
+           let right = bikeComputerCumulativeBalanceRightPercent {
+            cumulativeText = String(format: "累计 L%.1f%% / R%.1f%%", left, right)
+        } else {
+            cumulativeText = "累计 --"
+        }
+        return "\(minuteText) · \(cumulativeText)"
     }
 
     private var traceNow: Date {
@@ -618,20 +680,49 @@ struct TrainerControlPanel: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
 
                 Chart(sampledRealMapProfile(route.points, maxCount: 650)) { point in
-                    AreaMark(
-                        x: .value("Distance", point.cumulativeDistanceKm),
-                        y: .value("Elevation", point.altitudeMeters ?? 0)
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(.blue.opacity(0.15))
+                    let elevation = max(0, point.altitudeMeters ?? 0)
+                    switch chartDisplayMode {
+                    case .line:
+                        AreaMark(
+                            x: .value("Distance", point.cumulativeDistanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(.blue.opacity(0.15))
 
-                    LineMark(
-                        x: .value("Distance", point.cumulativeDistanceKm),
-                        y: .value("Elevation", point.altitudeMeters ?? 0)
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                        LineMark(
+                            x: .value("Distance", point.cumulativeDistanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(.blue)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    case .bar:
+                        BarMark(
+                            x: .value("Distance", point.cumulativeDistanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .foregroundStyle(.blue.opacity(0.8))
+                    case .pie:
+                        SectorMark(
+                            angle: .value("Elevation", elevation),
+                            innerRadius: .ratio(0.55),
+                            angularInset: 0.8
+                        )
+                        .foregroundStyle(.blue.opacity(0.75))
+                    case .flame:
+                        BarMark(
+                            x: .value("Distance", point.cumulativeDistanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.yellow, .orange, .red],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                    }
                 }
                 .chartXAxisLabel(
                     L10n.choose(simplifiedChinese: "路线距离 (km)", english: "Route Distance (km)")
@@ -864,13 +955,6 @@ struct TrainerControlPanel: View {
         }
     }
 
-    private var elapsedSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard recordingActive, point.elapsedSec > 0 else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: Double(point.elapsedSec) / 60.0)
-        }
-    }
-
     private var speedSparkline: [SparklinePoint] {
         recentBikeComputerTrace.compactMap { point in
             guard let value = point.speedKPH else { return nil }
@@ -913,9 +997,9 @@ struct TrainerControlPanel: View {
         }
     }
 
-    private var hrEnergySparkline: [SparklinePoint] {
+    private var estimatedCaloriesSparkline: [SparklinePoint] {
         recentBikeComputerTrace.compactMap { point in
-            guard let value = point.energyExpendedKJ else { return nil }
+            guard let value = point.estimatedCaloriesKCal else { return nil }
             return SparklinePoint(timestamp: point.timestamp, value: value)
         }
     }
@@ -929,9 +1013,63 @@ struct TrainerControlPanel: View {
     }
 
     private func appendBikeComputerTraceSample(at timestamp: Date = Date()) {
+        if bikeComputerSessionStartedAt == nil {
+            bikeComputerSessionStartedAt = timestamp
+        }
+
+        if let left = bikeComputerBalanceLeftPercent,
+           let right = bikeComputerBalanceRightPercent,
+           left.isFinite,
+           right.isFinite {
+            let sum = left + right
+            if sum > 0 {
+                let normalizedLeft = max(0, min(100, (left / sum) * 100))
+                let normalizedRight = max(0, min(100, (right / sum) * 100))
+                bikeComputerCumulativeLeftPercentSum += normalizedLeft
+                bikeComputerCumulativeRightPercentSum += normalizedRight
+                bikeComputerCumulativeBalanceSamples += 1
+            }
+        }
+
+        if let previous = bikeComputerLastIntegrationAt {
+            let deltaSec = max(0, timestamp.timeIntervalSince(previous))
+            if deltaSec > 0, let watts = bikeComputerPowerWatts, watts > 0 {
+                let estimate = CyclingCalorieEstimator.estimateStep(
+                    powerWatts: Double(watts),
+                    durationSec: deltaSec,
+                    ftpWatts: riderProfile.ftpWatts(for: .cycling)
+                )
+                bikeComputerCumulativeMechanicalWorkKJ += estimate.mechanicalWorkKJ
+                bikeComputerCumulativeCaloriesKCal += estimate.metabolicKCal
+
+                if let left = bikeComputerBalanceLeftPercent,
+                   let right = bikeComputerBalanceRightPercent,
+                   left.isFinite,
+                   right.isFinite {
+                    let sum = left + right
+                    if sum > 0 {
+                        let normalizedLeft = max(0, min(1, left / sum))
+                        let normalizedRight = max(0, min(1, right / sum))
+                        bikeComputerCumulativeLeftWorkKJ += estimate.mechanicalWorkKJ * normalizedLeft
+                        bikeComputerCumulativeRightWorkKJ += estimate.mechanicalWorkKJ * normalizedRight
+                    }
+                }
+            }
+        }
+        bikeComputerLastIntegrationAt = timestamp
+
+        let elapsedSec: Int
+        if recordingActive {
+            elapsedSec = recordingElapsedSec
+        } else if let startedAt = bikeComputerSessionStartedAt {
+            elapsedSec = max(0, Int(timestamp.timeIntervalSince(startedAt).rounded()))
+        } else {
+            elapsedSec = 0
+        }
+
         let sample = BikeComputerTracePoint(
             timestamp: timestamp,
-            elapsedSec: recordingElapsedSec,
+            elapsedSec: elapsedSec,
             powerWatts: bikeComputerPowerWatts.map(Double.init),
             heartRateBPM: bikeComputerHeartRateBPM.map(Double.init),
             speedKPH: trainer.liveSpeedKPH,
@@ -940,12 +1078,26 @@ struct TrainerControlPanel: View {
             balanceRightPercent: bikeComputerBalanceRightPercent,
             rrIntervalMS: heartRateMonitor.liveRRIntervalMS,
             hrvRMSSDMS: heartRateMonitor.liveHRVRMSSDMS,
-            energyExpendedKJ: heartRateMonitor.liveEnergyExpendedKJ.map(Double.init)
+            energyExpendedKJ: heartRateMonitor.liveEnergyExpendedKJ.map(Double.init),
+            estimatedCaloriesKCal: bikeComputerCumulativeCaloriesKCal > 0 ? bikeComputerCumulativeCaloriesKCal : nil
         )
         bikeComputerTrace.append(sample)
 
         let cutoff = timestamp.addingTimeInterval(-bikeComputerWindowSeconds)
         bikeComputerTrace.removeAll { $0.timestamp < cutoff }
+    }
+
+    private func resetBikeComputerSessionState(at timestamp: Date = Date()) {
+        bikeComputerTrace = []
+        bikeComputerSessionStartedAt = timestamp
+        bikeComputerLastIntegrationAt = timestamp
+        bikeComputerCumulativeMechanicalWorkKJ = 0
+        bikeComputerCumulativeCaloriesKCal = 0
+        bikeComputerCumulativeLeftWorkKJ = 0
+        bikeComputerCumulativeRightWorkKJ = 0
+        bikeComputerCumulativeLeftPercentSum = 0
+        bikeComputerCumulativeRightPercentSum = 0
+        bikeComputerCumulativeBalanceSamples = 0
     }
 
     private func configureRealMapCamera(followRider: Bool = false) {
@@ -1691,41 +1843,72 @@ struct TrainerControlPanel: View {
 
             Chart {
                 ForEach(whooshProfilePoints) { point in
-                    AreaMark(
-                        x: .value("Distance", point.distanceKm),
-                        y: .value("Elevation", point.elevationM)
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(.blue.opacity(0.13))
+                    let elevation = max(0, point.elevationM)
+                    switch chartDisplayMode {
+                    case .line:
+                        AreaMark(
+                            x: .value("Distance", point.distanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(.blue.opacity(0.13))
 
-                    LineMark(
-                        x: .value("Distance", point.distanceKm),
-                        y: .value("Elevation", point.elevationM)
-                    )
-                    .interpolationMethod(.monotone)
-                    .foregroundStyle(.blue)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
+                        LineMark(
+                            x: .value("Distance", point.distanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .interpolationMethod(.monotone)
+                        .foregroundStyle(.blue)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    case .bar:
+                        BarMark(
+                            x: .value("Distance", point.distanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .foregroundStyle(.blue.opacity(0.85))
+                    case .pie:
+                        SectorMark(
+                            angle: .value("Elevation", elevation),
+                            innerRadius: .ratio(0.55),
+                            angularInset: 0.8
+                        )
+                        .foregroundStyle(.blue.opacity(0.75))
+                    case .flame:
+                        BarMark(
+                            x: .value("Distance", point.distanceKm),
+                            y: .value("Elevation", elevation)
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.yellow, .orange, .red],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                    }
                 }
 
-                RuleMark(x: .value("Player", whooshDistanceOnRouteKm))
-                    .foregroundStyle(.blue.opacity(0.35))
-                    .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [4, 4]))
+                if chartDisplayMode != .pie {
+                    RuleMark(x: .value("Player", whooshDistanceOnRouteKm))
+                        .foregroundStyle(.blue.opacity(0.35))
+                        .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [4, 4]))
 
-                PointMark(
-                    x: .value("Player Distance", whooshDistanceOnRouteKm),
-                    y: .value("Player Elevation", whooshProfileElevation(at: whooshDistanceKm))
-                )
-                .foregroundStyle(.blue)
-                .symbolSize(85)
-
-                ForEach(whooshBots) { bot in
-                    let botDistance = whooshRoute.distanceOnRoute(for: bot.distanceKm)
                     PointMark(
-                        x: .value("Bot Distance", botDistance),
-                        y: .value("Bot Elevation", whooshProfileElevation(at: bot.distanceKm))
+                        x: .value("Player Distance", whooshDistanceOnRouteKm),
+                        y: .value("Player Elevation", whooshProfileElevation(at: whooshDistanceKm))
                     )
-                    .foregroundStyle(bot.tint.opacity(0.9))
-                    .symbolSize(45)
+                    .foregroundStyle(.blue)
+                    .symbolSize(85)
+
+                    ForEach(whooshBots) { bot in
+                        let botDistance = whooshRoute.distanceOnRoute(for: bot.distanceKm)
+                        PointMark(
+                            x: .value("Bot Distance", botDistance),
+                            y: .value("Bot Elevation", whooshProfileElevation(at: bot.distanceKm))
+                        )
+                        .foregroundStyle(bot.tint.opacity(0.9))
+                        .symbolSize(45)
+                    }
                 }
             }
             .chartXAxisLabel(
@@ -2006,8 +2189,14 @@ struct TrainerControlPanel: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("实时码表")
-                            .font(.subheadline.bold())
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("实时码表")
+                                .font(.subheadline.bold())
+                            Spacer()
+                            Text("骑行时间 \(bikeComputerElapsedText)")
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
                         Text(bikeComputerWindowTitle)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -2027,13 +2216,6 @@ struct TrainerControlPanel: View {
                                 points: heartRateSparkline
                             )
                             BikeComputerSparklineCard(
-                                label: "时间",
-                                value: bikeComputerTimeText,
-                                averageText: bikeComputerElapsedText,
-                                tint: .blue,
-                                points: elapsedSparkline
-                            )
-                            BikeComputerSparklineCard(
                                 label: "速度",
                                 value: bikeComputerSpeedText,
                                 averageText: oneMinuteAverage(from: speedSparkline).map { String(format: "1m %.1f km/h", $0) } ?? "1m --",
@@ -2047,20 +2229,16 @@ struct TrainerControlPanel: View {
                                 tint: .green,
                                 points: climbSparkline
                             )
-                            BikeComputerSparklineCard(
+                            BikeComputerBalanceCompositeCard(
                                 label: "左右平衡",
                                 value: bikeComputerBalanceText,
-                                averageText: oneMinuteAverage(from: balanceLeftSparkline).map { String(format: "1m L%.0f%%", $0) } ?? "1m --",
-                                tint: .purple,
-                                points: balanceLeftSparkline
+                                detailText: bikeComputerBalanceContextText,
+                                leftPoints: balanceLeftSparkline,
+                                rightPoints: balanceRightSparkline,
+                                cumulativeLeftPercent: bikeComputerCumulativeBalanceLeftPercent,
+                                cumulativeRightPercent: bikeComputerCumulativeBalanceRightPercent
                             )
-                            BikeComputerSparklineCard(
-                                label: "右侧平衡",
-                                value: bikeComputerBalanceRightPercent.map { String(format: "R%.0f%%", $0) } ?? "--",
-                                averageText: oneMinuteAverage(from: balanceRightSparkline).map { String(format: "1m R%.0f%%", $0) } ?? "1m --",
-                                tint: .indigo,
-                                points: balanceRightSparkline
-                            )
+                            .gridCellColumns(2)
                             BikeComputerSparklineCard(
                                 label: "RR 间期",
                                 value: heartRateMonitor.liveRRIntervalMS.map { String(format: "%.0f ms", $0) } ?? "--",
@@ -2076,17 +2254,19 @@ struct TrainerControlPanel: View {
                                 points: hrvSparkline
                             )
                             BikeComputerSparklineCard(
-                                label: "累计能量",
-                                value: heartRateMonitor.liveEnergyExpendedKJ.map { "\($0) kJ" } ?? "--",
-                                averageText: oneMinuteAverage(from: hrEnergySparkline).map { String(format: "1m %.1f kJ", $0) } ?? "1m --",
+                                label: "累计消耗",
+                                value: bikeComputerCaloriesText,
+                                averageText: bikeComputerCaloriesContextText,
                                 tint: .brown,
-                                points: hrEnergySparkline
+                                points: estimatedCaloriesSparkline
                             )
                         }
                     }
 
                     executionModePanel
-                    whooshModeView
+                    if Self.whooshMiniGameEnabled {
+                        whooshModeView
+                    }
 
                     if let target = trainer.ergTargetWatts {
                         Text("Current ERG Target: \(target) W")
@@ -2126,7 +2306,12 @@ struct TrainerControlPanel: View {
             if let target = trainer.ergTargetWatts {
                 targetPowerText = "\(target)"
             }
-            executionMode = trainer.executionMode == .whoosh ? .erg : trainer.executionMode
+            let trainerMode = trainer.executionMode
+            if !Self.whooshMiniGameEnabled, trainerMode == .whoosh {
+                executionMode = .erg
+            } else {
+                executionMode = trainerMode
+            }
             if let currentGrade = trainer.targetGradePercent {
                 gradeText = String(format: "%.1f", currentGrade)
             }
@@ -2139,16 +2324,31 @@ struct TrainerControlPanel: View {
             if selectedRealMapActivityID == nil {
                 selectedRealMapActivityID = realMapActivities.first?.id
             }
-            whooshCurrentGradePercent = whooshRoute.grade(at: whooshDistanceKm)
-            whooshCurrentPowerW = whooshEffectivePowerW
+            if Self.whooshMiniGameEnabled {
+                whooshCurrentGradePercent = whooshRoute.grade(at: whooshDistanceKm)
+                whooshCurrentPowerW = whooshEffectivePowerW
+            } else {
+                whooshIsRunning = false
+                whooshSyncGradeToTrainer = false
+            }
             realMapCurrentPowerW = realMapEffectivePowerW
             realMapCurrentGradePercent = realMapRoute?.grade(at: realMapDistanceKm) ?? 0
             if executionMode == .realMap {
                 loadRealMapRoute(for: selectedRealMapActivity)
             }
+            resetBikeComputerSessionState()
+            appendBikeComputerTraceSample()
+        }
+        .onChange(of: recordingActive) { wasActive, isActive in
+            guard !wasActive, isActive else { return }
+            resetBikeComputerSessionState()
             appendBikeComputerTraceSample()
         }
         .onChange(of: executionMode) { _, mode in
+            if !Self.whooshMiniGameEnabled, mode == .whoosh {
+                executionMode = .erg
+                return
+            }
             if mode != .realMap {
                 pauseRealMapRide()
                 realMapSyncGradeToTrainer = false
@@ -2186,12 +2386,15 @@ struct TrainerControlPanel: View {
             configureRealMapCamera(followRider: isOn)
         }
         .onChange(of: whooshRoute) { _, _ in
+            guard Self.whooshMiniGameEnabled else { return }
             whooshCurrentGradePercent = whooshRoute.grade(at: whooshDistanceKm)
         }
         .onReceive(bikeComputerTimer) { timestamp in
             appendBikeComputerTraceSample(at: timestamp)
             tickRealMap(at: timestamp)
-            tickWhoosh(at: timestamp)
+            if Self.whooshMiniGameEnabled {
+                tickWhoosh(at: timestamp)
+            }
         }
     }
 }
@@ -2209,6 +2412,7 @@ private struct BikeComputerTracePoint: Identifiable {
     let rrIntervalMS: Double?
     let hrvRMSSDMS: Double?
     let energyExpendedKJ: Double?
+    let estimatedCaloriesKCal: Double?
 }
 
 private struct SparklinePoint: Identifiable {
@@ -2218,6 +2422,7 @@ private struct SparklinePoint: Identifiable {
 }
 
 private struct BikeComputerSparklineCard: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     let label: String
     let value: String
     let averageText: String
@@ -2239,14 +2444,44 @@ private struct BikeComputerSparklineCard: View {
                 .foregroundStyle(.secondary)
 
             if points.count >= 2 {
-                Chart(points) { point in
-                    LineMark(
-                        x: .value("Time", point.timestamp),
-                        y: .value("Value", point.value)
-                    )
-                    .foregroundStyle(tint)
-                    .interpolationMethod(.linear)
-                    .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                let renderPoints = Array(points.suffix(60))
+                let piePoints = Array(renderPoints.suffix(24))
+                Chart(chartDisplayMode == .pie ? piePoints : renderPoints) { point in
+                    switch chartDisplayMode {
+                    case .line:
+                        LineMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(tint)
+                        .interpolationMethod(.linear)
+                        .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                    case .bar:
+                        BarMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", max(0, point.value))
+                        )
+                        .foregroundStyle(tint.opacity(0.85))
+                    case .pie:
+                        SectorMark(
+                            angle: .value("Value", max(0, point.value)),
+                            innerRadius: .ratio(0.56),
+                            angularInset: 1.0
+                        )
+                        .foregroundStyle(tint.opacity(0.75))
+                    case .flame:
+                        BarMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", max(0, point.value))
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.yellow, .orange, tint],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                    }
                 }
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)
@@ -2269,6 +2504,232 @@ private struct BikeComputerSparklineCard: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     )
+            }
+        }
+        .padding(8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct BalancePieSlice: Identifiable {
+    let id = UUID()
+    let label: String
+    let percent: Double
+    let color: Color
+}
+
+private struct BikeComputerBalanceCompositeCard: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    let label: String
+    let value: String
+    let detailText: String
+    let leftPoints: [SparklinePoint]
+    let rightPoints: [SparklinePoint]
+    let cumulativeLeftPercent: Double?
+    let cumulativeRightPercent: Double?
+
+    private var pieSlices: [BalancePieSlice] {
+        guard let left = cumulativeLeftPercent,
+              let right = cumulativeRightPercent else { return [] }
+        return [
+            BalancePieSlice(label: "Left", percent: left, color: .purple),
+            BalancePieSlice(label: "Right", percent: right, color: .indigo)
+        ]
+    }
+
+    private var pieSummaryText: String {
+        guard let left = cumulativeLeftPercent,
+              let right = cumulativeRightPercent else {
+            return "累计 --"
+        }
+        return String(format: "累计 L%.1f%% / R%.1f%%", left, right)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(value)
+                    .font(.subheadline.monospacedDigit().bold())
+            }
+            Text(detailText)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 10) {
+                if leftPoints.count >= 2 || rightPoints.count >= 2 {
+                    let leftRender = Array(leftPoints.suffix(60))
+                    let rightRender = Array(rightPoints.suffix(60))
+                    Chart {
+                        switch chartDisplayMode {
+                        case .line:
+                            ForEach(leftRender) { point in
+                                LineMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", point.value)
+                                )
+                                .foregroundStyle(.purple)
+                                .interpolationMethod(.linear)
+                                .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                            }
+
+                            ForEach(rightRender) { point in
+                                LineMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", point.value)
+                                )
+                                .foregroundStyle(.indigo)
+                                .interpolationMethod(.linear)
+                                .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
+                            }
+                        case .bar:
+                            ForEach(leftRender) { point in
+                                BarMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", max(0, point.value))
+                                )
+                                .foregroundStyle(.purple.opacity(0.85))
+                            }
+                            ForEach(rightRender) { point in
+                                BarMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", max(0, point.value))
+                                )
+                                .foregroundStyle(.indigo.opacity(0.65))
+                            }
+                        case .pie:
+                            let leftMean = leftRender.isEmpty ? 0 : leftRender.map(\.value).reduce(0, +) / Double(leftRender.count)
+                            let rightMean = rightRender.isEmpty ? 0 : rightRender.map(\.value).reduce(0, +) / Double(rightRender.count)
+                            SectorMark(
+                                angle: .value("Left", max(0, leftMean)),
+                                innerRadius: .ratio(0.56),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(.purple)
+                            SectorMark(
+                                angle: .value("Right", max(0, rightMean)),
+                                innerRadius: .ratio(0.56),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(.indigo)
+                        case .flame:
+                            ForEach(leftRender) { point in
+                                BarMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", max(0, point.value))
+                                )
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.yellow, .orange, .purple],
+                                        startPoint: .bottom,
+                                        endPoint: .top
+                                    )
+                                )
+                            }
+                            ForEach(rightRender) { point in
+                                BarMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", max(0, point.value))
+                                )
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.yellow, .orange, .indigo],
+                                        startPoint: .bottom,
+                                        endPoint: .top
+                                    )
+                                )
+                            }
+                        }
+
+                        RuleMark(y: .value("Center", 50))
+                            .foregroundStyle(.secondary.opacity(0.35))
+                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    }
+                    .chartXAxis(.hidden)
+                    .chartYAxis(.hidden)
+                    .chartYScale(domain: 0...100)
+                    .chartPlotStyle { plotArea in
+                        plotArea
+                            .background(Color.purple.opacity(0.08))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .cartesianHoverTip(
+                        xTitle: L10n.choose(simplifiedChinese: "时间", english: "Time"),
+                        yTitle: label
+                    )
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 74)
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.purple.opacity(0.08))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 74)
+                        .overlay(
+                            Text("等待数据")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        )
+                }
+
+                VStack(spacing: 4) {
+                    if pieSlices.isEmpty {
+                        Circle()
+                            .fill(.secondary.opacity(0.18))
+                            .frame(width: 64, height: 64)
+                            .overlay(
+                                Text("--")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            )
+                    } else {
+                        Chart(pieSlices) { slice in
+                            switch chartDisplayMode {
+                            case .line:
+                                LineMark(
+                                    x: .value("Side", slice.label),
+                                    y: .value("Percent", slice.percent)
+                                )
+                                .foregroundStyle(slice.color)
+                            case .bar:
+                                BarMark(
+                                    x: .value("Side", slice.label),
+                                    y: .value("Percent", slice.percent)
+                                )
+                                .foregroundStyle(slice.color)
+                            case .pie:
+                                SectorMark(
+                                    angle: .value("Percent", slice.percent),
+                                    innerRadius: .ratio(0.56),
+                                    angularInset: 1
+                                )
+                                .foregroundStyle(slice.color)
+                            case .flame:
+                                BarMark(
+                                    x: .value("Side", slice.label),
+                                    y: .value("Percent", slice.percent)
+                                )
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.yellow, .orange, .red],
+                                        startPoint: .bottom,
+                                        endPoint: .top
+                                    )
+                                )
+                            }
+                        }
+                        .chartLegend(.hidden)
+                        .frame(width: 64, height: 64)
+                    }
+
+                    Text(pieSummaryText)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(width: 132)
             }
         }
         .padding(8)

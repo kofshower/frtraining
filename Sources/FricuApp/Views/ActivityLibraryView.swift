@@ -36,8 +36,6 @@ struct ActivityLibraryView: View {
     @State private var searchText = ""
     @State private var showImporter = false
     @State private var showClearAllConfirm = false
-    @State private var showDeleteAthletePanelConfirm = false
-    @State private var pendingDeleteAthletePanel: AthletePanel?
     @State private var selectedActivity: Activity?
     @State private var calendarScope: ActivityCalendarScope = .month
     @State private var calendarAnchor = Date()
@@ -47,10 +45,6 @@ struct ActivityLibraryView: View {
         UTType(filenameExtension: "tcx"),
         UTType(filenameExtension: "gpx")
     ].compactMap { $0 }
-
-    private var athletePanelSelections: [AthletePanel] {
-        store.athletePanels
-    }
 
     private var allActivitiesInCurrentSportScope: [Activity] {
         if let sport = store.selectedSportFilter {
@@ -300,62 +294,6 @@ struct ActivityLibraryView: View {
                     .foregroundStyle(.secondary)
                 }
 
-                if athletePanelSelections.count > 1 {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(L10n.choose(simplifiedChinese: "运动员面板", english: "Athlete Panels"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(athletePanelSelections) { panel in
-                                    let isSelected = panel.id == store.selectedAthletePanelID
-                                    HStack(spacing: 4) {
-                                        Button {
-                                            store.selectedAthletePanelID = panel.id
-                                            selectedCalendarDay = nil
-                                        } label: {
-                                            HStack(spacing: 6) {
-                                                Text(panel.title)
-                                                    .font(.subheadline.weight(isSelected ? .semibold : .regular))
-                                                Text("\(panel.count)")
-                                                    .font(.caption.monospacedDigit())
-                                                    .foregroundStyle(isSelected ? Color.white.opacity(0.92) : Color.secondary)
-                                            }
-                                            .padding(.vertical, 6)
-                                            .padding(.horizontal, 10)
-                                            .background(
-                                                isSelected
-                                                    ? Color.accentColor
-                                                    : Color.secondary.opacity(0.12),
-                                                in: Capsule()
-                                            )
-                                            .foregroundStyle(isSelected ? Color.white : Color.primary)
-                                        }
-                                        .buttonStyle(.plain)
-
-                                        if !panel.isAll && store.canDeleteAthletePanel(panelID: panel.id) {
-                                            Button(role: .destructive) {
-                                                pendingDeleteAthletePanel = panel
-                                                showDeleteAthletePanelConfirm = true
-                                            } label: {
-                                                Image(systemName: "trash")
-                                                    .font(.caption.weight(.semibold))
-                                                    .foregroundStyle(.secondary)
-                                                    .frame(width: 28, height: 28)
-                                                    .background(Color.secondary.opacity(0.10), in: Circle())
-                                            }
-                                            .buttonStyle(.plain)
-                                            .help(L10n.choose(simplifiedChinese: "删除该运动员面板及相关数据", english: "Delete this athlete panel and associated data"))
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-                }
-
                 LazyVGrid(
                     columns: [
                         GridItem(.flexible(minimum: 220)),
@@ -394,8 +332,8 @@ struct ActivityLibraryView: View {
                 if store.isAllAthletesSelected {
                     Text(
                         L10n.choose(
-                            simplifiedChinese: "已禁用全库清空。请先选择上方某个运动员面板，再清空该运动员活动。",
-                            english: "Global clear is disabled. Select an athlete panel above to clear only that athlete's activities."
+                            simplifiedChinese: "已禁用全库清空。请先在顶部下拉框选择某个运动员，再清空该运动员活动。",
+                            english: "Global clear is disabled. Select an athlete from the top dropdown first, then clear only that athlete's activities."
                         )
                     )
                     .font(.caption)
@@ -531,38 +469,6 @@ struct ActivityLibraryView: View {
                     L10n.choose(
                         simplifiedChinese: "这将从本地存储永久移除 \(store.selectedAthleteTitle) 的全部活动。",
                         english: "This will permanently remove activities for \(store.selectedAthleteTitle) from local storage."
-                    )
-                )
-            }
-        }
-        .confirmationDialog(
-            L10n.choose(simplifiedChinese: "删除运动员面板？", english: "Delete athlete panel?"),
-            isPresented: $showDeleteAthletePanelConfirm,
-            titleVisibility: .visible
-        ) {
-            if let panel = pendingDeleteAthletePanel {
-                Button(
-                    L10n.choose(simplifiedChinese: "删除面板与相关数据", english: "Delete Panel + Data"),
-                    role: .destructive
-                ) {
-                    selectedActivity = nil
-                    selectedCalendarDay = nil
-                    if store.selectedAthletePanelID == panel.id {
-                        searchText = ""
-                    }
-                    store.deleteAthletePanelAndAssociatedData(panelID: panel.id)
-                    pendingDeleteAthletePanel = nil
-                }
-            }
-            Button(L10n.choose(simplifiedChinese: "取消", english: "Cancel"), role: .cancel) {
-                pendingDeleteAthletePanel = nil
-            }
-        } message: {
-            if let panel = pendingDeleteAthletePanel {
-                Text(
-                    L10n.choose(
-                        simplifiedChinese: "将删除 \(panel.title) 的活动、训练计划、饮食计划、wellness 数据、日历事件，以及相关缓存 profile/洞察。此操作不可撤销。",
-                        english: "This will delete activities, workouts, meal plans, wellness data, calendar events, and related cached profile/insights for \(panel.title). This cannot be undone."
                     )
                 )
             }
@@ -1033,6 +939,7 @@ private enum ActivitySportPalette {
 }
 
 private struct ActivityDetailSheet: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
     let activity: Activity
@@ -1342,6 +1249,10 @@ private struct ActivityDetailSheet: View {
 
     private var decouplingSummary: ActivityDecouplingSummary? {
         derived.decouplingSummary
+    }
+
+    private var balanceSummary: ActivityBalanceSummary? {
+        derived.balanceSummary
     }
 
     private var hrPwScatterPoints: [ActivityHrPwScatterPoint] {
@@ -1669,7 +1580,10 @@ private struct ActivityDetailSheet: View {
         derived.metrics
     }
 
-    private func buildMetrics(decouplingSummary: ActivityDecouplingSummary?) -> [ActivityMetricCardModel] {
+    private func buildMetrics(
+        decouplingSummary: ActivityDecouplingSummary?,
+        balanceSummary: ActivityBalanceSummary?
+    ) -> [ActivityMetricCardModel] {
         let peakPowerWindowsMin = [60, 30, 20, 10, 5, 1]
         let peakPowerWindowsSec = [30, 20, 15, 10, 1]
         let peakPowerTimeline = peakPowerTimelineWatts
@@ -1888,6 +1802,54 @@ private struct ActivityDetailSheet: View {
             )
         }
 
+        if activity.sport == .cycling {
+            if let balanceSummary {
+                rows.append(
+                    .init(
+                        title: "L/R Balance (Avg)",
+                        value: String(format: "L%.1f%% / R%.1f%%", balanceSummary.averageLeftPercent, balanceSummary.averageRightPercent),
+                        hint: "全程左右脚平均功率占比",
+                        method: "计算: Avg(L/R) = 全部有效采样均值",
+                        inputs: String(format: "参数: 样本点=%d, 偏移=|L-50|=%.1f%%", balanceSummary.sampleCount, balanceSummary.averageDeviationFromCenter)
+                    )
+                )
+                rows.append(
+                    .init(
+                        title: "L/R Balance (Finish)",
+                        value: String(format: "L%.1f%% / R%.1f%%", balanceSummary.endLeftPercent, balanceSummary.endRightPercent),
+                        hint: "骑行结束阶段左右脚占比",
+                        method: "计算: Finish(L/R) = 最后一个有效平衡采样",
+                        inputs: String(format: "参数: End 偏移=|L-50|=%.1f%%", balanceSummary.endDeviationFromCenter)
+                    )
+                )
+                rows.append(
+                    .init(
+                        title: "L/R Verdict",
+                        value: balanceSummary.verdict.label,
+                        hint: "左右平衡判定",
+                        method: "计算: max(|AvgL-50|, |EndL-50|) 分档",
+                        inputs: String(
+                            format: "参数: Avg 偏移=%.1f%%, End 偏移=%.1f%%, 阈值(平衡<=%.1f, 轻偏<=%.1f)",
+                            balanceSummary.averageDeviationFromCenter,
+                            balanceSummary.endDeviationFromCenter,
+                            ActivityBalanceAnalyzer.balancedDeviationThreshold,
+                            ActivityBalanceAnalyzer.mildDeviationThreshold
+                        )
+                    )
+                )
+            } else {
+                rows.append(
+                    .init(
+                        title: "L/R Balance",
+                        value: "N/A",
+                        hint: "无左右脚平衡数据",
+                        method: "计算: 需要 FIT/设备原始 L/R 采样",
+                        inputs: "参数: 当前活动未发现 balanceLeft/balanceRight 字段"
+                    )
+                )
+            }
+        }
+
         return rows
     }
 
@@ -1906,6 +1868,7 @@ private struct ActivityDetailSheet: View {
             activity: activity,
             profile: profile,
             dayLoadPoint: dayLoadPoint,
+            leftRightBalancePercent: balanceSummary?.averageLeftPercent,
             existingTitles: existingTitles
         )
     }
@@ -1914,6 +1877,7 @@ private struct ActivityDetailSheet: View {
         activity: Activity,
         profile: AthleteProfile,
         dayLoadPoint: DailyLoadPoint?,
+        leftRightBalancePercent: Double?,
         existingTitles: Set<String>
     ) -> [ActivityMetricCardModel] {
         let calendar = Calendar.current
@@ -1926,13 +1890,20 @@ private struct ActivityDetailSheet: View {
 
         return GoldenCheetahMetricCatalog.activity.compactMap { spec in
             if existingTitles.contains(spec.name.lowercased()) { return nil }
-            let raw = GoldenCheetahMetricCatalog.value(symbol: spec.symbol, context: context)
+            let raw: Double
+            if spec.symbol == "left_right_balance", let leftRightBalancePercent {
+                raw = leftRightBalancePercent
+            } else {
+                raw = GoldenCheetahMetricCatalog.value(symbol: spec.symbol, context: context)
+            }
             return ActivityMetricCardModel(
                 title: spec.name,
                 value: formatGCValue(raw, unit: spec.unit),
                 hint: "GC Activity 指标",
                 method: "GC Symbol: \(spec.symbol)",
-                inputs: "口径: 按当前活动数据做兼容估算（与 GC 同名指标）"
+                inputs: spec.symbol == "left_right_balance" && leftRightBalancePercent != nil
+                    ? "口径: 来自当前活动原始 L/R 采样均值"
+                    : "口径: 按当前活动数据做兼容估算（与 GC 同名指标）"
             )
         }
     }
@@ -1966,7 +1937,10 @@ private struct ActivityDetailSheet: View {
         derived.stories
     }
 
-    private func buildStories(decouplingSummary: ActivityDecouplingSummary?) -> [ActivityStory] {
+    private func buildStories(
+        decouplingSummary: ActivityDecouplingSummary?,
+        balanceSummary: ActivityBalanceSummary?
+    ) -> [ActivityStory] {
         var rows: [ActivityStory] = []
 
         if let intensityFactor {
@@ -2018,6 +1992,25 @@ private struct ActivityDetailSheet: View {
             }
         }
 
+        if activity.sport == .cycling, let balanceSummary {
+            let body = String(
+                format: "全程均值 L%.1f/R%.1f，结束 L%.1f/R%.1f，判定：%@。",
+                balanceSummary.averageLeftPercent,
+                balanceSummary.averageRightPercent,
+                balanceSummary.endLeftPercent,
+                balanceSummary.endRightPercent,
+                balanceSummary.verdict.label
+            )
+            switch balanceSummary.verdict {
+            case .balanced:
+                rows.append(.init(title: "左右脚平衡故事", body: body, tone: .positive))
+            case .mildImbalance:
+                rows.append(.init(title: "左右脚平衡故事", body: body + " 建议继续观察疲劳阶段是否持续向一侧偏移。", tone: .neutral))
+            case .imbalanced:
+                rows.append(.init(title: "左右脚平衡故事", body: body + " 建议检查锁片/坐垫设定与单腿肌力差。", tone: .warning))
+            }
+        }
+
         if rows.isEmpty {
             rows.append(.init(title: "数据提示", body: "这次活动的数据字段较少。导入包含功率/心率的 FIT 文件后可生成更完整故事。", tone: .neutral))
         }
@@ -2050,7 +2043,7 @@ private struct ActivityDetailSheet: View {
         isComputingGCMetrics = true
 
         // 预先排除已展示的核心指标，避免 GC 同名指标重复。
-        let existingTitles = Set(buildMetrics(decouplingSummary: nil).map { $0.title.lowercased() })
+        let existingTitles = Set(buildMetrics(decouplingSummary: nil, balanceSummary: nil).map { $0.title.lowercased() })
         gcMetricsComputationGeneration &+= 1
         let generation = gcMetricsComputationGeneration
         let computed = computeGCActivityMetrics
@@ -2094,6 +2087,7 @@ private struct ActivityDetailSheet: View {
             ActivityTracePoint(id: index, minute: sample.minute, value: sample.power / sample.hr)
         }
         let decoupling = computeDecouplingSummary(from: decouplingSamples)
+        let balance = ActivityBalanceAnalyzer.summary(from: sensorSamples)
 
         let hrPw = computeHrPwDerived(
             sensorSamples: sensorSamples,
@@ -2101,8 +2095,8 @@ private struct ActivityDetailSheet: View {
             heartRatePoints: heartRatePoints
         )
 
-        let metricRows = buildMetrics(decouplingSummary: decoupling)
-        let storyRows = buildStories(decouplingSummary: decoupling)
+        let metricRows = buildMetrics(decouplingSummary: decoupling, balanceSummary: balance)
+        let storyRows = buildStories(decouplingSummary: decoupling, balanceSummary: balance)
 
         return ActivityDetailDerived(
             powerTracePoints: powerPoints,
@@ -2111,6 +2105,7 @@ private struct ActivityDetailSheet: View {
             heartRateAverageValue: heartRateAverage,
             decouplingTracePoints: decouplingTrace,
             decouplingSummary: decoupling,
+            balanceSummary: balance,
             hrPwScatterPoints: hrPw.scatter,
             hrPwRenderableScatterPoints: hrPw.renderable,
             hrPwDelaySec: hrPw.delaySec,
@@ -2459,6 +2454,15 @@ private struct ActivityDetailSheet: View {
                             )
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                        } else if chartDisplayMode == .pie {
+                            Chart(hrPwRenderableScatterPoints.suffix(60)) { point in
+                                SectorMark(
+                                    angle: .value("HeartRate", max(0, point.hr)),
+                                    innerRadius: .ratio(0.56),
+                                    angularInset: 1
+                                )
+                                .foregroundStyle(hrPwTimeColor(for: point.segment))
+                            }
                         } else {
                             Chart {
                                 ForEach(hrPwZoneBands) { band in
@@ -2485,15 +2489,42 @@ private struct ActivityDetailSheet: View {
                                     .lineStyle(.init(lineWidth: 1, dash: [3, 3]))
 
                                 ForEach(hrPwRenderableScatterPoints) { point in
-                                    PointMark(
-                                        x: .value("Power", point.power),
-                                        y: .value("HeartRate", point.hr)
-                                    )
-                                    .symbolSize(18)
-                                    .foregroundStyle(hrPwTimeColor(for: point.segment))
+                                    switch chartDisplayMode {
+                                    case .line:
+                                        PointMark(
+                                            x: .value("Power", point.power),
+                                            y: .value("HeartRate", point.hr)
+                                        )
+                                        .symbolSize(18)
+                                        .foregroundStyle(hrPwTimeColor(for: point.segment))
+                                    case .bar:
+                                        BarMark(
+                                            x: .value("Power", point.power),
+                                            y: .value("HeartRate", point.hr)
+                                        )
+                                        .foregroundStyle(hrPwTimeColor(for: point.segment).opacity(0.8))
+                                    case .pie:
+                                        BarMark(
+                                            x: .value("Power", point.power),
+                                            y: .value("HeartRate", point.hr)
+                                        )
+                                        .foregroundStyle(hrPwTimeColor(for: point.segment).opacity(0.8))
+                                    case .flame:
+                                        BarMark(
+                                            x: .value("Power", point.power),
+                                            y: .value("HeartRate", point.hr)
+                                        )
+                                        .foregroundStyle(
+                                            LinearGradient(
+                                                colors: [.yellow, .orange, .red],
+                                                startPoint: .bottom,
+                                                endPoint: .top
+                                            )
+                                        )
+                                    }
                                 }
 
-                                if !hrPwRegressionVisiblePoints.isEmpty {
+                                if chartDisplayMode == .line, !hrPwRegressionVisiblePoints.isEmpty {
                                     ForEach(hrPwRegressionVisiblePoints) { point in
                                         LineMark(
                                             x: .value("Power", point.minute),
@@ -2560,26 +2591,54 @@ private struct ActivityDetailSheet: View {
                             }
 
                             Chart(decouplingTracePoints) { point in
-                                LineMark(
-                                    x: .value("Minute", point.minute),
-                                    y: .value("EF", point.value)
-                                )
-                                .interpolationMethod(.linear)
-                                .foregroundStyle(.mint)
-                                .lineStyle(.init(lineWidth: 2))
+                                switch chartDisplayMode {
+                                case .line:
+                                    LineMark(
+                                        x: .value("Minute", point.minute),
+                                        y: .value("EF", point.value)
+                                    )
+                                    .interpolationMethod(.linear)
+                                    .foregroundStyle(.mint)
+                                    .lineStyle(.init(lineWidth: 2))
 
-                                RuleMark(y: .value("EF First", decoupling.efFirst))
-                                    .foregroundStyle(.mint.opacity(0.3))
-                                    .lineStyle(.init(lineWidth: 1, dash: [4, 3]))
+                                    RuleMark(y: .value("EF First", decoupling.efFirst))
+                                        .foregroundStyle(.mint.opacity(0.3))
+                                        .lineStyle(.init(lineWidth: 1, dash: [4, 3]))
 
-                                RuleMark(y: .value("EF Second", decoupling.efSecond))
-                                    .foregroundStyle(.blue.opacity(0.35))
-                                    .lineStyle(.init(lineWidth: 1, dash: [4, 3]))
+                                    RuleMark(y: .value("EF Second", decoupling.efSecond))
+                                        .foregroundStyle(.blue.opacity(0.35))
+                                        .lineStyle(.init(lineWidth: 1, dash: [4, 3]))
 
-                                if let splitMinute = decoupling.splitMinute {
-                                    RuleMark(x: .value("Split", splitMinute))
-                                        .foregroundStyle(.orange.opacity(0.75))
-                                        .lineStyle(.init(lineWidth: 1.2, dash: [2, 2]))
+                                    if let splitMinute = decoupling.splitMinute {
+                                        RuleMark(x: .value("Split", splitMinute))
+                                            .foregroundStyle(.orange.opacity(0.75))
+                                            .lineStyle(.init(lineWidth: 1.2, dash: [2, 2]))
+                                    }
+                                case .bar:
+                                    BarMark(
+                                        x: .value("Minute", point.minute),
+                                        y: .value("EF", point.value)
+                                    )
+                                    .foregroundStyle(.mint.opacity(0.85))
+                                case .pie:
+                                    SectorMark(
+                                        angle: .value("EF", max(0, point.value)),
+                                        innerRadius: .ratio(0.56),
+                                        angularInset: 1
+                                    )
+                                    .foregroundStyle(.mint.opacity(0.8))
+                                case .flame:
+                                    BarMark(
+                                        x: .value("Minute", point.minute),
+                                        y: .value("EF", max(0, point.value))
+                                    )
+                                    .foregroundStyle(
+                                        LinearGradient(
+                                            colors: [.yellow, .orange, .red],
+                                            startPoint: .bottom,
+                                            endPoint: .top
+                                        )
+                                    )
                                 }
                             }
                             .frame(height: 130)
@@ -2758,6 +2817,7 @@ private struct ActivityDetailDerived {
     let heartRateAverageValue: Double?
     let decouplingTracePoints: [ActivityTracePoint]
     let decouplingSummary: ActivityDecouplingSummary?
+    let balanceSummary: ActivityBalanceSummary?
     let hrPwScatterPoints: [ActivityHrPwScatterPoint]
     let hrPwRenderableScatterPoints: [ActivityHrPwScatterPoint]
     let hrPwDelaySec: Int
@@ -2777,6 +2837,7 @@ private struct ActivityDetailDerived {
         heartRateAverageValue: nil,
         decouplingTracePoints: [],
         decouplingSummary: nil,
+        balanceSummary: nil,
         hrPwScatterPoints: [],
         hrPwRenderableScatterPoints: [],
         hrPwDelaySec: 0,
@@ -3008,6 +3069,7 @@ private struct ActivityHrPwRegression {
 }
 
 private struct ActivityMiniSeriesCard: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     let title: String
     let unitLabel: String
     let color: Color
@@ -3080,13 +3142,41 @@ private struct ActivityMiniSeriesCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Chart(smoothedPoints) { point in
-                        LineMark(
-                            x: .value("Minute", point.minute),
-                            y: .value("Value", point.value)
-                        )
-                        .interpolationMethod(.linear)
-                        .foregroundStyle(color)
-                        .lineStyle(.init(lineWidth: 2))
+                        switch chartDisplayMode {
+                        case .line:
+                            LineMark(
+                                x: .value("Minute", point.minute),
+                                y: .value("Value", point.value)
+                            )
+                            .interpolationMethod(.linear)
+                            .foregroundStyle(color)
+                            .lineStyle(.init(lineWidth: 2))
+                        case .bar:
+                            BarMark(
+                                x: .value("Minute", point.minute),
+                                y: .value("Value", point.value)
+                            )
+                            .foregroundStyle(color.opacity(0.85))
+                        case .pie:
+                            SectorMark(
+                                angle: .value("Value", max(0, point.value)),
+                                innerRadius: .ratio(0.56),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(color.opacity(0.8))
+                        case .flame:
+                            BarMark(
+                                x: .value("Minute", point.minute),
+                                y: .value("Value", max(0, point.value))
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.yellow, .orange, .red],
+                                    startPoint: .bottom,
+                                    endPoint: .top
+                                )
+                            )
+                        }
                     }
                     .chartYScale(domain: yDomain)
                     .chartPlotStyle { plot in

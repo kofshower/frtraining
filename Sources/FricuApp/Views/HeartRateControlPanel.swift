@@ -165,6 +165,7 @@ private struct HRMetricChip: View {
 }
 
 private struct HeartRateSparklineCard: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
     let label: String
     let value: String
     let points: [HeartRateTrendPoint]
@@ -182,13 +183,43 @@ private struct HeartRateSparklineCard: View {
             }
 
             if points.count >= 2 {
-                Chart(points) { point in
-                    LineMark(
-                        x: .value("Time", point.timestamp),
-                        y: .value("Value", point.value)
-                    )
-                    .foregroundStyle(tint)
-                    .interpolationMethod(.linear)
+                let renderPoints = Array(points.suffix(60))
+                let piePoints = Array(renderPoints.suffix(24))
+                Chart(chartDisplayMode == .pie ? piePoints : renderPoints) { point in
+                    switch chartDisplayMode {
+                    case .line:
+                        LineMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(tint)
+                        .interpolationMethod(.linear)
+                    case .bar:
+                        BarMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", max(0, point.value))
+                        )
+                        .foregroundStyle(tint.opacity(0.85))
+                    case .pie:
+                        SectorMark(
+                            angle: .value("Value", max(0, point.value)),
+                            innerRadius: .ratio(0.56),
+                            angularInset: 1
+                        )
+                        .foregroundStyle(tint.opacity(0.75))
+                    case .flame:
+                        BarMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", max(0, point.value))
+                        )
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [.yellow, .orange, tint],
+                                startPoint: .bottom,
+                                endPoint: .top
+                            )
+                        )
+                    }
                 }
                 .chartXAxis(.hidden)
                 .chartYAxis(.hidden)

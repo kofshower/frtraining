@@ -7,6 +7,8 @@ struct LiveRideSample {
     var cadenceRPM: Double?
     var speedKPH: Double?
     var distanceMeters: Double
+    var leftBalancePercent: Double?
+    var rightBalancePercent: Double?
 }
 
 struct LiveRideSummary {
@@ -80,6 +82,7 @@ enum LiveRideFITWriter {
             .init(number: 3, size: 1, baseType: FITBaseType.uint8),    // heart_rate
             .init(number: 5, size: 4, baseType: FITBaseType.uint32),   // distance (cm)
             .init(number: 7, size: 2, baseType: FITBaseType.uint16),   // power
+            .init(number: 30, size: 1, baseType: FITBaseType.uint8),   // left_right_balance (%)
             .init(number: 4, size: 1, baseType: FITBaseType.uint8),    // cadence
             .init(number: 6, size: 2, baseType: FITBaseType.uint16)    // speed (1000 m/s)
         ]
@@ -113,7 +116,9 @@ enum LiveRideFITWriter {
                 heartRateBPM: nil,
                 cadenceRPM: nil,
                 speedKPH: nil,
-                distanceMeters: 0
+                distanceMeters: 0,
+                leftBalancePercent: nil,
+                rightBalancePercent: nil
             ),
             LiveRideSample(
                 timestamp: endDate,
@@ -121,7 +126,9 @@ enum LiveRideFITWriter {
                 heartRateBPM: nil,
                 cadenceRPM: nil,
                 speedKPH: nil,
-                distanceMeters: 0
+                distanceMeters: 0,
+                leftBalancePercent: nil,
+                rightBalancePercent: nil
             )
         ]
     }
@@ -226,6 +233,15 @@ enum LiveRideFITWriter {
     private static func recordPayload(sample: LiveRideSample) -> [UInt8] {
         let timestamp = fitTimestamp(from: sample.timestamp)
         let distanceCM = UInt32(max(0, Int((sample.distanceMeters * 100.0).rounded())))
+        let leftBalancePercent: Int? = {
+            if let left = sample.leftBalancePercent, left.isFinite {
+                return Int(max(0, min(100, left.rounded())))
+            }
+            if let right = sample.rightBalancePercent, right.isFinite {
+                return Int(max(0, min(100, (100.0 - right).rounded())))
+            }
+            return nil
+        }()
         let speedScaled: Int? = sample.speedKPH.map { kph in
             let mps = kph / 3.6
             return Int((mps * 1000.0).rounded())
@@ -236,6 +252,7 @@ enum LiveRideFITWriter {
         bytes.append(encodeUInt8Optional(sample.heartRateBPM))
         bytes.append(contentsOf: encodeUInt32(distanceCM))
         bytes.append(contentsOf: encodeUInt16Optional(sample.powerWatts))
+        bytes.append(encodeUInt8Optional(leftBalancePercent))
         bytes.append(encodeUInt8Optional(sample.cadenceRPM.map { Int($0.rounded()) }))
         bytes.append(contentsOf: encodeUInt16Optional(speedScaled))
         return bytes
