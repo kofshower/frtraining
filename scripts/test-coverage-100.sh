@@ -4,11 +4,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-CODECOV_JSON="$(swift test --enable-code-coverage --show-codecov-path --filter 'FricuCoreTests')"
+# Build + run core tests with coverage first.
+swift test --package-path CorePackage --enable-code-coverage --filter 'FricuCoreTests' >/dev/null
+
+CODECOV_JSON="$(swift test --package-path CorePackage --enable-code-coverage --show-codecov-path --filter 'FricuCoreTests')"
 
 if [[ ! -f "$CODECOV_JSON" ]]; then
-  echo "Coverage JSON not found: $CODECOV_JSON" >&2
-  exit 1
+  # Swift 6 Linux may not materialize the JSON file. Fallback to llvm-cov export.
+  PROF_PATH="CorePackage/.build/x86_64-unknown-linux-gnu/debug/codecov/default.profdata"
+  BIN_PATH="CorePackage/.build/x86_64-unknown-linux-gnu/debug/FricuCorePackageTests.xctest"
+  if [[ -f "$PROF_PATH" && -f "$BIN_PATH" ]]; then
+    CODECOV_JSON="$(mktemp)"
+    llvm-cov export -instr-profile "$PROF_PATH" "$BIN_PATH" > "$CODECOV_JSON"
+  else
+    echo "Coverage artifacts not found (json/profdata)." >&2
+    exit 1
+  fi
 fi
 
 swift - "$CODECOV_JSON" <<'SWIFT'
@@ -42,7 +53,10 @@ let root = try JSONDecoder().decode(CoverageRoot.self, from: data)
 
 let coreFiles = root.data
     .flatMap(\.files)
-    .filter { $0.filename.contains("/Sources/FricuCore/") && $0.filename.hasSuffix(".swift") }
+    .filter {
+        ($0.filename.contains("/CorePackage/Sources/FricuCore/") || $0.filename.contains("/Sources/FricuCore/"))
+            && $0.filename.hasSuffix(".swift")
+    }
 
 guard !coreFiles.isEmpty else {
     fputs("No FricuCore source files found in coverage report.\n", stderr)

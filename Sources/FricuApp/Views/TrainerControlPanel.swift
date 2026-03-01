@@ -1911,8 +1911,6 @@ struct TrainerControlPanel: View {
             }
         case .realMap:
             realMapModeView
-        case .whoosh:
-            EmptyView()
         }
     }
 
@@ -2421,7 +2419,7 @@ struct TrainerControlPanel: View {
                     }
 
                     Picker("Mode", selection: $executionMode) {
-                        ForEach(TrainerExecutionMode.allCases.filter { $0 != .whoosh }) { mode in
+                        ForEach(TrainerExecutionMode.allCases) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
                     }
@@ -2679,11 +2677,7 @@ struct TrainerControlPanel: View {
                 targetPowerText = "\(target)"
             }
             let trainerMode = trainer.executionMode
-            if !Self.whooshMiniGameEnabled, trainerMode == .whoosh {
-                executionMode = .erg
-            } else {
-                executionMode = trainerMode
-            }
+            executionMode = trainerMode
             if let currentGrade = trainer.targetGradePercent {
                 gradeText = String(format: "%.1f", currentGrade)
             }
@@ -2717,10 +2711,6 @@ struct TrainerControlPanel: View {
             appendBikeComputerTraceSample()
         }
         .onChange(of: executionMode) { _, mode in
-            if !Self.whooshMiniGameEnabled, mode == .whoosh {
-                executionMode = .erg
-                return
-            }
             if mode != .realMap {
                 pauseRealMapRide()
                 realMapSyncGradeToTrainer = false
