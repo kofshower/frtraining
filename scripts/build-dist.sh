@@ -14,6 +14,11 @@ swift build -c "$BUILD_CONFIG" -Xswiftc -gnone
 
 APP_BUNDLE="$("$ROOT_DIR/scripts/make-app-bundle.sh" "$BUILD_CONFIG")"
 DIST_BIN="$ROOT_DIR/dist/$BUILD_CONFIG/FricuApp"
+SERVER_DIST_BIN="$ROOT_DIR/dist/$BUILD_CONFIG/fricu-server"
+
+make -C "$ROOT_DIR/server"
+cp "$ROOT_DIR/server/fricu-server" "$SERVER_DIST_BIN"
 
 echo "Built bundle: $APP_BUNDLE"
 echo "Built binary: $DIST_BIN"
+echo "Built server binary: $SERVER_DIST_BIN"
