@@ -289,3 +289,6 @@ make perf-test
 - `FRICU_SERVER_WORKERS`：worker 线程数（默认 `64`）
 - `FRICU_SERVER_QUEUE`：连接队列容量（默认 `65536`）
 
+- `GET /health`
+- `GET /v1/data/activities`
+- `PUT /v1/data/activities`
