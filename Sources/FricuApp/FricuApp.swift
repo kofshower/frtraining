@@ -7,6 +7,7 @@ struct FricuApp: App {
 
     init() {
         L10n.installBundleBridgeIfNeeded()
+        PowerAssertionController.shared.beginPreventingSleep()
     }
 
     private var appLocale: Locale {
