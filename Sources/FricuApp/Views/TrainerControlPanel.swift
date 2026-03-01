@@ -2438,9 +2438,9 @@ private struct BikeComputerTracePoint: Identifiable {
 }
 
 private struct SparklinePoint: Identifiable {
-    let id = UUID()
     let timestamp: Date
     let value: Double
+    var id: Date { timestamp }
 }
 
 private struct ChartModeMenuButton: View {
@@ -2503,9 +2503,9 @@ private struct BikeComputerSparklineCard: View {
 
             if points.count >= 1 {
                 let renderPoints = Array(points.suffix(60))
-                let piePoints = Array(renderPoints.suffix(24))
-                let lineDomain = lineYDomain(points: renderPoints)
-                let chart = Chart(chartDisplayMode == .pie ? piePoints : renderPoints) { point in
+                let chartPoints = chartDisplayMode == .pie ? Array(renderPoints.suffix(24)) : renderPoints
+                let lineDomain = chartDisplayMode == .line ? lineYDomain(points: renderPoints) : nil
+                let chart = Chart(chartPoints) { point in
                     switch chartDisplayMode {
                     case .line:
                         LineMark(
@@ -2585,9 +2585,12 @@ private struct BikeComputerSparklineCard: View {
     }
 
     private func lineYDomain(points: [SparklinePoint]) -> ClosedRange<Double>? {
-        guard let minValue = points.map(\.value).min(),
-              let maxValue = points.map(\.value).max() else {
-            return nil
+        guard !points.isEmpty else { return nil }
+        var minValue = points[0].value
+        var maxValue = points[0].value
+        for point in points.dropFirst() {
+            minValue = min(minValue, point.value)
+            maxValue = max(maxValue, point.value)
         }
         if abs(maxValue - minValue) < 0.0001 {
             let pad = max(1, abs(maxValue) * 0.06)
@@ -2599,10 +2602,10 @@ private struct BikeComputerSparklineCard: View {
 }
 
 private struct BalancePieSlice: Identifiable {
-    let id = UUID()
     let label: String
     let percent: Double
     let color: Color
+    var id: String { label }
 }
 
 private struct BikeComputerBalanceCompositeCard: View {
