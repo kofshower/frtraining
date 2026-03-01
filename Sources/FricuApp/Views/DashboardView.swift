@@ -3,6 +3,9 @@ import Charts
 
 struct DashboardView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     private enum LoadDisplayMode: String, CaseIterable, Identifiable {
         case raw
         case smooth7d
@@ -77,6 +80,14 @@ struct DashboardView: View {
         let title: String
         let subtitle: String
         let cards: [DashboardStatCardItem]
+    }
+
+    private struct DashboardHighlightItem: Identifiable {
+        let id: String
+        let title: String
+        let value: String
+        let trendText: String
+        let tint: Color
     }
 
     @EnvironmentObject private var store: AppStore
@@ -382,6 +393,55 @@ struct DashboardView: View {
                 emphasis: clampLevel(sleepTodayValue / 8.0)
             )
         ]
+    }
+
+    private var dashboardHighlights: [DashboardHighlightItem] {
+        let summary = rangeSummary
+        let tsbTrend = summary.currentTSB >= 0
+            ? L10n.choose(simplifiedChinese: "状态偏积极", english: "Positive readiness")
+            : L10n.choose(simplifiedChinese: "建议恢复", english: "Recovery advised")
+        let loadTrend = summary.currentATL > summary.currentCTL
+            ? L10n.choose(simplifiedChinese: "短期负荷高", english: "High short-term load")
+            : L10n.choose(simplifiedChinese: "负荷平衡", english: "Balanced load")
+
+        return [
+            DashboardHighlightItem(
+                id: "focus_ctl",
+                title: "CTL",
+                value: String(format: "%.1f", summary.currentCTL),
+                trendText: loadTrend,
+                tint: .blue
+            ),
+            DashboardHighlightItem(
+                id: "focus_tsb",
+                title: "TSB",
+                value: String(format: "%.1f", summary.currentTSB),
+                trendText: tsbTrend,
+                tint: summary.currentTSB >= 0 ? .mint : .orange
+            ),
+            DashboardHighlightItem(
+                id: "focus_weekly",
+                title: "Weekly TSS",
+                value: "\(summary.weeklyTSS)",
+                trendText: L10n.choose(simplifiedChinese: "最近 7 天", english: "Recent 7 days"),
+                tint: .purple
+            ),
+            DashboardHighlightItem(
+                id: "focus_hrv",
+                title: "HRV",
+                value: oneDecimal(latestWellnessSample?.hrv),
+                trendText: L10n.choose(simplifiedChinese: "今日恢复指标", english: "Today recovery marker"),
+                tint: .cyan
+            )
+        ]
+    }
+
+    private var highlightsColumnCount: Int {
+        #if os(iOS)
+        horizontalSizeClass == .regular ? 4 : 2
+        #else
+        4
+        #endif
     }
 
     private var groupedDashboardStatCards: [DashboardStatGroup] {
@@ -706,6 +766,15 @@ struct DashboardView: View {
                     Text("活动 \(rangeFilteredActivities.count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(minimum: 150), spacing: 10), count: highlightsColumnCount),
+                    spacing: 10
+                ) {
+                    ForEach(dashboardHighlights) { item in
+                        DashboardHighlightCard(item: item)
+                    }
                 }
 
                 let pack = store.scenarioMetricPack
@@ -1407,6 +1476,31 @@ private struct MetricTrendCard: View {
         }
         .padding(10)
         .background(.background.tertiary.opacity(0.8), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+
+private struct DashboardHighlightCard: View {
+    let item: DashboardView.DashboardHighlightItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(item.title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(item.value)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(item.tint)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(item.trendText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(item.tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
