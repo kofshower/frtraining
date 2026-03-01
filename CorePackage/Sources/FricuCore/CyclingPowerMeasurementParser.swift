@@ -112,11 +112,10 @@ public enum CyclingPowerMeasurementParser {
         guard bytes.count >= 4 else { return nil }
 
         var reader = ByteReader(bytes: bytes)
-        guard let rawFlags = reader.readUInt16(),
-              let powerRaw = reader.readInt16()
-        else {
-            return nil
-        }
+        let rawFlags = UInt16(bytes[0]) | (UInt16(bytes[1]) << 8)
+        let powerRaw = Int16(bitPattern: UInt16(bytes[2]) | (UInt16(bytes[3]) << 8))
+        _ = reader.readUInt16()
+        _ = reader.readInt16()
 
         let flags = CyclingPowerMeasurementFlags(rawValue: rawFlags)
         let instantaneousPowerWatts = Int(powerRaw)
