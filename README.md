@@ -99,6 +99,7 @@ Build artifacts:
 
 - `dist/release/FricuApp` (executable binary)
 - `dist/release/FricuApp.app` (macOS app bundle)
+- `dist/release/fricu-server` (server binary)
 - `dist/FricuApp` and `dist/FricuApp.app` (latest build alias)
 
 Use the run script (default `release`, foreground):
