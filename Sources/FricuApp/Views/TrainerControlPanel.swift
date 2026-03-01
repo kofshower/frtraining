@@ -422,14 +422,14 @@ struct TrainerControlPanel: View {
         return bikeComputerCumulativeRightPercentSum / Double(bikeComputerCumulativeBalanceSamples)
     }
 
-    private var bikeComputerBalanceContextText: String {
-        let left1m = oneMinuteAverage(from: balanceLeftSparkline)
-        let right1m = oneMinuteAverage(from: balanceRightSparkline)
+    private func bikeComputerBalanceContextText(from series: BikeComputerSparklineSeries) -> String {
+        let left1m = series.balanceLeft.oneMinuteAverage
+        let right1m = series.balanceRight.oneMinuteAverage
         let minuteText: String
         if let left1m, let right1m {
-            minuteText = String(format: "1m L%.0f%% / R%.0f%%", left1m, right1m)
+            minuteText = String(format: "均值 L%.0f%% / R%.0f%%", left1m, right1m)
         } else {
-            minuteText = "1m --"
+            minuteText = "均值 --"
         }
         let cumulativeText: String
         if let left = bikeComputerCumulativeBalanceLeftPercent,
@@ -443,11 +443,6 @@ struct TrainerControlPanel: View {
 
     private var traceNow: Date {
         bikeComputerTrace.last?.timestamp ?? Date()
-    }
-
-    private var recentBikeComputerTrace: [BikeComputerTracePoint] {
-        let cutoff = traceNow.addingTimeInterval(-bikeComputerWindowSeconds)
-        return bikeComputerTrace.filter { $0.timestamp >= cutoff }
     }
 
     private var bikeComputerWindowTitle: String {
@@ -953,60 +948,38 @@ struct TrainerControlPanel: View {
         }
     }
 
-    private var powerSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.powerWatts else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
-    }
+    private var bikeComputerSparklineSeries: BikeComputerSparklineSeries {
+        let minuteCutoff = traceNow.addingTimeInterval(-60)
+        var series = BikeComputerSparklineSeries()
 
-    private var heartRateSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.heartRateBPM else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
+        for point in bikeComputerTrace {
+            let timestamp = point.timestamp
+            if let value = point.powerWatts {
+                series.power.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
+            if let value = point.heartRateBPM {
+                series.heartRate.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
+            if let value = point.cadenceRPM {
+                series.cadence.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
+            if let value = point.balanceLeftPercent {
+                series.balanceLeft.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
+            if let value = point.balanceRightPercent {
+                series.balanceRight.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
+            if let value = point.rrIntervalMS {
+                series.rr.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
+            if let value = point.hrvRMSSDMS {
+                series.hrv.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
+            if let value = point.estimatedCaloriesKCal {
+                series.calories.append(value, timestamp: timestamp, minuteCutoff: minuteCutoff)
+            }
         }
-    }
-
-    private var cadenceSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.cadenceRPM else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
-    }
-
-    private var balanceLeftSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.balanceLeftPercent else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
-    }
-
-    private var balanceRightSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.balanceRightPercent else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
-    }
-
-    private var rrSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.rrIntervalMS else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
-    }
-
-    private var hrvSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.hrvRMSSDMS else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
-    }
-
-    private var estimatedCaloriesSparkline: [SparklinePoint] {
-        recentBikeComputerTrace.compactMap { point in
-            guard let value = point.estimatedCaloriesKCal else { return nil }
-            return SparklinePoint(timestamp: point.timestamp, value: value)
-        }
+        return series
     }
 
     private func oneMinuteAverage(from points: [SparklinePoint]) -> Double? {
@@ -2217,6 +2190,7 @@ struct TrainerControlPanel: View {
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
+                        let series = bikeComputerSparklineSeries
                         HStack(alignment: .firstTextBaseline) {
                             Text("实时码表")
                                 .font(.subheadline.bold())
@@ -2232,30 +2206,30 @@ struct TrainerControlPanel: View {
                             BikeComputerSparklineCard(
                                 label: "功率",
                                 value: bikeComputerPowerWatts.map { "\($0) W" } ?? "--",
-                                averageText: oneMinuteAverage(from: powerSparkline).map { String(format: "1m %.0f W", $0) } ?? "1m --",
+                                averageText: series.power.oneMinuteAverage.map { String(format: "均值 %.0f W", $0) } ?? "均值 --",
                                 tint: .orange,
-                                points: powerSparkline
+                                points: series.power.points
                             )
                             BikeComputerSparklineCard(
                                 label: "心率",
                                 value: bikeComputerHeartRateBPM.map { "\($0) bpm" } ?? "--",
-                                averageText: oneMinuteAverage(from: heartRateSparkline).map { String(format: "1m %.0f bpm", $0) } ?? "1m --",
+                                averageText: series.heartRate.oneMinuteAverage.map { String(format: "均值 %.0f bpm", $0) } ?? "均值 --",
                                 tint: .red,
-                                points: heartRateSparkline
+                                points: series.heartRate.points
                             )
                             BikeComputerSparklineCard(
                                 label: "踏频",
                                 value: bikeComputerCadenceText,
-                                averageText: oneMinuteAverage(from: cadenceSparkline).map { String(format: "1m %.0f rpm", $0) } ?? "1m --",
+                                averageText: series.cadence.oneMinuteAverage.map { String(format: "均值 %.0f rpm", $0) } ?? "均值 --",
                                 tint: .green,
-                                points: cadenceSparkline
+                                points: series.cadence.points
                             )
                             BikeComputerBalanceCompositeCard(
                                 label: "左右平衡",
                                 value: bikeComputerBalanceText,
-                                detailText: bikeComputerBalanceContextText,
-                                leftPoints: balanceLeftSparkline,
-                                rightPoints: balanceRightSparkline,
+                                detailText: bikeComputerBalanceContextText(from: series),
+                                leftPoints: series.balanceLeft.points,
+                                rightPoints: series.balanceRight.points,
                                 cumulativeLeftPercent: bikeComputerCumulativeBalanceLeftPercent,
                                 cumulativeRightPercent: bikeComputerCumulativeBalanceRightPercent
                             )
@@ -2263,23 +2237,23 @@ struct TrainerControlPanel: View {
                             BikeComputerSparklineCard(
                                 label: "RR 间期",
                                 value: heartRateMonitor.liveRRIntervalMS.map { String(format: "%.0f ms", $0) } ?? "--",
-                                averageText: oneMinuteAverage(from: rrSparkline).map { String(format: "1m %.0f ms", $0) } ?? "1m --",
+                                averageText: series.rr.oneMinuteAverage.map { String(format: "均值 %.0f ms", $0) } ?? "均值 --",
                                 tint: .pink,
-                                points: rrSparkline
+                                points: series.rr.points
                             )
                             BikeComputerSparklineCard(
                                 label: "HRV RMSSD",
                                 value: heartRateMonitor.liveHRVRMSSDMS.map { String(format: "%.1f ms", $0) } ?? "--",
-                                averageText: oneMinuteAverage(from: hrvSparkline).map { String(format: "1m %.1f ms", $0) } ?? "1m --",
+                                averageText: series.hrv.oneMinuteAverage.map { String(format: "均值 %.1f ms", $0) } ?? "均值 --",
                                 tint: .teal,
-                                points: hrvSparkline
+                                points: series.hrv.points
                             )
                             BikeComputerSparklineCard(
                                 label: "累计消耗",
                                 value: bikeComputerCaloriesText,
                                 averageText: bikeComputerCaloriesContextText,
                                 tint: .brown,
-                                points: estimatedCaloriesSparkline
+                                points: series.calories.points
                             )
                         }
                     }
@@ -2441,6 +2415,36 @@ private struct SparklinePoint: Identifiable {
     let timestamp: Date
     let value: Double
     var id: Date { timestamp }
+}
+
+private struct BikeComputerSparklineSeries {
+    struct MetricSeries {
+        private(set) var points: [SparklinePoint] = []
+        private var oneMinuteSum: Double = 0
+        private var oneMinuteCount: Int = 0
+
+        mutating func append(_ value: Double, timestamp: Date, minuteCutoff: Date) {
+            points.append(SparklinePoint(timestamp: timestamp, value: value))
+            if timestamp >= minuteCutoff {
+                oneMinuteSum += value
+                oneMinuteCount += 1
+            }
+        }
+
+        var oneMinuteAverage: Double? {
+            guard oneMinuteCount > 0 else { return nil }
+            return oneMinuteSum / Double(oneMinuteCount)
+        }
+    }
+
+    var power = MetricSeries()
+    var heartRate = MetricSeries()
+    var cadence = MetricSeries()
+    var balanceLeft = MetricSeries()
+    var balanceRight = MetricSeries()
+    var rr = MetricSeries()
+    var hrv = MetricSeries()
+    var calories = MetricSeries()
 }
 
 private struct ChartModeMenuButton: View {
