@@ -235,3 +235,49 @@ Local data is stored under:
 - `~/Library/Application Support/Fricu/workouts.json`
 - `~/Library/Application Support/Fricu/events.json`
 - `~/Library/Application Support/Fricu/profile.json`
+
+## C-S 架构改造（客户端/服务端）
+
+当前仓库已改为 C-S 架构：
+
+- `FricuApp` 作为客户端，仅通过 HTTP 访问服务端数据。
+- 服务端位于 `server/`，使用 Rust + Axum 实现。
+- 服务端数据存储使用 SQLite（嵌入式数据库，默认 `fricu_server.db`）。
+
+### 服务端启动
+
+```bash
+cd server
+cargo run --bin fricu-server
+```
+
+可选环境变量：
+
+- `FRICU_SERVER_BIND`：监听地址，默认 `0.0.0.0:8080`
+- `FRICU_DB_PATH`：数据库路径，默认 `fricu_server.db`
+
+### 客户端连接服务端
+
+客户端默认请求 `http://127.0.0.1:8080`。
+可通过环境变量覆盖：
+
+```bash
+FRICU_SERVER_URL=http://127.0.0.1:8080 ./scripts/run-dev.sh
+```
+
+### 10k 并发性能测试
+
+提供了 Rust 压测客户端：
+
+```bash
+cd server
+FRICU_SERVER_URL=http://127.0.0.1:8080 FRICU_PERF_CONCURRENCY=10000 cargo run --bin perf_client --release
+```
+
+输出包含：
+
+- 总请求数
+- 成功/失败请求数
+- 总耗时
+- 吞吐（RPS）
+

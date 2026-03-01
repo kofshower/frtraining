@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+
 protocol DataRepository {
     func loadActivities() throws -> [Activity]
     func saveActivities(_ activities: [Activity]) throws
@@ -19,6 +23,152 @@ protocol DataRepository {
 
 enum RepositoryError: Error {
     case appSupportUnavailable
+    case invalidServerURL
+    case httpError(Int)
+    case noResponse
+}
+
+final class RemoteHTTPRepository: DataRepository {
+    private let baseURL: URL
+    private let session: URLSession
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+
+    init(baseURL: URL? = nil) throws {
+        if let baseURL {
+            self.baseURL = baseURL
+        } else if let env = ProcessInfo.processInfo.environment["FRICU_SERVER_URL"],
+                  let parsed = URL(string: env) {
+            self.baseURL = parsed
+        } else if let fallback = URL(string: "http://127.0.0.1:8080") {
+            self.baseURL = fallback
+        } else {
+            throw RepositoryError.invalidServerURL
+        }
+
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 60
+        self.session = URLSession(configuration: config)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        self.encoder = encoder
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        self.decoder = decoder
+    }
+
+    private func endpoint(_ key: String) -> URL {
+        baseURL.appendingPathComponent("v1/data/\(key)")
+    }
+
+    private func fetch<T: Decodable>(_ key: String, as type: T.Type) throws -> T {
+        var req = URLRequest(url: endpoint(key))
+        req.httpMethod = "GET"
+        let data = try execute(req)
+        return try decoder.decode(T.self, from: data)
+    }
+
+    private func push<T: Encodable>(_ key: String, value: T) throws {
+        var req = URLRequest(url: endpoint(key))
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try encoder.encode(value)
+        _ = try execute(req)
+    }
+
+    private func execute(_ req: URLRequest) throws -> Data {
+        let semaphore = DispatchSemaphore(value: 0)
+        var responseData = Data()
+        var responseError: Error?
+        var statusCode: Int?
+
+        let task = session.dataTask(with: req) { data, response, error in
+            responseData = data ?? Data()
+            responseError = error
+            statusCode = (response as? HTTPURLResponse)?.statusCode
+            semaphore.signal()
+        }
+        task.resume()
+        semaphore.wait()
+
+        if let responseError {
+            throw responseError
+        }
+
+        guard let statusCode else {
+            throw RepositoryError.noResponse
+        }
+
+        guard (200..<300).contains(statusCode) else {
+            throw RepositoryError.httpError(statusCode)
+        }
+
+        return responseData
+    }
+
+    func loadActivities() throws -> [Activity] {
+        try fetch("activities", as: [Activity].self).sorted { $0.date > $1.date }
+    }
+
+    func saveActivities(_ activities: [Activity]) throws {
+        try push("activities", value: activities)
+    }
+
+    func loadActivityMetricInsights() throws -> [ActivityMetricInsight] {
+        try fetch("activity_metric_insights", as: [ActivityMetricInsight].self)
+            .sorted { $0.activityDate > $1.activityDate }
+    }
+
+    func saveActivityMetricInsights(_ insights: [ActivityMetricInsight]) throws {
+        try push("activity_metric_insights", value: insights)
+    }
+
+    func loadDailyMealPlans() throws -> [DailyMealPlan] {
+        try fetch("meal_plans", as: [DailyMealPlan].self).sorted { $0.date > $1.date }
+    }
+
+    func saveDailyMealPlans(_ plans: [DailyMealPlan]) throws {
+        try push("meal_plans", value: plans)
+    }
+
+    func loadCustomFoods() throws -> [CustomFoodLibraryItem] {
+        try fetch("custom_foods", as: [CustomFoodLibraryItem].self).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func saveCustomFoods(_ foods: [CustomFoodLibraryItem]) throws {
+        try push("custom_foods", value: foods)
+    }
+
+    func loadWorkouts() throws -> [PlannedWorkout] {
+        try fetch("workouts", as: [PlannedWorkout].self).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func saveWorkouts(_ workouts: [PlannedWorkout]) throws {
+        try push("workouts", value: workouts)
+    }
+
+    func loadCalendarEvents() throws -> [CalendarEvent] {
+        try fetch("events", as: [CalendarEvent].self).sorted { $0.startDate > $1.startDate }
+    }
+
+    func saveCalendarEvents(_ events: [CalendarEvent]) throws {
+        try push("events", value: events)
+    }
+
+    func loadProfile() throws -> AthleteProfile {
+        do {
+            return try fetch("profile", as: AthleteProfile.self)
+        } catch {
+            return .default
+        }
+    }
+
+    func saveProfile(_ profile: AthleteProfile) throws {
+        try push("profile", value: profile)
+    }
 }
 
 final class LocalJSONRepository: DataRepository {

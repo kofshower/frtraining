@@ -159,7 +159,7 @@ final class AppStore: ObservableObject {
 
     init() {
         do {
-            self.repository = try LocalJSONRepository()
+            self.repository = try RemoteHTTPRepository()
         } catch {
             self.repository = nil
             self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
