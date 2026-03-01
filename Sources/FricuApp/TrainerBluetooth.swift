@@ -22,7 +22,6 @@ enum TrainerExecutionMode: String, CaseIterable, Identifiable {
     case pgmf = "PGMF"
     case simulation = "SIM"
     case realMap = "REAL MAP"
-    case whoosh = "WHOOSH"
 
     var id: String { rawValue }
 }
