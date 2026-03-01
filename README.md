@@ -66,6 +66,22 @@ For a detailed, GitHub-Wiki-friendly documentation page, see:
 
 - `docs/wiki/Home.md`
 
+## iOS 工程文件
+
+仓库新增了 `ios/` 目录用于 iOS 工程支持：
+
+- `ios/project.yml`：XcodeGen 项目定义（iOS 17+，iPhone/iPad）。
+- `ios/Fricu-iOS-Info.plist`：iOS App 所需的 Info.plist（含蓝牙权限说明）。
+
+在 macOS + Xcode 环境下可使用以下命令生成工程：
+
+```bash
+cd ios
+xcodegen generate
+```
+
+生成后会得到 `ios/FricuIOS.xcodeproj`，可直接在 Xcode 中运行 iOS 目标。
+
 ## Requirements
 
 - macOS 14+
