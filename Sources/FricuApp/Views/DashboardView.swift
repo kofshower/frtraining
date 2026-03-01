@@ -82,7 +82,7 @@ struct DashboardView: View {
         let cards: [DashboardStatCardItem]
     }
 
-    private struct DashboardHighlightItem: Identifiable {
+    struct DashboardHighlightItem: Identifiable {
         let id: String
         let title: String
         let value: String

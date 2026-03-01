@@ -20,11 +20,21 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
 packages: {}
 targets:
-  FricuIOS:
-    type: application
+  FricuCore:
+    type: framework
     platform: iOS
     sources:
       - path: ../Sources/FricuCore
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: FricuCore
+
+  FricuIOS:
+    type: application
+    platform: iOS
+    dependencies:
+      - target: FricuCore
+    sources:
       - path: ../Sources/FricuApp
         excludes:
           - Info.plist
