@@ -177,10 +177,18 @@ private struct AppPageChrome<Content: View>: View {
 
     private var contentMaxWidth: CGFloat {
         #if os(iOS)
-            1240
+            1320
         #else
             1480
         #endif
+    }
+
+    private func panelHorizontalPadding(for width: CGFloat) -> CGFloat {
+        width >= 1280 ? 20 : 16
+    }
+
+    private func headerPickerWidth(for width: CGFloat) -> CGFloat {
+        width >= 1280 ? 260 : 230
     }
 
     private var chartDisplayMode: AppChartDisplayMode {
@@ -193,52 +201,42 @@ private struct AppPageChrome<Content: View>: View {
             HealthCanvasBackground()
                 .ignoresSafeArea()
 
-            VStack(spacing: 12) {
-                HStack(spacing: 12) {
-                    Label {
-                        Text(verbatim: section.localizedTitle)
-                    } icon: {
-                        Image(systemName: section.systemImage)
-                    }
-                    .font(.headline.weight(.semibold))
+            GeometryReader { proxy in
+                let availableWidth = proxy.size.width
+                let useHorizontalHeaderLayout = availableWidth >= 980
+                let useHorizontalPickerLayout = availableWidth >= 820
 
-                    Spacer()
+                VStack(spacing: 12) {
+                    Group {
+                        if useHorizontalHeaderLayout {
+                            HStack(spacing: 12) {
+                                headerTitle
 
-                    Picker(
-                        L10n.choose(simplifiedChinese: "运动员", english: "Athlete"),
-                        selection: $store.selectedAthletePanelID
-                    ) {
-                        ForEach(store.athletePanels) { athlete in
-                            Text(athlete.title).tag(athlete.id)
-                        }
-                    }
-                    .appDropdownTheme(width: 230)
+                                Spacer(minLength: 8)
 
-                    Picker(L10n.choose(simplifiedChinese: "页面", english: "Page"), selection: $selection) {
-                        ForEach(AppSection.allCases) { candidate in
-                            Label {
-                                Text(verbatim: candidate.localizedTitle)
-                            } icon: {
-                                Image(systemName: candidate.systemImage)
+                                headerPickersRow(width: availableWidth, horizontal: true)
                             }
-                            .tag(candidate)
+                        } else {
+                            VStack(alignment: .leading, spacing: 10) {
+                                headerTitle
+                                headerPickersRow(width: availableWidth, horizontal: useHorizontalPickerLayout)
+                            }
                         }
                     }
-                    .appDropdownTheme(width: 260)
+                    .padding(.horizontal, panelHorizontalPadding(for: availableWidth))
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: contentMaxWidth, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .healthSurface(cornerRadius: 20)
 
+                    content()
+                        .environment(\.appChartDisplayMode, chartDisplayMode)
+                        .frame(maxWidth: contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(maxWidth: contentMaxWidth, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .healthSurface(cornerRadius: 20)
-
-                content()
-                    .environment(\.appChartDisplayMode, chartDisplayMode)
-                    .frame(maxWidth: contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(12)
             }
-            .padding(12)
         }
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -252,6 +250,58 @@ private struct AppPageChrome<Content: View>: View {
         #if os(iOS)
             .environment(\.defaultMinListRowHeight, 54)
         #endif
+    }
+
+    private var headerTitle: some View {
+        Label {
+            Text(verbatim: section.localizedTitle)
+        } icon: {
+            Image(systemName: section.systemImage)
+        }
+        .font(.headline.weight(.semibold))
+    }
+
+    @ViewBuilder
+    private func headerPickersRow(width: CGFloat, horizontal: Bool) -> some View {
+        Group {
+            if horizontal {
+                HStack(spacing: 10) {
+                    athletePicker(width: width)
+                    sectionPicker(width: width)
+                }
+            } else {
+                VStack(spacing: 8) {
+                    athletePicker(width: width)
+                    sectionPicker(width: width)
+                }
+            }
+        }
+    }
+
+    private func athletePicker(width: CGFloat) -> some View {
+        Picker(
+            L10n.choose(simplifiedChinese: "运动员", english: "Athlete"),
+            selection: $store.selectedAthletePanelID
+        ) {
+            ForEach(store.athletePanels) { athlete in
+                Text(athlete.title).tag(athlete.id)
+            }
+        }
+        .appDropdownTheme(width: headerPickerWidth(for: width))
+    }
+
+    private func sectionPicker(width: CGFloat) -> some View {
+        Picker(L10n.choose(simplifiedChinese: "页面", english: "Page"), selection: $selection) {
+            ForEach(AppSection.allCases) { candidate in
+                Label {
+                    Text(verbatim: candidate.localizedTitle)
+                } icon: {
+                    Image(systemName: candidate.systemImage)
+                }
+                .tag(candidate)
+            }
+        }
+        .appDropdownTheme(width: headerPickerWidth(for: width) + 30)
     }
 }
 
