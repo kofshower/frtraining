@@ -60,6 +60,12 @@ A native macOS training workstation that combines key strengths of Golden Cheeta
 - Recovery management
 - Return from break
 
+## Wiki
+
+For a detailed, GitHub-Wiki-friendly documentation page, see:
+
+- `docs/wiki/Home.md`
+
 ## Requirements
 
 - macOS 14+
