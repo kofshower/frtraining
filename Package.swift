@@ -2,30 +2,26 @@
 import PackageDescription
 
 let package = Package(
-    name: "Fricu",
+    name: "FricuApp",
     defaultLocalization: "en",
     platforms: [
         .macOS(.v14),
         .iOS(.v17)
     ],
     products: [
-        .library(
-            name: "FricuCore",
-            targets: ["FricuCore"]
-        ),
         .executable(
             name: "FricuApp",
             targets: ["FricuApp"]
         )
     ],
+    dependencies: [
+        .package(path: "CorePackage")
+    ],
     targets: [
-        .target(
-            name: "FricuCore"
-        ),
         .executableTarget(
             name: "FricuApp",
             dependencies: [
-                "FricuCore"
+                .product(name: "FricuCore", package: "CorePackage")
             ],
             exclude: [
                 "Info.plist"
@@ -40,12 +36,6 @@ let package = Package(
                     "-Xlinker", "__info_plist",
                     "-Xlinker", "Sources/FricuApp/Info.plist"
                 ], .when(platforms: [.macOS]))
-            ]
-        ),
-        .testTarget(
-            name: "FricuCoreTests",
-            dependencies: [
-                "FricuCore"
             ]
         ),
         .testTarget(

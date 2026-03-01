@@ -67,20 +67,21 @@ BUILD_CONFIG=debug ./scripts/run-dev.sh
 
 ```text
 Sources/
-  FricuApp/         # 应用层：UI、服务、平台 API、蓝牙、AI
-  FricuCore/        # 核心训练计算与解析逻辑
+  FricuApp/               # 应用层：UI、服务、平台 API、蓝牙、AI
 Tests/
-  FricuAppTests/    # 应用层测试
-  FricuCoreTests/   # 核心算法测试
-scripts/            # 构建、运行、覆盖率与发布辅助脚本
-docs/wiki/          # Wiki 文档（本目录）
+  FricuAppTests/          # 应用层测试
+CorePackage/
+  Sources/FricuCore/      # 核心训练计算与解析逻辑
+  Tests/FricuCoreTests/   # 核心算法测试
+scripts/                  # 构建、运行、覆盖率与发布辅助脚本
+docs/wiki/                # Wiki 文档（本目录）
 ```
 
 建议阅读顺序：
 
 1. `README.md`：快速运行与主要能力
 2. 本 Wiki 页面：完整工作流与常见问题
-3. `Sources/FricuCore/*`：训练指标与解析核心
+3. `CorePackage/Sources/FricuCore/*`：训练指标与解析核心
 4. `Sources/FricuApp/Views/*`：交互页面与 UI 架构
 
 ---
@@ -233,7 +234,7 @@ AI 引擎结合以下输入生成建议：
 ### 9.1 本地测试
 
 ```bash
-swift test --enable-code-coverage
+swift test --package-path CorePackage --enable-code-coverage
 ```
 
 ### 9.2 核心覆盖率门禁

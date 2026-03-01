@@ -134,8 +134,10 @@ KILL_XCODE_RUN=1 ./scripts/run-dev.sh
 Run unit tests with coverage:
 
 ```bash
-swift test --enable-code-coverage
+swift test --package-path CorePackage --enable-code-coverage
 ```
+
+> Note: `FricuApp` is an Apple-platform SwiftUI target. In Linux CI/local Linux shells, run Core tests via `--package-path CorePackage`; run full app tests on macOS.
 
 Run strict 100% coverage gate (FricuCore):
 
