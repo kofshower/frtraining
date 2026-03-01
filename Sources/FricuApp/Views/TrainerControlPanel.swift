@@ -242,6 +242,16 @@ struct TrainerControlPanel: View {
     @State private var bikeComputerCumulativeLeftPercentSum: Double = 0
     @State private var bikeComputerCumulativeRightPercentSum: Double = 0
     @State private var bikeComputerCumulativeBalanceSamples: Int = 0
+    @State private var bikeComputerAllPowerSamples: [Double] = []
+    @State private var bikeComputerLapPowerSamples: [Double] = []
+    @State private var bikeComputerLapStartedAtSec: Int = 0
+    @State private var bikeComputerLapPowerSum: Double = 0
+    @State private var bikeComputerLapPowerCount: Int = 0
+    @State private var bikeComputerLapHeartRateSum: Double = 0
+    @State private var bikeComputerLapHeartRateCount: Int = 0
+    @State private var bikeComputerPowerZoneSec: [Int] = Array(repeating: 0, count: 7)
+    @State private var bikeComputerTargetDeviationSec: TimeInterval = 0
+    @State private var bikeComputerTargetAlertUntil: Date?
     @State private var isTrainerFTMSFieldsExpanded = false
     @State private var isTrainerCPSFieldsExpanded = false
     @State private var isPowerMeterCPSFieldsExpanded = false
@@ -390,6 +400,91 @@ struct TrainerControlPanel: View {
 
     private var bikeComputerCadenceText: String {
         bikeComputerCadenceRPM.map { String(format: "%.0f rpm", $0) } ?? "--"
+    }
+
+    private var bikeComputerRolling3sPowerText: String {
+        rollingPowerText(windowSec: 3)
+    }
+
+    private var bikeComputerRolling10sPowerText: String {
+        rollingPowerText(windowSec: 10)
+    }
+
+    private var bikeComputerLapElapsedSec: Int {
+        max(0, bikeComputerElapsedSec - bikeComputerLapStartedAtSec)
+    }
+
+    private var bikeComputerLapElapsedText: String {
+        bikeComputerLapElapsedSec.asDuration
+    }
+
+    private var bikeComputerLapPowerText: String {
+        guard bikeComputerLapPowerCount > 0 else { return "--" }
+        let avg = bikeComputerLapPowerSum / Double(bikeComputerLapPowerCount)
+        return String(format: "%.0f W", avg)
+    }
+
+    private var bikeComputerLapHeartRateText: String {
+        guard bikeComputerLapHeartRateCount > 0 else { return "--" }
+        let avg = bikeComputerLapHeartRateSum / Double(bikeComputerLapHeartRateCount)
+        return String(format: "%.0f bpm", avg)
+    }
+
+    private var bikeComputerLiveNP: Int? {
+        normalizedPower(from: bikeComputerAllPowerSamples)
+    }
+
+    private var bikeComputerLapNP: Int? {
+        normalizedPower(from: bikeComputerLapPowerSamples)
+    }
+
+    private var bikeComputerIF: Double? {
+        let ftp = riderProfile.ftpWatts(for: .cycling)
+        guard ftp > 0, let np = bikeComputerLiveNP else { return nil }
+        return Double(np) / Double(ftp)
+    }
+
+    private var bikeComputerIFText: String {
+        bikeComputerIF.map { String(format: "%.2f", $0) } ?? "--"
+    }
+
+    private var bikeComputerEstimatedTSSText: String {
+        guard let ifValue = bikeComputerIF else { return "--" }
+        let hours = Double(max(0, bikeComputerElapsedSec)) / 3600.0
+        let tss = max(0, hours * ifValue * ifValue * 100)
+        return String(format: "%.1f", tss)
+    }
+
+    private var bikeComputerLiveNPText: String {
+        bikeComputerLiveNP.map { "\($0) W" } ?? "--"
+    }
+
+    private var bikeComputerLapNPText: String {
+        bikeComputerLapNP.map { "\($0) W" } ?? "--"
+    }
+
+    private var bikeComputerZoneSummaryText: String {
+        bikeComputerPowerZoneSec
+            .enumerated()
+            .map { index, sec in "Z\(index + 1) \(sec.asDuration)" }
+            .joined(separator: " · ")
+    }
+
+    private var bikeComputerTargetPower: Int? {
+        if let erg = trainer.ergTargetWatts, erg > 0 {
+            return erg
+        }
+        return nil
+    }
+
+    private var bikeComputerTargetAlertText: String? {
+        guard let alertUntil = bikeComputerTargetAlertUntil, alertUntil >= Date(), let target = bikeComputerTargetPower else {
+            return nil
+        }
+        return L10n.choose(
+            simplifiedChinese: "功率偏离目标 \(target)W 超过 ±5%（持续 8 秒）",
+            english: "Power deviated from target \(target)W by ±5% for 8s"
+        )
     }
 
     private var bikeComputerCaloriesText: String {
@@ -990,6 +1085,46 @@ struct TrainerControlPanel: View {
         return values.reduce(0, +) / Double(values.count)
     }
 
+    private func rollingPowerText(windowSec: TimeInterval) -> String {
+        let cutoff = traceNow.addingTimeInterval(-windowSec)
+        let values = bikeComputerTrace.compactMap { point -> Double? in
+            guard point.timestamp >= cutoff else { return nil }
+            return point.powerWatts
+        }
+        guard !values.isEmpty else { return "--" }
+        let avg = values.reduce(0, +) / Double(values.count)
+        return String(format: "%.0f W", avg)
+    }
+
+    private func normalizedPower(from powers: [Double]) -> Int? {
+        guard powers.count >= 10 else { return nil }
+        let avgFourth = powers.reduce(0.0) { $0 + pow($1, 4) } / Double(powers.count)
+        return Int(pow(avgFourth, 0.25).rounded())
+    }
+
+    private func powerZoneIndex(for watts: Int, ftp: Int) -> Int {
+        guard ftp > 0 else { return 0 }
+        let ratio = Double(watts) / Double(ftp)
+        switch ratio {
+        case ..<0.56: return 0
+        case ..<0.76: return 1
+        case ..<0.91: return 2
+        case ..<1.06: return 3
+        case ..<1.21: return 4
+        case ..<1.51: return 5
+        default: return 6
+        }
+    }
+
+    private func markBikeComputerLap() {
+        bikeComputerLapStartedAtSec = bikeComputerElapsedSec
+        bikeComputerLapPowerSamples = []
+        bikeComputerLapPowerSum = 0
+        bikeComputerLapPowerCount = 0
+        bikeComputerLapHeartRateSum = 0
+        bikeComputerLapHeartRateCount = 0
+    }
+
     private func normalizedBalancePair(left: Double?, right: Double?) -> (left: Double, right: Double)? {
         let leftValue = left?.isFinite == true ? left : nil
         let rightValue = right?.isFinite == true ? right : nil
@@ -1054,6 +1189,30 @@ struct TrainerControlPanel: View {
                         bikeComputerCumulativeRightWorkKJ += estimate.mechanicalWorkKJ * normalizedRight
                     }
                 }
+
+                bikeComputerAllPowerSamples.append(Double(watts))
+                bikeComputerLapPowerSamples.append(Double(watts))
+                bikeComputerLapPowerSum += Double(watts)
+                bikeComputerLapPowerCount += 1
+
+                let ftp = riderProfile.ftpWatts(for: .cycling)
+                let zone = powerZoneIndex(for: watts, ftp: ftp)
+                bikeComputerPowerZoneSec[zone] += Int(max(1, deltaSec.rounded()))
+
+                if let target = bikeComputerTargetPower, target > 0 {
+                    let lower = Double(target) * 0.95
+                    let upper = Double(target) * 1.05
+                    if Double(watts) < lower || Double(watts) > upper {
+                        bikeComputerTargetDeviationSec += deltaSec
+                        if bikeComputerTargetDeviationSec >= 8 {
+                            bikeComputerTargetAlertUntil = timestamp.addingTimeInterval(6)
+                        }
+                    } else {
+                        bikeComputerTargetDeviationSec = 0
+                    }
+                } else {
+                    bikeComputerTargetDeviationSec = 0
+                }
             }
         }
         bikeComputerLastIntegrationAt = timestamp
@@ -1082,6 +1241,12 @@ struct TrainerControlPanel: View {
             energyExpendedKJ: heartRateMonitor.liveEnergyExpendedKJ.map(Double.init),
             estimatedCaloriesKCal: bikeComputerCumulativeCaloriesKCal > 0 ? bikeComputerCumulativeCaloriesKCal : nil
         )
+
+        if let hr = sample.heartRateBPM {
+            bikeComputerLapHeartRateSum += hr
+            bikeComputerLapHeartRateCount += 1
+        }
+
         bikeComputerTrace.append(sample)
 
         let cutoff = timestamp.addingTimeInterval(-bikeComputerWindowSeconds)
@@ -1099,6 +1264,16 @@ struct TrainerControlPanel: View {
         bikeComputerCumulativeLeftPercentSum = 0
         bikeComputerCumulativeRightPercentSum = 0
         bikeComputerCumulativeBalanceSamples = 0
+        bikeComputerAllPowerSamples = []
+        bikeComputerLapPowerSamples = []
+        bikeComputerLapStartedAtSec = 0
+        bikeComputerLapPowerSum = 0
+        bikeComputerLapPowerCount = 0
+        bikeComputerLapHeartRateSum = 0
+        bikeComputerLapHeartRateCount = 0
+        bikeComputerPowerZoneSec = Array(repeating: 0, count: 7)
+        bikeComputerTargetDeviationSec = 0
+        bikeComputerTargetAlertUntil = nil
     }
 
     private func configureRealMapCamera(followRider: Bool = false) {
@@ -2127,8 +2302,10 @@ struct TrainerControlPanel: View {
 
                     HStack(spacing: 14) {
                         LiveMetricChip(title: "Power", value: bikeComputerPowerWatts.map { "\($0) W" } ?? "--")
-                        LiveMetricChip(title: "Cadence", value: bikeComputerCadenceRPM.map { String(format: "%.0f rpm", $0) } ?? "--")
+                        LiveMetricChip(title: "3s Power", value: bikeComputerRolling3sPowerText)
+                        LiveMetricChip(title: "10s Power", value: bikeComputerRolling10sPowerText)
                         LiveMetricChip(title: "Speed", value: bikeComputerSpeedText)
+                        LiveMetricChip(title: "Cadence", value: bikeComputerCadenceRPM.map { String(format: "%.0f rpm", $0) } ?? "--")
                         LiveMetricChip(title: "Heart Rate", value: bikeComputerHeartRateBPM.map { "\($0) bpm" } ?? "--")
                     }
 
@@ -2199,6 +2376,31 @@ struct TrainerControlPanel: View {
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
+                        HStack(spacing: 8) {
+                            LiveMetricChip(title: "Lap Time", value: bikeComputerLapElapsedText)
+                            LiveMetricChip(title: "Lap Power", value: bikeComputerLapPowerText)
+                            LiveMetricChip(title: "Lap HR", value: bikeComputerLapHeartRateText)
+                            LiveMetricChip(title: "Lap NP", value: bikeComputerLapNPText)
+                            Button {
+                                markBikeComputerLap()
+                            } label: {
+                                Label("Lap", systemImage: "flag.checkered")
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        HStack(spacing: 8) {
+                            LiveMetricChip(title: "NP", value: bikeComputerLiveNPText)
+                            LiveMetricChip(title: "IF", value: bikeComputerIFText)
+                            LiveMetricChip(title: "Est. TSS", value: bikeComputerEstimatedTSSText)
+                        }
+                        if let alert = bikeComputerTargetAlertText {
+                            Label(alert, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        Text(bikeComputerZoneSummaryText)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
                         Text(bikeComputerWindowTitle)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
