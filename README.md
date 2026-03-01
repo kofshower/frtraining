@@ -243,14 +243,15 @@ Local data is stored under:
 当前仓库已改为 C-S 架构：
 
 - `FricuApp` 作为客户端，仅通过 HTTP 访问服务端数据。
-- 服务端位于 `server/`，使用 Rust + Axum 实现。
+- 服务端位于 `server/`，使用 C + SQLite + POSIX Socket 实现。
 - 服务端数据存储使用 SQLite（嵌入式数据库，默认 `fricu_server.db`）。
 
 ### 服务端启动
 
 ```bash
 cd server
-cargo run --bin fricu-server
+make
+./fricu-server
 ```
 
 可选环境变量：
@@ -267,19 +268,10 @@ cargo run --bin fricu-server
 FRICU_SERVER_URL=http://127.0.0.1:8080 ./scripts/run-dev.sh
 ```
 
-### 10k 并发性能测试
+### 并发压测建议
 
-提供了 Rust 压测客户端：
+可使用任意 HTTP 压测工具（如 `wrk`、`ab`、`hey`）对以下接口压测：
 
-```bash
-cd server
-FRICU_SERVER_URL=http://127.0.0.1:8080 FRICU_PERF_CONCURRENCY=10000 cargo run --bin perf_client --release
-```
-
-输出包含：
-
-- 总请求数
-- 成功/失败请求数
-- 总耗时
-- 吞吐（RPS）
-
+- `GET /health`
+- `GET /v1/data/activities`
+- `PUT /v1/data/activities`
