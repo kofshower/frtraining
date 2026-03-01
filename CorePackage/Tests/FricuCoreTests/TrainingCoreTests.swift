@@ -254,10 +254,42 @@ final class TrainingCoreTests: XCTestCase {
     }
 
     func testHeartRateBodySensorLocationParser() throws {
+        XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x00]))), .other)
         XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x01]))), .chest)
+        XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x02]))), .wrist)
+        XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x03]))), .finger)
         XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x04]))), .hand)
+        XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x05]))), .earLobe)
+        XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x06]))), .foot)
         XCTAssertEqual(try XCTUnwrap(HeartRateParsers.parseBodySensorLocation(Data([0x77]))), .unknown(0x77))
         XCTAssertNil(HeartRateParsers.parseBodySensorLocation(Data()))
+
+        XCTAssertEqual(HeartRateBodySensorLocation.other.rawValue, 0)
+        XCTAssertEqual(HeartRateBodySensorLocation.chest.stringCode, "chest")
+        XCTAssertEqual(HeartRateBodySensorLocation.wrist.stringCode, "wrist")
+        XCTAssertEqual(HeartRateBodySensorLocation.finger.stringCode, "finger")
+        XCTAssertEqual(HeartRateBodySensorLocation.hand.stringCode, "hand")
+        XCTAssertEqual(HeartRateBodySensorLocation.earLobe.stringCode, "ear_lobe")
+        XCTAssertEqual(HeartRateBodySensorLocation.foot.stringCode, "foot")
+        XCTAssertEqual(HeartRateBodySensorLocation.unknown(9).rawValue, 9)
+        XCTAssertEqual(HeartRateBodySensorLocation.unknown(9).stringCode, "unknown_9")
+    }
+
+    func testHeartRateMeasurementParserUInt8ValueAndNoOptionalFields() throws {
+        let payload = Data([
+            0x00, // uint8 heart rate, no optional fields
+            0x2D // 45 bpm
+        ])
+
+        let parsed = try XCTUnwrap(HeartRateParsers.parseMeasurement(payload))
+        XCTAssertEqual(parsed.heartRateBPM, 45)
+        XCTAssertFalse(parsed.valueIsUInt16)
+        XCTAssertFalse(parsed.sensorContactSupported)
+        XCTAssertNil(parsed.sensorContactDetected)
+        XCTAssertNil(parsed.energyExpendedKJ)
+        XCTAssertTrue(parsed.rrIntervals1024.isEmpty)
+        XCTAssertTrue(parsed.rrIntervalsMS.isEmpty)
+        XCTAssertNil(parsed.latestRRIntervalMS)
     }
 
     func testHeartRateMeasurementParserRejectsShortPayload() {
@@ -282,6 +314,47 @@ final class TrainingCoreTests: XCTestCase {
         let clean = HeartRateVariabilityMath.sanitizeRRIntervals(dirty)
         XCTAssertEqual(clean, [1000, 980, 970], "Out-of-range and jump artifacts should be filtered")
         XCTAssertNil(HeartRateVariabilityMath.metrics(rrIntervalsMS: clean, minimumCount: 5))
+
+        XCTAssertEqual(HeartRateVariabilityMath.sanitizeRRIntervals([]), [])
+        XCTAssertEqual(HeartRateVariabilityMath.sanitizeRRIntervals([1000, .infinity, .nan, 990]), [1000, 990])
+    }
+
+    func testHeartRateVariabilityMetricsSingleSampleCoversZeroVariancePath() throws {
+        let metrics = try XCTUnwrap(HeartRateVariabilityMath.metrics(rrIntervalsMS: [900], minimumCount: 1))
+        XCTAssertEqual(metrics.sampleCount, 1)
+        XCTAssertEqual(metrics.meanRRMS, 900, accuracy: 0.001)
+        XCTAssertEqual(metrics.sdnnMS, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.rmssdMS, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.pnn50Percent, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.minRRMS, 900, accuracy: 0.001)
+        XCTAssertEqual(metrics.maxRRMS, 900, accuracy: 0.001)
+    }
+
+
+
+    func testHeartRateVariabilityMetricsAllowsZeroMinimumCountForEmptyInput() throws {
+        let metrics = try XCTUnwrap(HeartRateVariabilityMath.metrics(rrIntervalsMS: [], minimumCount: 0))
+        XCTAssertEqual(metrics.sampleCount, 0)
+        XCTAssertTrue(metrics.meanRRMS.isNaN)
+        XCTAssertTrue(metrics.minRRMS.isNaN)
+        XCTAssertTrue(metrics.maxRRMS.isNaN)
+    }
+
+    func testCyclingPowerParserWheelTorqueSourceAndOffsetFlag() throws {
+        let flags: UInt16 =
+            CyclingPowerMeasurementFlags.accumulatedTorquePresent.rawValue |
+            CyclingPowerMeasurementFlags.offsetCompensationIndicator.rawValue
+        let payload = Data([
+            UInt8(flags & 0xFF), UInt8((flags >> 8) & 0xFF),
+            0x64, 0x00, // instantaneous power 100w
+            0x80, 0x00 // accumulated torque 128 / 32 = 4Nm
+        ])
+
+        let parsed = try XCTUnwrap(CyclingPowerMeasurementParser.parse(payload))
+        XCTAssertEqual(parsed.instantaneousPowerWatts, 100)
+        XCTAssertEqual(try XCTUnwrap(parsed.accumulatedTorqueNm), 4.0, accuracy: 0.001)
+        XCTAssertEqual(parsed.accumulatedTorqueSource, .wheelBased)
+        XCTAssertTrue(parsed.offsetCompensationIndicator)
     }
 
     private func uint16Bytes(_ value: UInt16) -> [UInt8] {
