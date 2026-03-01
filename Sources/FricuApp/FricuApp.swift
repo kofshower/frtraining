@@ -196,6 +196,10 @@ private struct AppPageChrome<Content: View>: View {
         set { chartDisplayModeRawValue = newValue.rawValue }
     }
 
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
     var body: some View {
         ZStack {
             HealthCanvasBackground()
@@ -203,36 +207,25 @@ private struct AppPageChrome<Content: View>: View {
 
             GeometryReader { proxy in
                 let availableWidth = proxy.size.width
-                let useHorizontalHeaderLayout = availableWidth >= 980
-                let useHorizontalPickerLayout = availableWidth >= 820
+                let useSidebarLayout = isWidePadLayout(for: availableWidth)
 
-                VStack(spacing: 12) {
-                    Group {
-                        if useHorizontalHeaderLayout {
-                            HStack(spacing: 12) {
-                                headerTitle
+                Group {
+                    if useSidebarLayout {
+                        HStack(alignment: .top, spacing: 14) {
+                            sideNavigationRail(width: availableWidth)
+                                .frame(width: 270, alignment: .top)
 
-                                Spacer(minLength: 8)
-
-                                headerPickersRow(width: availableWidth, horizontal: true)
-                            }
-                        } else {
-                            VStack(alignment: .leading, spacing: 10) {
-                                headerTitle
-                                headerPickersRow(width: availableWidth, horizontal: useHorizontalPickerLayout)
+                            VStack(spacing: 12) {
+                                topControlBar(width: availableWidth - 284, showPagePicker: false)
+                                contentPanel
                             }
                         }
+                    } else {
+                        VStack(spacing: 12) {
+                            topControlBar(width: availableWidth, showPagePicker: true)
+                            contentPanel
+                        }
                     }
-                    .padding(.horizontal, panelHorizontalPadding(for: availableWidth))
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: contentMaxWidth, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .healthSurface(cornerRadius: 20)
-
-                    content()
-                        .environment(\.appChartDisplayMode, chartDisplayMode)
-                        .frame(maxWidth: contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .padding(12)
@@ -252,6 +245,83 @@ private struct AppPageChrome<Content: View>: View {
         #endif
     }
 
+    private var contentPanel: some View {
+        content()
+            .environment(\.appChartDisplayMode, chartDisplayMode)
+            .frame(maxWidth: contentMaxWidth, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func topControlBar(width: CGFloat, showPagePicker: Bool) -> some View {
+        let useHorizontalHeaderLayout = width >= 980
+        let useHorizontalPickerLayout = width >= 820
+
+        Group {
+            if useHorizontalHeaderLayout {
+                HStack(spacing: 12) {
+                    headerTitle
+                    Spacer(minLength: 8)
+                    headerPickersRow(width: width, horizontal: true, showPagePicker: showPagePicker)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    headerTitle
+                    headerPickersRow(width: width, horizontal: useHorizontalPickerLayout, showPagePicker: showPagePicker)
+                }
+            }
+        }
+        .padding(.horizontal, panelHorizontalPadding(for: width))
+        .padding(.vertical, 12)
+        .frame(maxWidth: contentMaxWidth, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .healthSurface(cornerRadius: 20)
+    }
+
+    private func sideNavigationRail(width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(L10n.choose(simplifiedChinese: "工作台", english: "Workspace"))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            athletePicker(width: width - 26)
+
+            ScrollView(showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: 8) {
+                    ForEach(AppSection.allCases) { candidate in
+                        Button {
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                selection = candidate
+                            }
+                        } label: {
+                            Label {
+                                Text(verbatim: candidate.localizedTitle)
+                                    .font(.callout.weight(.semibold))
+                            } icon: {
+                                Image(systemName: candidate.systemImage)
+                                    .frame(width: 20)
+                            }
+                            .foregroundStyle(selection == candidate ? HealthThemePalette.accent : Color.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(selection == candidate ? HealthThemePalette.accent.opacity(0.13) : Color.clear)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 14)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .healthSurface(cornerRadius: 20)
+    }
+
     private var headerTitle: some View {
         Label {
             Text(verbatim: section.localizedTitle)
@@ -262,17 +332,21 @@ private struct AppPageChrome<Content: View>: View {
     }
 
     @ViewBuilder
-    private func headerPickersRow(width: CGFloat, horizontal: Bool) -> some View {
+    private func headerPickersRow(width: CGFloat, horizontal: Bool, showPagePicker: Bool) -> some View {
         Group {
             if horizontal {
                 HStack(spacing: 10) {
                     athletePicker(width: width)
-                    sectionPicker(width: width)
+                    if showPagePicker {
+                        sectionPicker(width: width)
+                    }
                 }
             } else {
                 VStack(spacing: 8) {
                     athletePicker(width: width)
-                    sectionPicker(width: width)
+                    if showPagePicker {
+                        sectionPicker(width: width)
+                    }
                 }
             }
         }
@@ -302,6 +376,14 @@ private struct AppPageChrome<Content: View>: View {
             }
         }
         .appDropdownTheme(width: headerPickerWidth(for: width) + 30)
+    }
+
+    private func isWidePadLayout(for width: CGFloat) -> Bool {
+        #if os(iOS)
+            horizontalSizeClass == .regular && width >= 1180
+        #else
+            false
+        #endif
     }
 }
 
