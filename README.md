@@ -113,6 +113,28 @@ If you intentionally want to terminate Xcode-launched instances too, use:
 KILL_XCODE_RUN=1 ./scripts/run-dev.sh
 ```
 
+## iPad Pro 调试（多平台）
+
+当前仓库以 macOS 运行流程为主，但已经包含 iOS 平台声明（`iOS 17+`）。
+
+推荐做法是为 iOS 新建一个 Host App，再复用本仓库的 Swift Package 代码：
+
+1. 在 Xcode 新建 `iOS App`（SwiftUI）工程，例如 `FricuIOSHost`。
+2. 在新工程中添加本地 Swift Package，路径指向本仓库。
+3. 先接入 `FricuCore`（逻辑层），再逐步接入 `FricuApp` 中可复用的跨平台 SwiftUI 视图。
+4. 连接 iPad Pro（USB 或无线调试），在 Xcode 选择你的 iPad 作为运行目标。
+5. 配置 `Signing & Capabilities`：
+   - Team
+   - Bundle Identifier
+   - Deployment Target（建议 iPadOS 17+）
+6. 首次真机安装时，在 iPad 上信任开发者证书并开启开发者模式。
+
+真机调试检查清单：
+
+- 若涉及蓝牙功能，请确保 iOS target 的 `Info.plist` 已添加蓝牙权限说明。
+- 若使用相机（如扫码），请在 iOS target 中添加相机权限说明。
+- iPad 上看不到设备日志时，可在 Xcode `Window -> Devices and Simulators` 中查看。
+
 ## Tests & Coverage
 
 Run unit tests with coverage:
