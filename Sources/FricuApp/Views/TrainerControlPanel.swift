@@ -250,6 +250,7 @@ struct TrainerControlPanel: View {
     @State private var bikeComputerLapHeartRateSum: Double = 0
     @State private var bikeComputerLapHeartRateCount: Int = 0
     @State private var bikeComputerPowerZoneSec: [Int] = Array(repeating: 0, count: 7)
+    @State private var bikeComputerHeartRateZoneSec: [Int] = Array(repeating: 0, count: 7)
     @State private var bikeComputerTargetDeviationSec: TimeInterval = 0
     @State private var bikeComputerTargetAlertUntil: Date?
     @State private var bikeComputerHydrationReminderUntil: Date?
@@ -478,9 +479,23 @@ struct TrainerControlPanel: View {
             .joined(separator: " · ")
     }
 
+    private var bikeComputerHeartRateZoneSummaryText: String {
+        bikeComputerHeartRateZoneSec
+            .enumerated()
+            .map { index, sec in "Z\(index + 1) \(sec.asDuration)" }
+            .joined(separator: " · ")
+    }
+
     private var bikeComputerZoneRows: [(name: String, seconds: Int, percent: Double)] {
         let total = max(1, bikeComputerPowerZoneSec.reduce(0, +))
         return bikeComputerPowerZoneSec.enumerated().map { index, sec in
+            (name: "Z\(index + 1)", seconds: sec, percent: Double(sec) / Double(total))
+        }
+    }
+
+    private var bikeComputerHeartRateZoneRows: [(name: String, seconds: Int, percent: Double)] {
+        let total = max(1, bikeComputerHeartRateZoneSec.reduce(0, +))
+        return bikeComputerHeartRateZoneSec.enumerated().map { index, sec in
             (name: "Z\(index + 1)", seconds: sec, percent: Double(sec) / Double(total))
         }
     }
@@ -1178,6 +1193,20 @@ struct TrainerControlPanel: View {
         }
     }
 
+    private func heartRateZoneIndex(for heartRate: Int, threshold: Int) -> Int {
+        guard threshold > 0 else { return 0 }
+        let ratio = Double(heartRate) / Double(threshold)
+        switch ratio {
+        case ..<0.68: return 0
+        case ..<0.78: return 1
+        case ..<0.87: return 2
+        case ..<0.95: return 3
+        case ..<1.03: return 4
+        case ..<1.10: return 5
+        default: return 6
+        }
+    }
+
     private func markBikeComputerLap() {
         bikeComputerLapStartedAtSec = bikeComputerElapsedSec
         bikeComputerLapPowerSamples = []
@@ -1230,6 +1259,12 @@ struct TrainerControlPanel: View {
 
         if let previous = bikeComputerLastIntegrationAt {
             let deltaSec = max(0, timestamp.timeIntervalSince(previous))
+            let delta = Int(max(1, deltaSec.rounded()))
+            if deltaSec > 0, let hr = bikeComputerHeartRateBPM {
+                let threshold = riderProfile.thresholdHeartRate(for: .cycling, on: Date())
+                let zone = heartRateZoneIndex(for: hr, threshold: threshold)
+                bikeComputerHeartRateZoneSec[zone] += delta
+            }
             if deltaSec > 0, let watts = bikeComputerPowerWatts, watts > 0 {
                 let estimate = CyclingCalorieEstimator.estimateStep(
                     powerWatts: Double(watts),
@@ -1259,7 +1294,7 @@ struct TrainerControlPanel: View {
 
                 let ftp = riderProfile.ftpWatts(for: .cycling)
                 let zone = powerZoneIndex(for: watts, ftp: ftp)
-                bikeComputerPowerZoneSec[zone] += Int(max(1, deltaSec.rounded()))
+                bikeComputerPowerZoneSec[zone] += delta
 
                 if let target = bikeComputerTargetPower, target > 0 {
                     let lower = Double(target) * 0.95
@@ -1366,6 +1401,7 @@ struct TrainerControlPanel: View {
         bikeComputerLapHeartRateSum = 0
         bikeComputerLapHeartRateCount = 0
         bikeComputerPowerZoneSec = Array(repeating: 0, count: 7)
+        bikeComputerHeartRateZoneSec = Array(repeating: 0, count: 7)
         bikeComputerTargetDeviationSec = 0
         bikeComputerTargetAlertUntil = nil
         bikeComputerHydrationReminderUntil = nil
@@ -2526,23 +2562,19 @@ struct TrainerControlPanel: View {
                                 .font(.caption)
                                 .foregroundStyle(.mint)
                         }
-                        Text(bikeComputerZoneSummaryText)
-                            .font(.caption2.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                        VStack(spacing: 6) {
-                            ForEach(Array(bikeComputerZoneRows.enumerated()), id: \.offset) { _, row in
-                                HStack(spacing: 8) {
-                                    Text(row.name)
-                                        .font(.caption2.monospacedDigit())
-                                        .frame(width: 28, alignment: .leading)
-                                    ProgressView(value: row.percent)
-                                        .tint(.orange)
-                                    Text(row.seconds.asDuration)
-                                        .font(.caption2.monospacedDigit())
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 54, alignment: .trailing)
-                                }
-                            }
+                        HStack(alignment: .top, spacing: 12) {
+                            BikeComputerZoneBreakdownView(
+                                title: "功率分区",
+                                summaryText: bikeComputerZoneSummaryText,
+                                rows: bikeComputerZoneRows,
+                                tint: .orange
+                            )
+                            BikeComputerZoneBreakdownView(
+                                title: "心率分区",
+                                summaryText: bikeComputerHeartRateZoneSummaryText,
+                                rows: bikeComputerHeartRateZoneRows,
+                                tint: .red
+                            )
                         }
                         Text(bikeComputerWindowTitle)
                             .font(.caption2)
@@ -2821,6 +2853,42 @@ private struct ChartModeMenuButton: View {
             )
         }
         .buttonStyle(.plain)
+    }
+}
+
+private struct BikeComputerZoneBreakdownView: View {
+    let title: String
+    let summaryText: String
+    let rows: [(name: String, seconds: Int, percent: Double)]
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.bold())
+                .foregroundStyle(tint)
+            Text(summaryText)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            VStack(spacing: 6) {
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 8) {
+                        Text(row.name)
+                            .font(.caption2.monospacedDigit())
+                            .frame(width: 28, alignment: .leading)
+                        ProgressView(value: row.percent)
+                            .tint(tint)
+                        Text(row.seconds.asDuration)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 54, alignment: .trailing)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 }
 
