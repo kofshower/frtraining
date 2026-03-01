@@ -252,6 +252,14 @@ struct TrainerControlPanel: View {
     @State private var bikeComputerPowerZoneSec: [Int] = Array(repeating: 0, count: 7)
     @State private var bikeComputerTargetDeviationSec: TimeInterval = 0
     @State private var bikeComputerTargetAlertUntil: Date?
+    @State private var bikeComputerHydrationReminderUntil: Date?
+    @State private var bikeComputerCarbReminderUntil: Date?
+    @State private var bikeComputerHRAlertUntil: Date?
+    @State private var bikeComputerHRAboveThresholdSec: TimeInterval = 0
+    @State private var bikeComputerNextHydrationMarkSec: Int = 15 * 60
+    @State private var bikeComputerNextCarbMarkSec: Int = 30 * 60
+    @State private var bikeComputerAutoLapEnabled = true
+    @State private var bikeComputerAutoLapEverySec: Int = 10 * 60
     @State private var isTrainerFTMSFieldsExpanded = false
     @State private var isTrainerCPSFieldsExpanded = false
     @State private var isPowerMeterCPSFieldsExpanded = false
@@ -470,6 +478,28 @@ struct TrainerControlPanel: View {
             .joined(separator: " · ")
     }
 
+    private var bikeComputerZoneRows: [(name: String, seconds: Int, percent: Double)] {
+        let total = max(1, bikeComputerPowerZoneSec.reduce(0, +))
+        return bikeComputerPowerZoneSec.enumerated().map { index, sec in
+            (name: "Z\(index + 1)", seconds: sec, percent: Double(sec) / Double(total))
+        }
+    }
+
+    private var bikeComputerBest5sPowerText: String {
+        bestRollingPower(window: 5, from: bikeComputerAllPowerSamples)
+            .map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
+    private var bikeComputerBest1mPowerText: String {
+        bestRollingPower(window: 60, from: bikeComputerAllPowerSamples)
+            .map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
+    private var bikeComputerBest5mPowerText: String {
+        bestRollingPower(window: 300, from: bikeComputerAllPowerSamples)
+            .map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
     private var bikeComputerTargetPower: Int? {
         if let erg = trainer.ergTargetWatts, erg > 0 {
             return erg
@@ -484,6 +514,24 @@ struct TrainerControlPanel: View {
         return L10n.choose(
             simplifiedChinese: "功率偏离目标 \(target)W 超过 ±5%（持续 8 秒）",
             english: "Power deviated from target \(target)W by ±5% for 8s"
+        )
+    }
+
+    private var bikeComputerHydrationAlertText: String? {
+        guard let until = bikeComputerHydrationReminderUntil, until >= Date() else { return nil }
+        return L10n.choose(simplifiedChinese: "补水提醒：建议现在喝水", english: "Hydration reminder: drink now")
+    }
+
+    private var bikeComputerCarbAlertText: String? {
+        guard let until = bikeComputerCarbReminderUntil, until >= Date() else { return nil }
+        return L10n.choose(simplifiedChinese: "补给提醒：建议摄入碳水", english: "Fuel reminder: take carbs now")
+    }
+
+    private var bikeComputerHRAlertText: String? {
+        guard let until = bikeComputerHRAlertUntil, until >= Date() else { return nil }
+        return L10n.choose(
+            simplifiedChinese: "心率连续超阈值，建议降强/恢复",
+            english: "Heart rate stayed above threshold, back off and recover"
         )
     }
 
@@ -1102,6 +1150,20 @@ struct TrainerControlPanel: View {
         return Int(pow(avgFourth, 0.25).rounded())
     }
 
+    private func bestRollingPower(window: Int, from powers: [Double]) -> Double? {
+        guard window > 0, powers.count >= window else { return nil }
+        var sum = powers.prefix(window).reduce(0, +)
+        var best = sum / Double(window)
+        if powers.count == window {
+            return best
+        }
+        for index in window..<powers.count {
+            sum += powers[index] - powers[index - window]
+            best = max(best, sum / Double(window))
+        }
+        return best
+    }
+
     private func powerZoneIndex(for watts: Int, ftp: Int) -> Int {
         guard ftp > 0 else { return 0 }
         let ratio = Double(watts) / Double(ftp)
@@ -1226,6 +1288,23 @@ struct TrainerControlPanel: View {
             elapsedSec = 0
         }
 
+        if bikeComputerAutoLapEnabled,
+           bikeComputerAutoLapEverySec > 0,
+           elapsedSec > 0,
+           (elapsedSec - bikeComputerLapStartedAtSec) >= bikeComputerAutoLapEverySec {
+            markBikeComputerLap()
+        }
+
+        while elapsedSec >= bikeComputerNextHydrationMarkSec {
+            bikeComputerHydrationReminderUntil = timestamp.addingTimeInterval(10)
+            bikeComputerNextHydrationMarkSec += 15 * 60
+        }
+
+        while elapsedSec >= bikeComputerNextCarbMarkSec {
+            bikeComputerCarbReminderUntil = timestamp.addingTimeInterval(10)
+            bikeComputerNextCarbMarkSec += 30 * 60
+        }
+
         let sample = BikeComputerTracePoint(
             timestamp: timestamp,
             elapsedSec: elapsedSec,
@@ -1245,6 +1324,21 @@ struct TrainerControlPanel: View {
         if let hr = sample.heartRateBPM {
             bikeComputerLapHeartRateSum += hr
             bikeComputerLapHeartRateCount += 1
+
+            let threshold = riderProfile.thresholdHeartRate(for: .cycling, on: Date())
+            if threshold > 0 {
+                let cap = Double(threshold + 5)
+                if hr > cap {
+                    bikeComputerHRAboveThresholdSec += 1
+                    if bikeComputerHRAboveThresholdSec >= 8 {
+                        bikeComputerHRAlertUntil = timestamp.addingTimeInterval(6)
+                    }
+                } else {
+                    bikeComputerHRAboveThresholdSec = 0
+                }
+            }
+        } else {
+            bikeComputerHRAboveThresholdSec = 0
         }
 
         bikeComputerTrace.append(sample)
@@ -1274,6 +1368,12 @@ struct TrainerControlPanel: View {
         bikeComputerPowerZoneSec = Array(repeating: 0, count: 7)
         bikeComputerTargetDeviationSec = 0
         bikeComputerTargetAlertUntil = nil
+        bikeComputerHydrationReminderUntil = nil
+        bikeComputerCarbReminderUntil = nil
+        bikeComputerHRAlertUntil = nil
+        bikeComputerHRAboveThresholdSec = 0
+        bikeComputerNextHydrationMarkSec = 15 * 60
+        bikeComputerNextCarbMarkSec = 30 * 60
     }
 
     private func configureRealMapCamera(followRider: Bool = false) {
@@ -2393,14 +2493,57 @@ struct TrainerControlPanel: View {
                             LiveMetricChip(title: "IF", value: bikeComputerIFText)
                             LiveMetricChip(title: "Est. TSS", value: bikeComputerEstimatedTSSText)
                         }
+                        HStack(spacing: 8) {
+                            LiveMetricChip(title: "Best 5s", value: bikeComputerBest5sPowerText)
+                            LiveMetricChip(title: "Best 1m", value: bikeComputerBest1mPowerText)
+                            LiveMetricChip(title: "Best 5m", value: bikeComputerBest5mPowerText)
+                        }
+                        HStack(spacing: 12) {
+                            Toggle("Auto Lap", isOn: $bikeComputerAutoLapEnabled)
+                                .toggleStyle(.switch)
+                            Text("每 \(bikeComputerAutoLapEverySec / 60) 分钟")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
                         if let alert = bikeComputerTargetAlertText {
                             Label(alert, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
+                        if let alert = bikeComputerHRAlertText {
+                            Label(alert, systemImage: "heart.fill")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        if let alert = bikeComputerHydrationAlertText {
+                            Label(alert, systemImage: "drop.fill")
+                                .font(.caption)
+                                .foregroundStyle(.blue)
+                        }
+                        if let alert = bikeComputerCarbAlertText {
+                            Label(alert, systemImage: "fork.knife")
+                                .font(.caption)
+                                .foregroundStyle(.mint)
+                        }
                         Text(bikeComputerZoneSummaryText)
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
+                        VStack(spacing: 6) {
+                            ForEach(Array(bikeComputerZoneRows.enumerated()), id: \.offset) { _, row in
+                                HStack(spacing: 8) {
+                                    Text(row.name)
+                                        .font(.caption2.monospacedDigit())
+                                        .frame(width: 28, alignment: .leading)
+                                    ProgressView(value: row.percent)
+                                        .tint(.orange)
+                                    Text(row.seconds.asDuration)
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 54, alignment: .trailing)
+                                }
+                            }
+                        }
                         Text(bikeComputerWindowTitle)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
