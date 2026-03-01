@@ -269,9 +269,26 @@ make
 FRICU_SERVER_URL=http://127.0.0.1:8080 ./scripts/run-dev.sh
 ```
 
-### 并发压测建议
+### 服务端测试
 
-可使用任意 HTTP 压测工具（如 `wrk`、`ab`、`hey`）对以下接口压测：
+```bash
+cd server
+make test
+```
+
+### 50k 并发压测
+
+服务端已针对高并发做优化（固定大小 worker 线程池 + 连接队列 + SQLite WAL + busy timeout），并提供 50k 并发压测脚本：
+
+```bash
+cd server
+make perf-test
+```
+
+可选环境变量：
+
+- `FRICU_SERVER_WORKERS`：worker 线程数（默认 `64`）
+- `FRICU_SERVER_QUEUE`：连接队列容量（默认 `65536`）
 
 - `GET /health`
 - `GET /v1/data/activities`
