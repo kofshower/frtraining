@@ -7,6 +7,7 @@
 static void test_valid_key(void) {
     assert(is_valid_key("activities"));
     assert(is_valid_key("profile"));
+    assert(is_valid_key("lactate_history_records"));
     assert(!is_valid_key("unknown"));
 }
 

@@ -45,6 +45,7 @@ static const char *DATA_KEYS[] = {
     "workouts",
     "events",
     "profile",
+    "lactate_history_records",
 };
 static const size_t DATA_KEYS_COUNT = sizeof(DATA_KEYS) / sizeof(DATA_KEYS[0]);
 

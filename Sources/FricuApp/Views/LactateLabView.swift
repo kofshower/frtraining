@@ -97,44 +97,11 @@ struct LactateLabView: View {
         }
     }
 
-    private enum LactateTestType: String, CaseIterable, Identifiable {
-        case ramp
-        case mlss
-        case custom
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .ramp:
-                return L10n.t("全递增乳酸测试", "Ramp Test")
-            case .mlss:
-                return L10n.t("最大乳酸稳态测试", "MLSS Test")
-            case .custom:
-                return L10n.t("无氧能力和清除测试", "Anaerobic + Clearance Test")
-            }
-        }
-    }
-
-    private struct LactateSamplePoint: Identifiable {
-        let id = UUID()
-        let power: Double
-        let lactate: Double
-    }
-
-    private struct LactateHistoryRecord: Identifiable {
-        let id = UUID()
-        let tester: String
-        let type: LactateTestType
-        let createdAt: Date
-        let points: [LactateSamplePoint]
-    }
 
     @State private var selectedTab: LabTab = .latest
     @State private var selectedNode: DecisionNode = .materials
     @State private var showChecklistMode = false
     @State private var selectedAerobicTest: AerobicTest? = nil
-    @State private var historyRecords: [LactateHistoryRecord] = []
     @State private var selectedHistoryType: LactateTestType = .ramp
     @State private var draftPower = ""
     @State private var draftLactate = ""
@@ -1339,14 +1306,14 @@ struct LactateLabView: View {
     private var historyTestView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                if historyRecords.isEmpty {
+                if store.lactateHistoryRecords.isEmpty {
                     ContentUnavailableView(
                         L10n.t("暂无历史测试结果", "No historical test results"),
                         systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90",
                         description: Text(L10n.t("完成乳酸测试后，历史结果会在这里展示。", "History appears here after completing lactate tests."))
                     )
                 } else {
-                    ForEach(historyRecords.reversed()) { record in
+                    ForEach(store.lactateHistoryRecords) { record in
                         sectionCard(
                             title: "\(record.type.title) · \(record.tester)",
                             icon: "chart.xyaxis.line",
@@ -1424,21 +1391,13 @@ struct LactateLabView: View {
     }
 
     private func saveHistoryRecord() {
-        let name = store.selectedAthleteNameForWrite.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, canSaveDraftRecord else { return }
-        historyRecords.append(
-            LactateHistoryRecord(
-                tester: name,
-                type: selectedHistoryType,
-                createdAt: .now,
-                points: draftPoints
-            )
-        )
+        guard canSaveDraftRecord else { return }
+        store.addLactateHistoryRecord(type: selectedHistoryType, points: draftPoints)
         selectedHistoryType = .ramp
         draftPoints = []
     }
 
     private func deleteHistoryRecord(recordID: UUID) {
-        historyRecords.removeAll { $0.id == recordID }
+        store.deleteLactateHistoryRecord(recordID: recordID)
     }
 }

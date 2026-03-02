@@ -73,6 +73,7 @@ final class AppStore: ObservableObject {
     @Published private(set) var plannedWorkouts: [PlannedWorkout] = []
     @Published private(set) var wellnessSamples: [WellnessSample] = []
     @Published private(set) var intervalsCalendarEvents: [CalendarEvent] = []
+    @Published private(set) var lactateHistoryRecords: [LactateHistoryRecord] = []
     @Published var profile: AthleteProfile = .default {
         didSet {
             cacheProfileForSelectedAthlete()
@@ -770,6 +771,7 @@ final class AppStore: ObservableObject {
                 self.customFoodLibrary = try repository.loadCustomFoods()
                 self.plannedWorkouts = try repository.loadWorkouts()
                 self.intervalsCalendarEvents = try repository.loadCalendarEvents()
+                self.lactateHistoryRecords = try repository.loadLactateHistoryRecords()
                 loadedProfile = try repository.loadProfile()
                 self.activityMetricInsightsCache = Dictionary(
                     uniqueKeysWithValues: try repository.loadActivityMetricInsights().map { ($0.activityID, $0) }
@@ -780,6 +782,7 @@ final class AppStore: ObservableObject {
                 self.customFoodLibrary = []
                 self.plannedWorkouts = []
                 self.intervalsCalendarEvents = []
+                self.lactateHistoryRecords = []
                 loadedProfile = .default
                 self.activityMetricInsightsCache = [:]
             }
@@ -793,7 +796,37 @@ final class AppStore: ObservableObject {
             applyDefaultCredentialsIfNeeded()
             ensureTrainerRiderAutoReconnect()
         } catch {
-            self.lastError = "Failed to load local data: \(error.localizedDescription)"
+            self.lastError = "Failed to load server data: \(error.localizedDescription)"
+        }
+    }
+
+    func addLactateHistoryRecord(type: LactateTestType, points: [LactateSamplePoint]) {
+        let name = selectedAthleteNameForWrite.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !points.isEmpty else { return }
+        let record = LactateHistoryRecord(tester: name, type: type, createdAt: .now, points: points)
+        var updated = lactateHistoryRecords
+        updated.append(record)
+        updated.sort { $0.createdAt > $1.createdAt }
+        lactateHistoryRecords = updated
+        do {
+            if let repository {
+                try repository.saveLactateHistoryRecords(updated)
+            }
+        } catch {
+            lastError = "Failed to save lactate history record: \(error.localizedDescription)"
+        }
+    }
+
+    func deleteLactateHistoryRecord(recordID: UUID) {
+        let updated = lactateHistoryRecords.filter { $0.id != recordID }
+        guard updated.count != lactateHistoryRecords.count else { return }
+        lactateHistoryRecords = updated
+        do {
+            if let repository {
+                try repository.saveLactateHistoryRecords(updated)
+            }
+        } catch {
+            lastError = "Failed to delete lactate history record: \(error.localizedDescription)"
         }
     }
 
