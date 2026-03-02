@@ -29,6 +29,8 @@ extern const size_t DATA_KEYS_COUNT;
 
 int tune_fd_limit(void);
 int set_nonblocking(int fd);
+int socket_send_flags(void);
+int configure_socket_after_accept(int fd);
 int init_db(const char *db_path);
 int worker_db_open(worker_db_t *db, const char *db_path);
 void worker_db_close(worker_db_t *db);
