@@ -8,6 +8,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 
 const char *DATA_KEYS[] = {
     "activities",
@@ -68,5 +69,23 @@ int set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0) return -1;
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) return -1;
+    return 0;
+}
+
+int socket_send_flags(void) {
+#ifdef MSG_NOSIGNAL
+    return MSG_NOSIGNAL;
+#else
+    return 0;
+#endif
+}
+
+int configure_socket_after_accept(int fd) {
+#if defined(__APPLE__) && defined(SO_NOSIGPIPE)
+    int one = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one)) != 0) return -1;
+#else
+    (void)fd;
+#endif
     return 0;
 }
