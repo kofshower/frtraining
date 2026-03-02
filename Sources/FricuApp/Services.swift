@@ -19,6 +19,8 @@ protocol DataRepository {
     func saveCalendarEvents(_ events: [CalendarEvent]) throws
     func loadProfile() throws -> AthleteProfile
     func saveProfile(_ profile: AthleteProfile) throws
+    func loadLactateHistoryRecords() throws -> [LactateHistoryRecord]
+    func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws
 }
 
 enum RepositoryError: Error {
@@ -168,6 +170,15 @@ final class RemoteHTTPRepository: DataRepository {
 
     func saveProfile(_ profile: AthleteProfile) throws {
         try push("profile", value: profile)
+    }
+
+    func loadLactateHistoryRecords() throws -> [LactateHistoryRecord] {
+        try fetch("lactate_history_records", as: [LactateHistoryRecord].self)
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws {
+        try push("lactate_history_records", value: records)
     }
 }
 
@@ -329,6 +340,13 @@ final class LocalJSONRepository: DataRepository {
     func saveProfile(_ profile: AthleteProfile) throws {
         let data = try encoder.encode(profile)
         try data.write(to: profileURL, options: .atomic)
+    }
+
+    func loadLactateHistoryRecords() throws -> [LactateHistoryRecord] {
+        []
+    }
+
+    func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws {
     }
 }
 

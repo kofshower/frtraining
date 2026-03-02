@@ -3,7 +3,7 @@ use std::{net::SocketAddr, sync::Arc};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    routing::{get, put},
+    routing::get,
     Json, Router,
 };
 use r2d2::Pool;
@@ -14,7 +14,7 @@ use thiserror::Error;
 use tokio::task;
 use tracing::info;
 
-const DATA_KEYS: [&str; 7] = [
+const DATA_KEYS: [&str; 8] = [
     "activities",
     "activity_metric_insights",
     "meal_plans",
@@ -22,6 +22,7 @@ const DATA_KEYS: [&str; 7] = [
     "workouts",
     "events",
     "profile",
+    "lactate_history_records",
 ];
 
 #[derive(Clone)]
@@ -116,7 +117,7 @@ async fn get_data(
     State(state): State<Arc<AppState>>,
     Path(key): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
-    validate_key(&key).map_err(Into::into)?;
+    validate_key(&key).map_err(|e| <(StatusCode, String)>::from(e))?;
 
     let k = key.clone();
     let value = execute_db(state, move |conn| {
@@ -141,7 +142,7 @@ async fn get_data(
         Ok(parsed)
     })
     .await
-    .map_err(Into::into)?;
+    .map_err(|e| <(StatusCode, String)>::from(e))?;
 
     Ok(Json(value))
 }
@@ -151,7 +152,7 @@ async fn put_data(
     Path(key): Path<String>,
     Json(payload): Json<Value>,
 ) -> Result<StatusCode, (StatusCode, String)> {
-    validate_key(&key).map_err(Into::into)?;
+    validate_key(&key).map_err(|e| <(StatusCode, String)>::from(e))?;
 
     let encoded = serde_json::to_string(&payload)
         .map_err(|e| AppError::InvalidPayload(e.to_string()))
@@ -166,7 +167,7 @@ async fn put_data(
         Ok(())
     })
     .await
-    .map_err(Into::into)?;
+    .map_err(|e| <(StatusCode, String)>::from(e))?;
 
     Ok(StatusCode::NO_CONTENT)
 }

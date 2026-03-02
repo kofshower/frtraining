@@ -242,7 +242,7 @@ Local data is stored under:
 ### Activity FIT 数据与乳酸实验室记录说明
 
 - FIT 导入/录制后的原始文件会以 Base64 字符串写入 `Activity.sourceFileBase64`，并随 `activities` 一并持久化（本地 JSON 或服务端 SQLite 的 `activities` 键值）。
-- 当前「乳酸实验室」页面中的历史记录为界面内存态（`@State`），仅在当前会话可见，尚未接入 `DataRepository`，因此不会写入服务端数据库。
+- 「乳酸实验室」历史记录已接入 `DataRepository`，通过 `lactate_history_records` 键写入服务端 SQLite，不再使用仅会话可见的内存态存储。
 
 ## C-S 架构改造（客户端/服务端）
 

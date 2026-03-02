@@ -2058,6 +2058,59 @@ struct ActivityMetricInsight: Codable, Identifiable {
     var actions: [String]
 }
 
+enum LactateTestType: String, CaseIterable, Identifiable, Codable {
+    case ramp
+    case mlss
+    case custom
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .ramp:
+            return L10n.t("全递增乳酸测试", "Ramp Test")
+        case .mlss:
+            return L10n.t("最大乳酸稳态测试", "MLSS Test")
+        case .custom:
+            return L10n.t("自定义测试", "Custom Test")
+        }
+    }
+}
+
+struct LactateSamplePoint: Codable, Identifiable {
+    let id: UUID
+    let power: Double
+    let lactate: Double
+
+    init(id: UUID = UUID(), power: Double, lactate: Double) {
+        self.id = id
+        self.power = power
+        self.lactate = lactate
+    }
+}
+
+struct LactateHistoryRecord: Codable, Identifiable {
+    let id: UUID
+    let tester: String
+    let type: LactateTestType
+    let createdAt: Date
+    let points: [LactateSamplePoint]
+
+    init(
+        id: UUID = UUID(),
+        tester: String,
+        type: LactateTestType,
+        createdAt: Date,
+        points: [LactateSamplePoint]
+    ) {
+        self.id = id
+        self.tester = tester
+        self.type = type
+        self.createdAt = createdAt
+        self.points = points
+    }
+}
+
 extension Int {
     var asDuration: String {
         let h = self / 3600
