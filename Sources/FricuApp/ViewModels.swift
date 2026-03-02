@@ -134,9 +134,11 @@ final class AppStore: ObservableObject {
     @Published private(set) var trainerRecordingLastSyncSummary: String?
     @Published private(set) var trainerRecordingStatusBySession: [UUID: TrainerRecordingStatus] = [:]
 
+    @Published var serverHost: String = "127.0.0.1"
+    @Published var serverPort: String = "8080"
     private var gptRecommendation: AIRecommendation?
     private var didAttemptAICoachBootstrap = false
-    private let repository: DataRepository?
+    private var repository: DataRepository?
     private var cancellables: Set<AnyCancellable> = []
     private var derivedRefreshToken: UInt64 = 0
     private var derivedRefreshWorkItem: DispatchWorkItem?
@@ -155,20 +157,65 @@ final class AppStore: ObservableObject {
     private var trainerRiderConnectionMemoryBySessionID: [UUID: TrainerRiderConnectionMemory] = [:]
     private let trainerRiderConnectionStoreDefaultsKey = "fricu.trainer.rider.connection.store.v1"
     private let athleteProfileStoreDefaultsKey = "fricu.athlete.profile.store.v1"
+    private let serverHostDefaultsKey = "fricu.server.host.v1"
+    private let serverPortDefaultsKey = "fricu.server.port.v1"
     private var athleteProfilesByPanelID: [String: AthleteProfile] = [:]
     private var isApplyingAthleteProfile = false
 
     init() {
-        do {
-            self.repository = try RemoteHTTPRepository()
-        } catch {
-            self.repository = nil
-            self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
-        }
+        loadServerEndpointFromDefaults()
+        configureRepository()
         configureInitialTrainerSessions()
         setupDerivedRefreshPipeline()
         setupTrainerRecordingPipeline()
         markDerivedStateDirty()
+    }
+
+    private func loadServerEndpointFromDefaults() {
+        let defaults = UserDefaults.standard
+        let storedHost = defaults.string(forKey: serverHostDefaultsKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let storedHost, !storedHost.isEmpty {
+            serverHost = storedHost
+        } else {
+            serverHost = "127.0.0.1"
+        }
+
+        let storedPort = defaults.integer(forKey: serverPortDefaultsKey)
+        serverPort = (1...65535).contains(storedPort) ? String(storedPort) : "8080"
+    }
+
+    private func configureRepository() {
+        do {
+            let host = serverHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            let port = serverPort.trimmingCharacters(in: .whitespacesAndNewlines)
+            let base = "http://\(host):\(port)"
+            guard let url = URL(string: base) else {
+                throw RepositoryError.invalidServerURL
+            }
+            self.repository = try RemoteHTTPRepository(baseURL: url)
+        } catch {
+            self.repository = nil
+            self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
+        }
+    }
+
+    func updateServerEndpoint(host: String, port: String) {
+        let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPort = port.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedHost.isEmpty,
+              let parsedPort = Int(normalizedPort),
+              (1...65535).contains(parsedPort) else {
+            lastError = "Invalid server host or port"
+            return
+        }
+
+        serverHost = normalizedHost
+        serverPort = String(parsedPort)
+        UserDefaults.standard.set(normalizedHost, forKey: serverHostDefaultsKey)
+        UserDefaults.standard.set(parsedPort, forKey: serverPortDefaultsKey)
+        configureRepository()
+        loadAllFromRepository()
+        syncStatus = "Server endpoint updated to \(normalizedHost):\(parsedPort)"
     }
 
     private func configureInitialTrainerSessions() {
@@ -176,19 +223,9 @@ final class AppStore: ObservableObject {
         let restoredRiders = (restoredStore?.riders ?? []).filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
         if restoredRiders.isEmpty {
-            let primaryMemory = TrainerRiderConnectionMemory(
-                id: UUID(),
-                name: "Athlete 1",
-                preferredTrainerDeviceID: nil,
-                preferredHeartRateDeviceID: nil,
-                preferredPowerMeterDeviceID: nil,
-                appearance: .default
-            )
-            trainerRiderConnectionMemoryBySessionID = [primaryMemory.id: primaryMemory]
-            let primary = makeTrainerRiderSession(from: primaryMemory, useSharedManagers: true)
-            trainerRiderSessions = [primary]
-            primaryTrainerSessionID = primary.id
-            persistTrainerRiderConnectionStore()
+            trainerRiderConnectionMemoryBySessionID = [:]
+            trainerRiderSessions = []
+            primaryTrainerSessionID = nil
         } else {
             let primaryID = resolvedPrimarySessionID(
                 in: restoredRiders,
@@ -478,7 +515,7 @@ final class AppStore: ObservableObject {
             .first {
             return existing
         }
-        return "Athlete 1"
+        return L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
     }
 
     private func loadAthleteProfileStoreIfNeeded(fallback: AthleteProfile) {
@@ -870,7 +907,7 @@ final class AppStore: ObservableObject {
             return L10n.choose(simplifiedChinese: "全部运动员", english: "All Athletes")
         }
         return athletePanelsCache.first(where: { $0.id == selectedAthletePanelID })?.title
-            ?? L10n.choose(simplifiedChinese: "默认运动员", english: "Default Athlete")
+            ?? L10n.choose(simplifiedChinese: "未选择运动员", english: "No Athlete Selected")
     }
 
     var isAllAthletesSelected: Bool {
@@ -885,7 +922,7 @@ final class AppStore: ObservableObject {
         if let primary = trainerRiderSessions.first?.name.trimmingCharacters(in: .whitespacesAndNewlines), !primary.isEmpty {
             return primary
         }
-        return L10n.choose(simplifiedChinese: "默认运动员", english: "Default Athlete")
+        return L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
     }
 
     func profileForAthlete(named athleteName: String?) -> AthleteProfile {
@@ -3024,7 +3061,7 @@ final class AppStore: ObservableObject {
         if let legacy = parseAthleteNameFromLegacyNotes(activity.notes) {
             return legacy
         }
-        return L10n.choose(simplifiedChinese: "默认运动员", english: "Default Athlete")
+        return L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
     }
 
     private func athletePanelID(forName name: String?) -> String {

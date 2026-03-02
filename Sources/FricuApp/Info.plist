@@ -6,6 +6,8 @@
     <string>Fricu</string>
     <key>CFBundleExecutable</key>
     <string>FricuApp</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.fricu.app</string>
     <key>CFBundleName</key>

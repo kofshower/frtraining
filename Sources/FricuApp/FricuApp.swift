@@ -459,6 +459,8 @@ struct SettingsView: View {
     @State private var googleFitAccessToken = ""
     @State private var trainingPeaksAccessToken = ""
     @State private var openAIAPIKey = ""
+    @State private var serverHost = ""
+    @State private var serverPort = ""
     @State private var hasGoalDate = false
     @State private var goalDate = Date()
     @State private var profileEstimate: ProfilePhysioEstimate?
@@ -744,6 +746,8 @@ struct SettingsView: View {
         googleFitAccessToken = store.profile.googleFitAccessToken
         trainingPeaksAccessToken = store.profile.trainingPeaksAccessToken
         openAIAPIKey = store.profile.openAIAPIKey
+        serverHost = store.serverHost
+        serverPort = store.serverPort
         if let goal = store.profile.goalRaceDate {
             hasGoalDate = true
             goalDate = goal
@@ -1180,64 +1184,96 @@ struct SettingsView: View {
                     .padding(.top, 4)
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Intervals.icu API Key")
-                        .font(.headline)
-                    SecureField("API key", text: $intervalsKey)
-                        .textFieldStyle(.roundedBorder)
-                }
+                GroupBox(L10n.choose(simplifiedChinese: "服务与集成配置", english: "Service & Integration Configuration")) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Intervals.icu API Key")
+                                .font(.headline)
+                            SecureField("API key", text: $intervalsKey)
+                                .textFieldStyle(.roundedBorder)
+                        }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Strava")
-                        .font(.headline)
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "先填写 Strava App 的 Client ID / Client Secret，然后执行 OAuth 授权。",
-                            english: "Fill Strava App Client ID / Client Secret first, then run OAuth authorization."
-                        )
-                    )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField("Strava Client ID", text: $stravaClientID)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("Strava Client Secret", text: $stravaClientSecret)
-                        .textFieldStyle(.roundedBorder)
-                    HStack {
-                        Button(L10n.choose(simplifiedChinese: "OAuth 登录并回调", english: "OAuth Login + Callback")) {
-                            persistStravaOAuthConfigFromFields()
-                            Task {
-                                await store.syncAuthorizeStravaOAuth(redirectURI: stravaOAuthRedirectURI) { authURL in
-                                    openURL(authURL)
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Strava")
+                                .font(.headline)
+                            Text(
+                                L10n.choose(
+                                    simplifiedChinese: "先填写 Strava App 的 Client ID / Client Secret，然后执行 OAuth 授权。",
+                                    english: "Fill Strava App Client ID / Client Secret first, then run OAuth authorization."
+                                )
+                            )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextField("Strava Client ID", text: $stravaClientID)
+                                .textFieldStyle(.roundedBorder)
+                            SecureField("Strava Client Secret", text: $stravaClientSecret)
+                                .textFieldStyle(.roundedBorder)
+                            HStack {
+                                Button(L10n.choose(simplifiedChinese: "OAuth 登录并回调", english: "OAuth Login + Callback")) {
+                                    persistStravaOAuthConfigFromFields()
+                                    Task {
+                                        await store.syncAuthorizeStravaOAuth(redirectURI: stravaOAuthRedirectURI) { authURL in
+                                            openURL(authURL)
+                                        }
+                                        loadFieldsFromProfile()
+                                    }
                                 }
-                                loadFieldsFromProfile()
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
+                                .buttonStyle(.borderedProminent)
 
-                        Button(L10n.choose(simplifiedChinese: "打开 Strava 应用设置", english: "Open Strava App Settings")) {
-                            if let url = URL(string: "https://www.strava.com/settings/api") {
-                                openURL(url)
+                                Button(L10n.choose(simplifiedChinese: "打开 Strava 应用设置", english: "Open Strava App Settings")) {
+                                    if let url = URL(string: "https://www.strava.com/settings/api") {
+                                        openURL(url)
+                                    }
+                                }
                             }
+                            Text(
+                                L10n.choose(
+                                    simplifiedChinese: "回调地址：\(stravaOAuthRedirectURI)",
+                                    english: "Redirect URI: \(stravaOAuthRedirectURI)"
+                                )
+                            )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(
+                                L10n.choose(
+                                    simplifiedChinese: "授权 scope: read, read_all, activity:read_all, profile:read_all, activity:write",
+                                    english: "OAuth scopes: read, read_all, activity:read_all, profile:read_all, activity:write"
+                                )
+                            )
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
-                    }
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "回调地址：\(stravaOAuthRedirectURI)",
-                            english: "Redirect URI: \(stravaOAuthRedirectURI)"
-                        )
-                    )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "授权 scope: read, read_all, activity:read_all, profile:read_all, activity:write",
-                            english: "OAuth scopes: read, read_all, activity:read_all, profile:read_all, activity:write"
-                        )
-                    )
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
 
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Wellness / Platform Connectors")
+                                .font(.headline)
+                            SecureField("Garmin Connect Access Token", text: $garminAccessToken)
+                                .textFieldStyle(.roundedBorder)
+                            TextField(
+                                L10n.choose(
+                                    simplifiedChinese: "Garmin Connect Csrf Token（connectus/gc-api 常需）",
+                                    english: "Garmin Connect Csrf Token (often required for connectus/gc-api)"
+                                ),
+                                text: $garminCSRFToken
+                            )
+                                .textFieldStyle(.roundedBorder)
+                            SecureField("Oura Personal Access Token", text: $ouraAccessToken)
+                                .textFieldStyle(.roundedBorder)
+                            SecureField("WHOOP Access Token", text: $whoopAccessToken)
+                                .textFieldStyle(.roundedBorder)
+                            SecureField("Apple Health Access Token", text: $appleHealthAccessToken)
+                                .textFieldStyle(.roundedBorder)
+                            SecureField("Google Fit Access Token", text: $googleFitAccessToken)
+                                .textFieldStyle(.roundedBorder)
+                            SecureField("TrainingPeaks Access Token", text: $trainingPeaksAccessToken)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+<<<<<<< ours
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Backend Server")
                         .font(.headline)
@@ -1277,12 +1313,38 @@ struct SettingsView: View {
                     SecureField("TrainingPeaks Access Token", text: $trainingPeaksAccessToken)
                         .textFieldStyle(.roundedBorder)
                 }
+=======
+                        Divider()
+>>>>>>> theirs
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("GPT / OpenAI")
-                        .font(.headline)
-                    SecureField("API key", text: $openAIAPIKey)
-                        .textFieldStyle(.roundedBorder)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("GPT / OpenAI")
+                                .font(.headline)
+                            SecureField("API key", text: $openAIAPIKey)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(L10n.choose(simplifiedChinese: "服务端连接", english: "Server Connection"))
+                                .font(.headline)
+                            TextField("Server IP / Host", text: $serverHost)
+                                .textFieldStyle(.roundedBorder)
+                            TextField("Server Port", text: $serverPort)
+                                .textFieldStyle(.roundedBorder)
+                            Button(L10n.choose(simplifiedChinese: "应用服务端地址", english: "Apply Server Endpoint")) {
+                                store.updateServerEndpoint(host: serverHost, port: serverPort)
+                            }
+                            .buttonStyle(.bordered)
+                            Text(L10n.choose(
+                                simplifiedChinese: "示例：http://127.0.0.1:8080；修改后会立即重建客户端连接。",
+                                english: "Example: http://127.0.0.1:8080. Applying will rebuild the server client immediately."
+                            ))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Button("Save Profile") {
