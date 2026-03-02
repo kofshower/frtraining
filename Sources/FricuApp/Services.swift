@@ -23,6 +23,16 @@ protocol DataRepository {
     func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws
 }
 
+extension DataRepository {
+    func loadLactateHistoryRecords() throws -> [LactateHistoryRecord] {
+        []
+    }
+
+    func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws {
+        _ = records
+    }
+}
+
 enum RepositoryError: Error {
     case appSupportUnavailable
     case invalidServerURL
