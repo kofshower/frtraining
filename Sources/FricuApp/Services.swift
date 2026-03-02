@@ -41,6 +41,9 @@ enum RepositoryError: Error {
 }
 
 final class RemoteHTTPRepository: DataRepository {
+    static let serverURLDefaultsKey = "fricu.server.baseURL"
+    static let fallbackServerURLString = "http://127.0.0.1:8080"
+
     private let baseURL: URL
     private let session: URLSession
     private let encoder: JSONEncoder
@@ -49,10 +52,15 @@ final class RemoteHTTPRepository: DataRepository {
     init(baseURL: URL? = nil) throws {
         if let baseURL {
             self.baseURL = baseURL
+        } else if let custom = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey),
+                  let parsed = URL(string: custom),
+                  parsed.scheme != nil,
+                  parsed.host != nil {
+            self.baseURL = parsed
         } else if let env = ProcessInfo.processInfo.environment["FRICU_SERVER_URL"],
                   let parsed = URL(string: env) {
             self.baseURL = parsed
-        } else if let fallback = URL(string: "http://127.0.0.1:8080") {
+        } else if let fallback = URL(string: Self.fallbackServerURLString) {
             self.baseURL = fallback
         } else {
             throw RepositoryError.invalidServerURL
