@@ -446,6 +446,7 @@ struct SettingsView: View {
     @State private var hrvBaseline = ""
     @State private var hrvToday = ""
     @State private var intervalsKey = ""
+    @State private var serverBaseURL = ""
     @State private var stravaClientID = ""
     @State private var stravaClientSecret = ""
     private let stravaOAuthRedirectURI = "http://127.0.0.1:53682/callback"
@@ -647,6 +648,25 @@ struct SettingsView: View {
         profile.hrThresholdRanges = ranges
         store.profile = profile
         store.persistProfile()
+    }
+
+    private func persistServerURLFromFields() {
+        let trimmed = serverBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            UserDefaults.standard.removeObject(forKey: RemoteHTTPRepository.serverURLDefaultsKey)
+            return
+        }
+
+        guard let parsed = URL(string: trimmed), parsed.scheme != nil, parsed.host != nil else {
+            return
+        }
+
+        UserDefaults.standard.set(trimmed, forKey: RemoteHTTPRepository.serverURLDefaultsKey)
+    }
+
+    private func loadServerURLField() {
+        serverBaseURL = UserDefaults.standard.string(forKey: RemoteHTTPRepository.serverURLDefaultsKey)
+            ?? RemoteHTTPRepository.fallbackServerURLString
     }
 
     private func persistStravaOAuthConfigFromFields() {
@@ -1219,6 +1239,21 @@ struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("Backend Server")
+                        .font(.headline)
+                    TextField("http://127.0.0.1:8080", text: $serverBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "用于活动/计划/档案数据的服务端地址。留空会回退到默认 http://127.0.0.1:8080。",
+                            english: "Server base URL for activity/workout/profile persistence. Leave blank to use default http://127.0.0.1:8080."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Wellness / Platform Connectors")
                         .font(.headline)
                     SecureField("Garmin Connect Access Token", text: $garminAccessToken)
@@ -1252,6 +1287,7 @@ struct SettingsView: View {
 
                 Button("Save Profile") {
                     persistProfileFromFields()
+                    persistServerURLFromFields()
                 }
                 .buttonStyle(.borderedProminent)
 
@@ -1401,6 +1437,7 @@ struct SettingsView: View {
         .frame(width: 700, height: 700)
         .onAppear {
             loadFieldsFromProfile()
+            loadServerURLField()
         }
         .onChange(of: store.selectedAthletePanelID) { _, _ in
             profileEstimate = nil
