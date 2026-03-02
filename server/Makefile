@@ -3,7 +3,7 @@ CFLAGS ?= -O3 -march=native -Wall -Wextra -Werror -std=c11 -pthread
 LDFLAGS ?= -lsqlite3 -pthread
 
 BIN := fricu-server
-SRC := main.c
+SRC := main.c util.c db.c http.c event_loop.c logger.c
 TEST_BIN := unit-tests
 TEST_SRC := tests/unit_tests.c
 PERF_BIN := perf-client
