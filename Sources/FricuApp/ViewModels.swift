@@ -134,9 +134,11 @@ final class AppStore: ObservableObject {
     @Published private(set) var trainerRecordingLastSyncSummary: String?
     @Published private(set) var trainerRecordingStatusBySession: [UUID: TrainerRecordingStatus] = [:]
 
+    @Published var serverHost: String = "127.0.0.1"
+    @Published var serverPort: String = "8080"
     private var gptRecommendation: AIRecommendation?
     private var didAttemptAICoachBootstrap = false
-    private let repository: DataRepository?
+    private var repository: DataRepository?
     private var cancellables: Set<AnyCancellable> = []
     private var derivedRefreshToken: UInt64 = 0
     private var derivedRefreshWorkItem: DispatchWorkItem?
@@ -155,20 +157,65 @@ final class AppStore: ObservableObject {
     private var trainerRiderConnectionMemoryBySessionID: [UUID: TrainerRiderConnectionMemory] = [:]
     private let trainerRiderConnectionStoreDefaultsKey = "fricu.trainer.rider.connection.store.v1"
     private let athleteProfileStoreDefaultsKey = "fricu.athlete.profile.store.v1"
+    private let serverHostDefaultsKey = "fricu.server.host.v1"
+    private let serverPortDefaultsKey = "fricu.server.port.v1"
     private var athleteProfilesByPanelID: [String: AthleteProfile] = [:]
     private var isApplyingAthleteProfile = false
 
     init() {
-        do {
-            self.repository = try RemoteHTTPRepository()
-        } catch {
-            self.repository = nil
-            self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
-        }
+        loadServerEndpointFromDefaults()
+        configureRepository()
         configureInitialTrainerSessions()
         setupDerivedRefreshPipeline()
         setupTrainerRecordingPipeline()
         markDerivedStateDirty()
+    }
+
+    private func loadServerEndpointFromDefaults() {
+        let defaults = UserDefaults.standard
+        let storedHost = defaults.string(forKey: serverHostDefaultsKey)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let storedHost, !storedHost.isEmpty {
+            serverHost = storedHost
+        } else {
+            serverHost = "127.0.0.1"
+        }
+
+        let storedPort = defaults.integer(forKey: serverPortDefaultsKey)
+        serverPort = (1...65535).contains(storedPort) ? String(storedPort) : "8080"
+    }
+
+    private func configureRepository() {
+        do {
+            let host = serverHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            let port = serverPort.trimmingCharacters(in: .whitespacesAndNewlines)
+            let base = "http://\(host):\(port)"
+            guard let url = URL(string: base) else {
+                throw RepositoryError.invalidServerURL
+            }
+            self.repository = try RemoteHTTPRepository(baseURL: url)
+        } catch {
+            self.repository = nil
+            self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
+        }
+    }
+
+    func updateServerEndpoint(host: String, port: String) {
+        let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedPort = port.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedHost.isEmpty,
+              let parsedPort = Int(normalizedPort),
+              (1...65535).contains(parsedPort) else {
+            lastError = "Invalid server host or port"
+            return
+        }
+
+        serverHost = normalizedHost
+        serverPort = String(parsedPort)
+        UserDefaults.standard.set(normalizedHost, forKey: serverHostDefaultsKey)
+        UserDefaults.standard.set(parsedPort, forKey: serverPortDefaultsKey)
+        configureRepository()
+        loadAllFromRepository()
+        syncStatus = "Server endpoint updated to \(normalizedHost):\(parsedPort)"
     }
 
     private func configureInitialTrainerSessions() {

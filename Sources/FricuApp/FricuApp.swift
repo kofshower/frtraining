@@ -458,6 +458,8 @@ struct SettingsView: View {
     @State private var googleFitAccessToken = ""
     @State private var trainingPeaksAccessToken = ""
     @State private var openAIAPIKey = ""
+    @State private var serverHost = ""
+    @State private var serverPort = ""
     @State private var hasGoalDate = false
     @State private var goalDate = Date()
     @State private var profileEstimate: ProfilePhysioEstimate?
@@ -724,6 +726,8 @@ struct SettingsView: View {
         googleFitAccessToken = store.profile.googleFitAccessToken
         trainingPeaksAccessToken = store.profile.trainingPeaksAccessToken
         openAIAPIKey = store.profile.openAIAPIKey
+        serverHost = store.serverHost
+        serverPort = store.serverPort
         if let goal = store.profile.goalRaceDate {
             hasGoalDate = true
             goalDate = goal
@@ -1248,6 +1252,25 @@ struct SettingsView: View {
                         .font(.headline)
                     SecureField("API key", text: $openAIAPIKey)
                         .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.choose(simplifiedChinese: "服务端连接", english: "Server Connection"))
+                        .font(.headline)
+                    TextField("Server IP / Host", text: $serverHost)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Server Port", text: $serverPort)
+                        .textFieldStyle(.roundedBorder)
+                    Button(L10n.choose(simplifiedChinese: "应用服务端地址", english: "Apply Server Endpoint")) {
+                        store.updateServerEndpoint(host: serverHost, port: serverPort)
+                    }
+                    .buttonStyle(.bordered)
+                    Text(L10n.choose(
+                        simplifiedChinese: "示例：http://127.0.0.1:8080；修改后会立即重建客户端连接。",
+                        english: "Example: http://127.0.0.1:8080. Applying will rebuild the server client immediately."
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
 
                 Button("Save Profile") {
