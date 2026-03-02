@@ -28,35 +28,15 @@ struct ActivityBalanceSummary: Equatable {
     let verdict: Verdict
 }
 
-enum ActivityBalanceAnalyzer {
-    static let balancedDeviationThreshold = 2.0
-    static let mildDeviationThreshold = 4.0
+protocol ActivityBalanceClassifying {
+    func classify(_ deviationFromCenter: Double) -> ActivityBalanceSummary.Verdict
+}
 
-    static func summary(from samples: [ActivitySensorSample]) -> ActivityBalanceSummary? {
-        let pairs = samples.compactMap { normalizePair(left: $0.balanceLeftPercent, right: $0.balanceRightPercent) }
-        guard !pairs.isEmpty else { return nil }
+struct ThresholdActivityBalanceClassifier: ActivityBalanceClassifying {
+    let balancedDeviationThreshold: Double
+    let mildDeviationThreshold: Double
 
-        let avgLeft = pairs.map(\.left).reduce(0, +) / Double(pairs.count)
-        let avgRight = 100.0 - avgLeft
-        guard let end = pairs.last else { return nil }
-
-        let avgDeviation = abs(avgLeft - 50.0)
-        let endDeviation = abs(end.left - 50.0)
-        let verdict = classify(max(avgDeviation, endDeviation))
-
-        return ActivityBalanceSummary(
-            sampleCount: pairs.count,
-            averageLeftPercent: avgLeft,
-            averageRightPercent: avgRight,
-            endLeftPercent: end.left,
-            endRightPercent: end.right,
-            averageDeviationFromCenter: avgDeviation,
-            endDeviationFromCenter: endDeviation,
-            verdict: verdict
-        )
-    }
-
-    static func classify(_ deviationFromCenter: Double) -> ActivityBalanceSummary.Verdict {
+    func classify(_ deviationFromCenter: Double) -> ActivityBalanceSummary.Verdict {
         if deviationFromCenter <= balancedDeviationThreshold {
             return .balanced
         }
@@ -64,6 +44,59 @@ enum ActivityBalanceAnalyzer {
             return .mildImbalance
         }
         return .imbalanced
+    }
+}
+
+final class ActivityBalanceSummarizer {
+    private struct Accumulator {
+        var sampleCount: Int = 0
+        var totalLeft: Double = 0
+        var endLeft: Double = 0
+
+        mutating func append(left: Double) {
+            sampleCount += 1
+            totalLeft += left
+            endLeft = left
+        }
+    }
+
+    private let classifier: ActivityBalanceClassifying
+
+    init(classifier: ActivityBalanceClassifying) {
+        self.classifier = classifier
+    }
+
+    func summary(from samples: [ActivitySensorSample]) -> ActivityBalanceSummary? {
+        var accumulator = Accumulator()
+
+        for sample in samples {
+            guard let pair = Self.normalizePair(left: sample.balanceLeftPercent, right: sample.balanceRightPercent) else {
+                continue
+            }
+            accumulator.append(left: pair.left)
+        }
+
+        guard accumulator.sampleCount > 0 else { return nil }
+
+        let averageLeft = accumulator.totalLeft / Double(accumulator.sampleCount)
+        let averageRight = 100.0 - averageLeft
+        let endLeft = accumulator.endLeft
+        let endRight = 100.0 - endLeft
+
+        let averageDeviation = abs(averageLeft - 50.0)
+        let endDeviation = abs(endLeft - 50.0)
+        let verdict = classifier.classify(max(averageDeviation, endDeviation))
+
+        return ActivityBalanceSummary(
+            sampleCount: accumulator.sampleCount,
+            averageLeftPercent: averageLeft,
+            averageRightPercent: averageRight,
+            endLeftPercent: endLeft,
+            endRightPercent: endRight,
+            averageDeviationFromCenter: averageDeviation,
+            endDeviationFromCenter: endDeviation,
+            verdict: verdict
+        )
     }
 
     private static func normalizePair(left: Double?, right: Double?) -> (left: Double, right: Double)? {
@@ -77,5 +110,28 @@ enum ActivityBalanceAnalyzer {
         let normalizedRight = 100.0 - normalizedLeft
         guard normalizedLeft >= 0, normalizedLeft <= 100 else { return nil }
         return (normalizedLeft, normalizedRight)
+    }
+}
+
+enum ActivityBalanceAnalyzer {
+    static let balancedDeviationThreshold = 2.0
+    static let mildDeviationThreshold = 4.0
+
+    private static let defaultSummarizer = ActivityBalanceSummarizer(
+        classifier: ThresholdActivityBalanceClassifier(
+            balancedDeviationThreshold: balancedDeviationThreshold,
+            mildDeviationThreshold: mildDeviationThreshold
+        )
+    )
+
+    static func summary(from samples: [ActivitySensorSample]) -> ActivityBalanceSummary? {
+        defaultSummarizer.summary(from: samples)
+    }
+
+    static func classify(_ deviationFromCenter: Double) -> ActivityBalanceSummary.Verdict {
+        ThresholdActivityBalanceClassifier(
+            balancedDeviationThreshold: balancedDeviationThreshold,
+            mildDeviationThreshold: mildDeviationThreshold
+        ).classify(deviationFromCenter)
     }
 }
