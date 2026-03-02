@@ -96,7 +96,12 @@ static int accept_client(int listen_fd) {
     if (!(errno == ENOSYS || errno == EINVAL)) return -1;
 #endif
     int fd = accept(listen_fd, NULL, NULL);
-    if (fd >= 0) set_nonblocking(fd);
+    if (fd >= 0) {
+        if (set_nonblocking(fd) != 0) {
+            close(fd);
+            return -1;
+        }
+    }
     return fd;
 }
 
@@ -159,6 +164,10 @@ int run_worker_loop(int listen_fd, const char *db_path, size_t max_fds) {
 
                     int nodelay = 1;
                     setsockopt(client_fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+                    if (configure_socket_after_accept(client_fd) != 0) {
+                        close(client_fd);
+                        continue;
+                    }
 
                     conn_t *conn = (conn_t *)calloc(1, sizeof(conn_t));
                     if (!conn) {

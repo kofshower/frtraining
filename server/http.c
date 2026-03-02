@@ -13,7 +13,7 @@ static int send_all(int fd, const char *buf, size_t len) {
     size_t sent = 0;
     int retry = 0;
     while (sent < len) {
-        ssize_t n = send(fd, buf + sent, len - sent, MSG_NOSIGNAL);
+        ssize_t n = send(fd, buf + sent, len - sent, socket_send_flags());
         if (n > 0) {
             sent += (size_t)n;
             continue;
