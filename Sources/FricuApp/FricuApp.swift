@@ -1273,49 +1273,24 @@ struct SettingsView: View {
                                 .textFieldStyle(.roundedBorder)
                         }
 
-<<<<<<< ours
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Backend Server")
-                        .font(.headline)
-                    TextField("http://127.0.0.1:8080", text: $serverBaseURL)
-                        .textFieldStyle(.roundedBorder)
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "用于活动/计划/档案数据的服务端地址。留空会回退到默认 http://127.0.0.1:8080。",
-                            english: "Server base URL for activity/workout/profile persistence. Leave blank to use default http://127.0.0.1:8080."
-                        )
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Wellness / Platform Connectors")
-                        .font(.headline)
-                    SecureField("Garmin Connect Access Token", text: $garminAccessToken)
-                        .textFieldStyle(.roundedBorder)
-                    TextField(
-                        L10n.choose(
-                            simplifiedChinese: "Garmin Connect Csrf Token（connectus/gc-api 常需）",
-                            english: "Garmin Connect Csrf Token (often required for connectus/gc-api)"
-                        ),
-                        text: $garminCSRFToken
-                    )
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("Oura Personal Access Token", text: $ouraAccessToken)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("WHOOP Access Token", text: $whoopAccessToken)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("Apple Health Access Token", text: $appleHealthAccessToken)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("Google Fit Access Token", text: $googleFitAccessToken)
-                        .textFieldStyle(.roundedBorder)
-                    SecureField("TrainingPeaks Access Token", text: $trainingPeaksAccessToken)
-                        .textFieldStyle(.roundedBorder)
-                }
-=======
                         Divider()
->>>>>>> theirs
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Backend Server")
+                                .font(.headline)
+                            TextField("http://127.0.0.1:8080", text: $serverBaseURL)
+                                .textFieldStyle(.roundedBorder)
+                            Text(
+                                L10n.choose(
+                                    simplifiedChinese: "用于活动/计划/档案数据的服务端地址。留空会回退到默认 http://127.0.0.1:8080。",
+                                    english: "Server base URL for activity/workout/profile persistence. Leave blank to use default http://127.0.0.1:8080."
+                                )
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+
+                        Divider()
 
                         VStack(alignment: .leading, spacing: 8) {
                             Text("GPT / OpenAI")
