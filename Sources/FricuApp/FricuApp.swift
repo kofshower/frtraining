@@ -1322,6 +1322,25 @@ struct SettingsView: View {
                     }
                 }
 
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.choose(simplifiedChinese: "服务端连接", english: "Server Connection"))
+                        .font(.headline)
+                    TextField("Server IP / Host", text: $serverHost)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Server Port", text: $serverPort)
+                        .textFieldStyle(.roundedBorder)
+                    Button(L10n.choose(simplifiedChinese: "应用服务端地址", english: "Apply Server Endpoint")) {
+                        store.updateServerEndpoint(host: serverHost, port: serverPort)
+                    }
+                    .buttonStyle(.bordered)
+                    Text(L10n.choose(
+                        simplifiedChinese: "示例：http://127.0.0.1:8080；修改后会立即重建客户端连接。",
+                        english: "Example: http://127.0.0.1:8080. Applying will rebuild the server client immediately."
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 Button("Save Profile") {
                     persistProfileFromFields()
                     persistServerURLFromFields()
