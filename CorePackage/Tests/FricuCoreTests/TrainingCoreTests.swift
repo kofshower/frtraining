@@ -335,9 +335,12 @@ final class TrainingCoreTests: XCTestCase {
     func testHeartRateVariabilityMetricsAllowsZeroMinimumCountForEmptyInput() throws {
         let metrics = try XCTUnwrap(HeartRateVariabilityMath.metrics(rrIntervalsMS: [], minimumCount: 0))
         XCTAssertEqual(metrics.sampleCount, 0)
-        XCTAssertTrue(metrics.meanRRMS.isNaN)
-        XCTAssertTrue(metrics.minRRMS.isNaN)
-        XCTAssertTrue(metrics.maxRRMS.isNaN)
+        XCTAssertEqual(metrics.meanRRMS, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.rmssdMS, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.sdnnMS, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.pnn50Percent, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.minRRMS, 0, accuracy: 0.001)
+        XCTAssertEqual(metrics.maxRRMS, 0, accuracy: 0.001)
     }
 
     func testCyclingPowerParserWheelTorqueSourceAndOffsetFlag() throws {

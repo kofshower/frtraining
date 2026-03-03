@@ -29,6 +29,49 @@ public struct HeartRateVariabilityMetrics: Equatable, Sendable {
 }
 
 public enum HeartRateVariabilityMath {
+    private struct RRRunningStats {
+        var count = 0
+        var sum = 0.0
+        var sumSquares = 0.0
+        var diffSquareSum = 0.0
+        var nn50Count = 0
+        var minValue = Double.greatestFiniteMagnitude
+        var maxValue = -Double.greatestFiniteMagnitude
+        var previous: Double?
+
+        mutating func append(_ value: Double) {
+            count += 1
+            sum += value
+            sumSquares += value * value
+            minValue = Swift.min(minValue, value)
+            maxValue = Swift.max(maxValue, value)
+
+            if let previous {
+                let diff = value - previous
+                diffSquareSum += diff * diff
+                if abs(diff) > 50 {
+                    nn50Count += 1
+                }
+            }
+            previous = value
+        }
+
+        var mean: Double {
+            guard count > 0 else { return 0 }
+            return sum / Double(count)
+        }
+
+        var sampleVariance: Double {
+            guard count > 1 else { return 0 }
+            let mean = self.mean
+            let centeredSquareSum = sumSquares - Double(count) * mean * mean
+            return Swift.max(0, centeredSquareSum / Double(count - 1))
+        }
+
+        var min: Double { count > 0 ? minValue : 0 }
+        var max: Double { count > 0 ? maxValue : 0 }
+    }
+
     public static func sanitizeRRIntervals(
         _ rrIntervalsMS: [Double],
         minRRMS: Double = 300,
@@ -55,47 +98,37 @@ public enum HeartRateVariabilityMath {
     ) -> HeartRateVariabilityMetrics? {
         let rr = sanitizeRRIntervals(rrIntervalsMS)
         guard rr.count >= minimumCount else { return nil }
-
-        let meanRR = rr.reduce(0, +) / Double(rr.count)
-
-        let variance: Double
-        if rr.count > 1 {
-            let squares = rr.reduce(0) { partial, value in
-                let delta = value - meanRR
-                return partial + delta * delta
-            }
-            variance = squares / Double(rr.count - 1)
-        } else {
-            variance = 0
+        guard !rr.isEmpty else {
+            return HeartRateVariabilityMetrics(
+                sampleCount: 0,
+                meanRRMS: 0,
+                rmssdMS: 0,
+                sdnnMS: 0,
+                pnn50Percent: 0,
+                minRRMS: 0,
+                maxRRMS: 0
+            )
         }
-        let sdnn = sqrt(max(0, variance))
 
-        let diffs = zip(rr.dropFirst(), rr).map(-)
-        let diffCount = diffs.count
-        let rmssd: Double
-        let pnn50: Double
-        if diffCount > 0 {
-            let sqMean = diffs.reduce(0) { partial, diff in
-                partial + diff * diff
-            } / Double(diffCount)
-            rmssd = sqrt(max(0, sqMean))
-            let nn50 = diffs.reduce(0) { partial, diff in
-                partial + (abs(diff) > 50 ? 1 : 0)
-            }
-            pnn50 = 100.0 * Double(nn50) / Double(diffCount)
-        } else {
-            rmssd = 0
-            pnn50 = 0
+        var stats = RRRunningStats()
+        for interval in rr {
+            stats.append(interval)
         }
+
+        let meanRR = stats.mean
+        let sdnn = sqrt(stats.sampleVariance)
+        let diffCount = max(0, stats.count - 1)
+        let rmssd = diffCount > 0 ? sqrt(Swift.max(0, stats.diffSquareSum / Double(diffCount))) : 0
+        let pnn50 = diffCount > 0 ? (100.0 * Double(stats.nn50Count) / Double(diffCount)) : 0
 
         return HeartRateVariabilityMetrics(
-            sampleCount: rr.count,
+            sampleCount: stats.count,
             meanRRMS: meanRR,
             rmssdMS: rmssd,
             sdnnMS: sdnn,
             pnn50Percent: pnn50,
-            minRRMS: rr.min() ?? meanRR,
-            maxRRMS: rr.max() ?? meanRR
+            minRRMS: stats.min,
+            maxRRMS: stats.max
         )
     }
 }
