@@ -3,9 +3,11 @@
 #include "logger.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <sqlite3.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
@@ -61,6 +63,51 @@ static int json_is_valid(worker_db_t *db, const char *json) {
     int ok = 0;
     if (sqlite3_step(stmt) == SQLITE_ROW) ok = sqlite3_column_int(stmt, 0);
     return ok;
+}
+
+static int persist_failed_payload(
+    const char *key,
+    const char *payload,
+    size_t payload_len,
+    int sqlite_rc,
+    int sqlite_ext,
+    char *out_path,
+    size_t out_path_len) {
+    const char *dir = "failed_writes";
+    struct stat st;
+    if (stat(dir, &st) != 0) {
+        if (mkdir(dir, 0700) != 0 && errno != EEXIST) {
+            return -1;
+        }
+    } else if (!S_ISDIR(st.st_mode)) {
+        return -1;
+    }
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    int name_len = snprintf(
+        out_path,
+        out_path_len,
+        "%s/%s-%jd-%ld-rc%d-ext%d.json",
+        dir,
+        key,
+        (intmax_t)getpid(),
+        ts.tv_nsec,
+        sqlite_rc,
+        sqlite_ext);
+    if (name_len <= 0 || (size_t)name_len >= out_path_len) {
+        return -1;
+    }
+
+    FILE *f = fopen(out_path, "wb");
+    if (!f) return -1;
+    size_t written = fwrite(payload, 1, payload_len, f);
+    if (fclose(f) != 0 || written != payload_len) {
+        unlink(out_path);
+        return -1;
+    }
+
+    return 0;
 }
 
 static void log_http_request(const char *method, const char *path, int status_code, size_t payload_bytes) {
@@ -137,14 +184,34 @@ static int handle_put_data(int fd, worker_db_t *db, const char *key, const char 
     if (rc != SQLITE_DONE) {
         int ext = sqlite3_extended_errcode(db->db);
         const char *errmsg = sqlite3_errmsg(db->db);
-        send_response(fd, 500, "Internal Server Error", "{\"error\":\"database error\"}");
+        const char *rc_name = sqlite3_errstr(rc);
+        const char *ext_name = sqlite3_errstr(ext);
+        char backup_path[512] = {0};
+        int backup_ok = persist_failed_payload(key, payload, payload_len, rc, ext, backup_path, sizeof(backup_path));
+        char response_body[512] = {0};
+        if (backup_ok == 0) {
+            snprintf(
+                response_body,
+                sizeof(response_body),
+                "{\"error\":\"database error\",\"rc\":%d,\"ext\":%d,\"backup\":\"%s\"}",
+                rc,
+                ext,
+                backup_path);
+        } else {
+            snprintf(response_body, sizeof(response_body), "{\"error\":\"database error\",\"rc\":%d,\"ext\":%d}", rc, ext);
+        }
+
+        send_response(fd, 500, "Internal Server Error", response_body);
         log_error(
-            "DATA WRITE failed key=%s reason=sqlite_step_error rc=%d ext=%d errmsg=%s bytes=%zu",
+            "DATA WRITE failed key=%s reason=sqlite_step_error rc=%d rc_name=%s ext=%d ext_name=%s errmsg=%s bytes=%zu backup=%s",
             key,
             rc,
+            rc_name ? rc_name : "unknown",
             ext,
+            ext_name ? ext_name : "unknown",
             errmsg ? errmsg : "unknown",
-            payload_len);
+            payload_len,
+            backup_ok == 0 ? backup_path : "none");
         return 500;
     }
 
