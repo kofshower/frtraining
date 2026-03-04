@@ -4,6 +4,12 @@ import Foundation
 import FoundationNetworking
 #endif
 
+#if os(Linux)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
 protocol DataRepository {
     func loadActivities() throws -> [Activity]
     func saveActivities(_ activities: [Activity]) throws
@@ -160,34 +166,63 @@ final class RemoteHTTPRepository: DataRepository {
         var createdAt: Date
     }
 
-    private func loadPendingWrites() -> [PendingWrite] {
+    private func loadPendingWrites() throws -> [PendingWrite] {
         guard FileManager.default.fileExists(atPath: pendingWritesURL.path) else { return [] }
-        do {
-            let data = try Data(contentsOf: pendingWritesURL)
-            return try decoder.decode([PendingWrite].self, from: data)
-        } catch {
-            return []
+        let data = try Data(contentsOf: pendingWritesURL)
+        return try decoder.decode([PendingWrite].self, from: data)
+    }
+
+    private func syncDirectory(_ directoryURL: URL) throws {
+        let fd = open(directoryURL.path, O_RDONLY)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        if fsync(fd) != 0 {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
         }
     }
 
-    private func savePendingWrites(_ writes: [PendingWrite]) {
+    private func writeDataDurably(_ data: Data, to targetURL: URL) throws {
+        let fm = FileManager.default
+        let directoryURL = targetURL.deletingLastPathComponent()
+        let tmpURL = directoryURL.appendingPathComponent(".\(targetURL.lastPathComponent).tmp-\(UUID().uuidString)")
+
+        fm.createFile(atPath: tmpURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: tmpURL)
         do {
-            let data = try encoder.encode(writes)
-            try data.write(to: pendingWritesURL, options: .atomic)
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
         } catch {
-            // Best effort: app logic will still throw original write errors.
+            try? handle.close()
+            try? fm.removeItem(at: tmpURL)
+            throw error
         }
+
+        if fm.fileExists(atPath: targetURL.path) {
+            try fm.removeItem(at: targetURL)
+        }
+        try fm.moveItem(at: tmpURL, to: targetURL)
+        try syncDirectory(directoryURL)
     }
 
-    private func enqueuePendingWrite(key: String, payload: Data) {
-        var writes = loadPendingWrites().filter { $0.key != key }
+    private func savePendingWrites(_ writes: [PendingWrite]) throws {
+        let data = try encoder.encode(writes)
+        try writeDataDurably(data, to: pendingWritesURL)
+    }
+
+    private func enqueuePendingWrite(key: String, payload: Data) throws {
+        var writes = try loadPendingWrites().filter { $0.key != key }
         writes.append(PendingWrite(key: key, payload: payload, createdAt: Date()))
-        savePendingWrites(writes)
+        try savePendingWrites(writes)
     }
 
     private func clearPendingWrite(for key: String) {
-        let writes = loadPendingWrites().filter { $0.key != key }
-        savePendingWrites(writes)
+        do {
+            let writes = try loadPendingWrites().filter { $0.key != key }
+            try savePendingWrites(writes)
+        } catch {
+            // Keep queue on disk if cleanup fails; replay remains safe/idempotent.
+        }
     }
 
     private func endpoint(_ key: String) -> URL {
@@ -207,17 +242,16 @@ final class RemoteHTTPRepository: DataRepository {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = try encoder.encode(value)
         req.httpBody = body
-        do {
-            _ = try execute(req)
-            clearPendingWrite(for: key)
-        } catch {
-            enqueuePendingWrite(key: key, payload: body)
-            throw error
-        }
+
+        // Write-ahead queue: persist first so abrupt power loss during request cannot lose the payload.
+        try enqueuePendingWrite(key: key, payload: body)
+
+        _ = try execute(req)
+        clearPendingWrite(for: key)
     }
 
     func flushPendingWrites() throws {
-        let pending = loadPendingWrites()
+        let pending = try loadPendingWrites()
         guard !pending.isEmpty else { return }
 
         var stillPending: [PendingWrite] = []
@@ -232,7 +266,7 @@ final class RemoteHTTPRepository: DataRepository {
                 stillPending.append(entry)
             }
         }
-        savePendingWrites(stillPending)
+        try savePendingWrites(stillPending)
     }
 
     private func execute(_ req: URLRequest) throws -> Data {
