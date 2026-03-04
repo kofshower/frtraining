@@ -1,8 +1,12 @@
+#define _GNU_SOURCE
+
 #include "server.h"
 #include "server_internal.h"
 #include "logger.h"
 
+#include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <sqlite3.h>
@@ -11,6 +15,73 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+
+#define PENDING_WRITES_DIR "pending_writes"
+
+static int fsync_directory(const char *dir_path) {
+    DIR *d = opendir(dir_path);
+    if (!d) return -1;
+    int fd = dirfd(d);
+    if (fd < 0) {
+        closedir(d);
+        return -1;
+    }
+    int rc = fsync(fd);
+    closedir(d);
+    return rc;
+}
+
+static int ensure_pending_writes_dir(void) {
+    struct stat st;
+    if (stat(PENDING_WRITES_DIR, &st) == 0) {
+        if (!S_ISDIR(st.st_mode)) return -1;
+        return 0;
+    }
+    if (errno != ENOENT) return -1;
+    if (mkdir(PENDING_WRITES_DIR, 0700) != 0 && errno != EEXIST) return -1;
+    return fsync_directory(".");
+}
+
+static int create_pending_write(const char *key, const char *payload, size_t payload_len, char *out_path, size_t out_path_len) {
+    if (ensure_pending_writes_dir() != 0) return -1;
+
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    unsigned long tid = (unsigned long)getpid();
+    int tmp_len = snprintf(out_path, out_path_len, "%s/%s-%lu-%jd-%ld.tmp", PENDING_WRITES_DIR, key, tid, (intmax_t)ts.tv_sec, ts.tv_nsec);
+    if (tmp_len <= 0 || (size_t)tmp_len >= out_path_len) return -1;
+
+    int fd = open(out_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return -1;
+    ssize_t wr = write(fd, payload, payload_len);
+    if (wr < 0 || (size_t)wr != payload_len || fsync(fd) != 0 || close(fd) != 0) {
+        close(fd);
+        unlink(out_path);
+        return -1;
+    }
+
+    char final_path[512] = {0};
+    int final_len = snprintf(final_path, sizeof(final_path), "%s/%s-%lu-%jd-%ld.json", PENDING_WRITES_DIR, key, tid, (intmax_t)ts.tv_sec, ts.tv_nsec);
+    if (final_len <= 0 || (size_t)final_len >= sizeof(final_path)) {
+        unlink(out_path);
+        return -1;
+    }
+    if (rename(out_path, final_path) != 0 || fsync_directory(PENDING_WRITES_DIR) != 0) {
+        unlink(out_path);
+        unlink(final_path);
+        return -1;
+    }
+
+    size_t copy_len = (size_t)final_len;
+    if (copy_len + 1 > out_path_len) return -1;
+    memcpy(out_path, final_path, copy_len + 1);
+    return 0;
+}
+
+static int remove_pending_write(const char *path) {
+    if (unlink(path) != 0) return -1;
+    return fsync_directory(PENDING_WRITES_DIR);
+}
 
 static int send_all(int fd, const char *buf, size_t len) {
     size_t sent = 0;
@@ -161,6 +232,14 @@ static int handle_put_data(int fd, worker_db_t *db, const char *key, const char 
 
     sqlite3_reset(stmt);
     sqlite3_clear_bindings(stmt);
+
+    char pending_path[512] = {0};
+    if (create_pending_write(key, payload, payload_len, pending_path, sizeof(pending_path)) != 0) {
+        send_response(fd, 500, "Internal Server Error", "{\"error\":\"durable journal error\"}");
+        log_error("DATA WRITE failed key=%s reason=pending_write_create_failed bytes=%zu", key, payload_len);
+        return 500;
+    }
+
     sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, payload, -1, SQLITE_TRANSIENT);
     int rc = SQLITE_ERROR;
@@ -212,6 +291,12 @@ static int handle_put_data(int fd, worker_db_t *db, const char *key, const char 
             errmsg ? errmsg : "unknown",
             payload_len,
             backup_ok == 0 ? backup_path : "none");
+        return 500;
+    }
+
+    if (remove_pending_write(pending_path) != 0) {
+        send_response(fd, 500, "Internal Server Error", "{\"error\":\"durable journal cleanup error\"}");
+        log_error("DATA WRITE failed key=%s reason=pending_write_cleanup_failed path=%s", key, pending_path);
         return 500;
     }
 
