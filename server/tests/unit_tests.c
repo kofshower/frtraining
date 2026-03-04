@@ -9,7 +9,11 @@
 static void test_valid_key(void) {
     assert(is_valid_key("activities"));
     assert(is_valid_key("profile"));
+    assert(is_valid_key("app_settings"));
+    assert(is_valid_key("wellness_samples"));
     assert(is_valid_key("lactate_history_records"));
+    assert(is_valid_key("exported_file_1234"));
+    assert(!is_valid_key("exported_file_"));
     assert(!is_valid_key("unknown"));
 }
 

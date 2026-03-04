@@ -17,13 +17,26 @@ protocol DataRepository {
     func saveWorkouts(_ workouts: [PlannedWorkout]) throws
     func loadCalendarEvents() throws -> [CalendarEvent]
     func saveCalendarEvents(_ events: [CalendarEvent]) throws
+    func loadWellnessSamples() throws -> [WellnessSample]
+    func saveWellnessSamples(_ samples: [WellnessSample]) throws
     func loadProfile() throws -> AthleteProfile
     func saveProfile(_ profile: AthleteProfile) throws
     func loadLactateHistoryRecords() throws -> [LactateHistoryRecord]
     func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws
+    func loadAppSettings() throws -> AppSettingsSnapshot?
+    func saveAppSettings(_ settings: AppSettingsSnapshot) throws
+    func uploadExportedFile(_ file: ExportedFileUpload) throws
 }
 
 extension DataRepository {
+    func loadWellnessSamples() throws -> [WellnessSample] {
+        []
+    }
+
+    func saveWellnessSamples(_ samples: [WellnessSample]) throws {
+        _ = samples
+    }
+
     func loadLactateHistoryRecords() throws -> [LactateHistoryRecord] {
         []
     }
@@ -31,6 +44,53 @@ extension DataRepository {
     func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws {
         _ = records
     }
+
+    func loadAppSettings() throws -> AppSettingsSnapshot? {
+        nil
+    }
+
+    func saveAppSettings(_ settings: AppSettingsSnapshot) throws {
+        _ = settings
+    }
+
+    func uploadExportedFile(_ file: ExportedFileUpload) throws {
+        _ = file
+    }
+}
+
+struct AppSettingsSnapshot: Codable {
+    var trainerRiderConnectionStoreData: Data?
+    var athleteProfileStoreData: Data?
+    var appLanguageRawValue: String?
+    var chartDisplayModeRawValue: String?
+    var nutritionUSDAAPIKey: String?
+    var stravaPullRecentDays: Int?
+    var serverHost: String?
+    var serverPort: Int?
+    var serverBaseURL: String?
+
+    var isEmpty: Bool {
+        trainerRiderConnectionStoreData == nil &&
+            athleteProfileStoreData == nil &&
+            appLanguageRawValue == nil &&
+            chartDisplayModeRawValue == nil &&
+            nutritionUSDAAPIKey == nil &&
+            stravaPullRecentDays == nil &&
+            serverHost == nil &&
+            serverPort == nil &&
+            serverBaseURL == nil
+    }
+}
+
+struct ExportedFileUpload: Codable {
+    var id: UUID
+    var category: String
+    var athleteName: String?
+    var fileName: String
+    var mimeType: String
+    var createdAt: Date
+    var sourcePath: String?
+    var payload: Data
 }
 
 enum RepositoryError: Error {
@@ -178,6 +238,14 @@ final class RemoteHTTPRepository: DataRepository {
         try push("events", value: events)
     }
 
+    func loadWellnessSamples() throws -> [WellnessSample] {
+        try fetch("wellness_samples", as: [WellnessSample].self).sorted { $0.date > $1.date }
+    }
+
+    func saveWellnessSamples(_ samples: [WellnessSample]) throws {
+        try push("wellness_samples", value: samples)
+    }
+
     func loadProfile() throws -> AthleteProfile {
         do {
             return try fetch("profile", as: AthleteProfile.self)
@@ -198,6 +266,23 @@ final class RemoteHTTPRepository: DataRepository {
     func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws {
         try push("lactate_history_records", value: records)
     }
+
+    func loadAppSettings() throws -> AppSettingsSnapshot? {
+        do {
+            return try fetch("app_settings", as: AppSettingsSnapshot.self)
+        } catch {
+            return nil
+        }
+    }
+
+    func saveAppSettings(_ settings: AppSettingsSnapshot) throws {
+        try push("app_settings", value: settings)
+    }
+
+    func uploadExportedFile(_ file: ExportedFileUpload) throws {
+        let key = "exported_file_\(file.id.uuidString.lowercased())"
+        try push(key, value: file)
+    }
 }
 
 final class LocalJSONRepository: DataRepository {
@@ -207,7 +292,10 @@ final class LocalJSONRepository: DataRepository {
     private let customFoodsURL: URL
     private let workoutsURL: URL
     private let eventsURL: URL
+    private let wellnessSamplesURL: URL
     private let profileURL: URL
+    private let appSettingsURL: URL
+    private let exportedUploadsDirURL: URL
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
@@ -228,7 +316,10 @@ final class LocalJSONRepository: DataRepository {
         self.customFoodsURL = root.appendingPathComponent("custom_foods.json")
         self.workoutsURL = root.appendingPathComponent("workouts.json")
         self.eventsURL = root.appendingPathComponent("events.json")
+        self.wellnessSamplesURL = root.appendingPathComponent("wellness_samples.json")
         self.profileURL = root.appendingPathComponent("profile.json")
+        self.appSettingsURL = root.appendingPathComponent("app_settings.json")
+        self.exportedUploadsDirURL = root.appendingPathComponent("exported_uploads", isDirectory: true)
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -345,6 +436,19 @@ final class LocalJSONRepository: DataRepository {
         try data.write(to: eventsURL, options: .atomic)
     }
 
+    func loadWellnessSamples() throws -> [WellnessSample] {
+        if FileManager.default.fileExists(atPath: wellnessSamplesURL.path) {
+            let data = try Data(contentsOf: wellnessSamplesURL)
+            return try decoder.decode([WellnessSample].self, from: data).sorted { $0.date > $1.date }
+        }
+        return []
+    }
+
+    func saveWellnessSamples(_ samples: [WellnessSample]) throws {
+        let data = try encoder.encode(samples)
+        try data.write(to: wellnessSamplesURL, options: .atomic)
+    }
+
     func loadProfile() throws -> AthleteProfile {
         if FileManager.default.fileExists(atPath: profileURL.path) {
             let data = try Data(contentsOf: profileURL)
@@ -365,6 +469,28 @@ final class LocalJSONRepository: DataRepository {
     }
 
     func saveLactateHistoryRecords(_ records: [LactateHistoryRecord]) throws {
+    }
+
+    func loadAppSettings() throws -> AppSettingsSnapshot? {
+        guard FileManager.default.fileExists(atPath: appSettingsURL.path) else {
+            return nil
+        }
+        let data = try Data(contentsOf: appSettingsURL)
+        return try decoder.decode(AppSettingsSnapshot.self, from: data)
+    }
+
+    func saveAppSettings(_ settings: AppSettingsSnapshot) throws {
+        let data = try encoder.encode(settings)
+        try data.write(to: appSettingsURL, options: .atomic)
+    }
+
+    func uploadExportedFile(_ file: ExportedFileUpload) throws {
+        if !FileManager.default.fileExists(atPath: exportedUploadsDirURL.path) {
+            try FileManager.default.createDirectory(at: exportedUploadsDirURL, withIntermediateDirectories: true)
+        }
+        let target = exportedUploadsDirURL.appendingPathComponent("\(file.id.uuidString.lowercased()).json")
+        let data = try encoder.encode(file)
+        try data.write(to: target, options: .atomic)
     }
 }
 

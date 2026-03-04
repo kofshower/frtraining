@@ -450,7 +450,7 @@ struct SettingsView: View {
     @State private var stravaClientID = ""
     @State private var stravaClientSecret = ""
     private let stravaOAuthRedirectURI = "http://127.0.0.1:53682/callback"
-    @State private var stravaPullRecentDays = 30
+    @AppStorage("fricu.strava.pull.recent.days.v1") private var stravaPullRecentDays = 30
     @State private var garminAccessToken = ""
     @State private var garminCSRFToken = ""
     @State private var ouraAccessToken = ""
@@ -1459,6 +1459,48 @@ struct SettingsView: View {
                 if let message = store.lastError {
                     Text(message)
                         .foregroundStyle(.red)
+                }
+
+                GroupBox(L10n.choose(simplifiedChinese: "客户端日志", english: "Client Logs")) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(
+                                L10n.choose(
+                                    simplifiedChinese: "显示最近 300 条日志",
+                                    english: "Showing last 300 log lines"
+                                )
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            Spacer()
+                            Button(L10n.choose(simplifiedChinese: "清空日志", english: "Clear Logs")) {
+                                store.clearClientLogs()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 4) {
+                                ForEach(Array(store.clientLogLines.suffix(120).enumerated()), id: \.offset) { _, line in
+                                    Text(line)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
+                        .frame(minHeight: 140, maxHeight: 220)
+
+                        Text(
+                            L10n.choose(
+                                simplifiedChinese: "服务端日志会在 fricu-server 启动终端实时输出。",
+                                english: "Server logs are printed in real time in the fricu-server terminal."
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 2)
                 }
 
                 Text(

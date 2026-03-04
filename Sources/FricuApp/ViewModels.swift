@@ -99,9 +99,20 @@ final class AppStore: ObservableObject {
     @Published private(set) var aiCoachStatus: String?
     @Published private(set) var aiCoachUpdatedAt: Date?
     @Published var isRefreshingAICoach = false
-    @Published var lastError: String?
-    @Published var syncStatus: String?
+    @Published var lastError: String? {
+        didSet {
+            guard let lastError, !lastError.isEmpty, lastError != oldValue else { return }
+            appendClientLog(level: "ERROR", message: lastError)
+        }
+    }
+    @Published var syncStatus: String? {
+        didSet {
+            guard let syncStatus, !syncStatus.isEmpty, syncStatus != oldValue else { return }
+            appendClientLog(level: "INFO", message: syncStatus)
+        }
+    }
     @Published var isSyncing = false
+    @Published private(set) var clientLogLines: [String] = []
     @Published private(set) var athletePanelsCache: [AthletePanel] = []
     @Published private(set) var athleteScopedActivitiesCache: [Activity] = []
     @Published private(set) var athleteScopedDailyMealPlansCache: [DailyMealPlan] = []
@@ -159,13 +170,27 @@ final class AppStore: ObservableObject {
     private let athleteProfileStoreDefaultsKey = "fricu.athlete.profile.store.v1"
     private let serverHostDefaultsKey = "fricu.server.host.v1"
     private let serverPortDefaultsKey = "fricu.server.port.v1"
+    private let nutritionUSDAAPIKeyDefaultsKey = "nutrition.usda.apiKey"
+    private let stravaPullRecentDaysDefaultsKey = "fricu.strava.pull.recent.days.v1"
     private var athleteProfilesByPanelID: [String: AthleteProfile] = [:]
     private var isApplyingAthleteProfile = false
+    private var isApplyingServerBackedSettings = false
+    private var lastAppSettingsSyncedDigest: UInt64?
+    private var lastAppSettingsFailedDigest: UInt64?
+    private var lastAppSettingsFailedAt: Date?
+    private static let clientLogTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
 
     init() {
         loadServerEndpointFromDefaults()
         configureRepository()
         configureInitialTrainerSessions()
+        setupAppSettingsSyncPipeline()
         setupDerivedRefreshPipeline()
         setupTrainerRecordingPipeline()
         markDerivedStateDirty()
@@ -184,6 +209,226 @@ final class AppStore: ObservableObject {
         serverPort = (1...65535).contains(storedPort) ? String(storedPort) : "8080"
     }
 
+    private func appendClientLog(level: String, message: String) {
+        let line = "[\(Self.clientLogTimeFormatter.string(from: Date()))] [\(level)] \(message)"
+        clientLogLines.append(line)
+        if clientLogLines.count > 300 {
+            clientLogLines.removeFirst(clientLogLines.count - 300)
+        }
+    }
+
+    func clearClientLogs() {
+        clientLogLines = []
+    }
+
+    private func hashDataFNV1a64(_ data: Data) -> UInt64 {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in data {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return hash
+    }
+
+    private func detailedErrorDescription(_ error: Error) -> String {
+        let nsError = error as NSError
+        let domain = nsError.domain
+        let code = nsError.code
+        let message = nsError.localizedDescription
+        if let failingURL = nsError.userInfo[NSURLErrorFailingURLStringErrorKey] as? String {
+            return "\(message) [domain=\(domain) code=\(code) url=\(failingURL)]"
+        }
+        return "\(message) [domain=\(domain) code=\(code)]"
+    }
+
+    private func currentAppSettingsSnapshot() -> AppSettingsSnapshot {
+        let defaults = UserDefaults.standard
+        let normalizedHost = defaults.string(forKey: serverHostDefaultsKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let snapshotHost: String?
+        if let normalizedHost, !normalizedHost.isEmpty {
+            snapshotHost = normalizedHost
+        } else {
+            let fallback = serverHost.trimmingCharacters(in: .whitespacesAndNewlines)
+            snapshotHost = fallback.isEmpty ? nil : fallback
+        }
+
+        let storedPort = defaults.integer(forKey: serverPortDefaultsKey)
+        let snapshotPort: Int?
+        if (1...65535).contains(storedPort) {
+            snapshotPort = storedPort
+        } else if let parsedPort = Int(serverPort.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  (1...65535).contains(parsedPort) {
+            snapshotPort = parsedPort
+        } else {
+            snapshotPort = nil
+        }
+
+        let rawServerBaseURL = defaults.string(forKey: RemoteHTTPRepository.serverURLDefaultsKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let snapshotBaseURL = (rawServerBaseURL?.isEmpty == false) ? rawServerBaseURL : nil
+        let stravaPullRecentDays = defaults.integer(forKey: stravaPullRecentDaysDefaultsKey)
+        let snapshotStravaPullRecentDays: Int?
+        if stravaPullRecentDays > 0 {
+            snapshotStravaPullRecentDays = stravaPullRecentDays
+        } else {
+            snapshotStravaPullRecentDays = nil
+        }
+
+        return AppSettingsSnapshot(
+            trainerRiderConnectionStoreData: defaults.data(forKey: trainerRiderConnectionStoreDefaultsKey),
+            athleteProfileStoreData: defaults.data(forKey: athleteProfileStoreDefaultsKey),
+            appLanguageRawValue: defaults.string(forKey: AppLanguageOption.storageKey),
+            chartDisplayModeRawValue: defaults.string(forKey: AppChartDisplayMode.storageKey),
+            nutritionUSDAAPIKey: defaults.string(forKey: nutritionUSDAAPIKeyDefaultsKey),
+            stravaPullRecentDays: snapshotStravaPullRecentDays,
+            serverHost: snapshotHost,
+            serverPort: snapshotPort,
+            serverBaseURL: snapshotBaseURL
+        )
+    }
+
+    private func applyAppSettingsSnapshot(_ snapshot: AppSettingsSnapshot) {
+        let defaults = UserDefaults.standard
+        isApplyingServerBackedSettings = true
+        defer { isApplyingServerBackedSettings = false }
+
+        var shouldReconfigureEndpoint = false
+        var shouldReloadTrainerSessions = false
+
+        if let data = snapshot.trainerRiderConnectionStoreData {
+            defaults.set(data, forKey: trainerRiderConnectionStoreDefaultsKey)
+            shouldReloadTrainerSessions = true
+        }
+        if let data = snapshot.athleteProfileStoreData {
+            defaults.set(data, forKey: athleteProfileStoreDefaultsKey)
+        }
+        if let appLanguageRawValue = snapshot.appLanguageRawValue {
+            defaults.set(appLanguageRawValue, forKey: AppLanguageOption.storageKey)
+        }
+        if let chartDisplayModeRawValue = snapshot.chartDisplayModeRawValue {
+            defaults.set(chartDisplayModeRawValue, forKey: AppChartDisplayMode.storageKey)
+        }
+        if let nutritionUSDAAPIKey = snapshot.nutritionUSDAAPIKey {
+            defaults.set(nutritionUSDAAPIKey, forKey: nutritionUSDAAPIKeyDefaultsKey)
+        }
+        if let stravaPullRecentDays = snapshot.stravaPullRecentDays, stravaPullRecentDays > 0 {
+            defaults.set(stravaPullRecentDays, forKey: stravaPullRecentDaysDefaultsKey)
+        }
+        if let serverBaseURL = snapshot.serverBaseURL,
+           !serverBaseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            defaults.set(serverBaseURL, forKey: RemoteHTTPRepository.serverURLDefaultsKey)
+        }
+
+        if let host = snapshot.serverHost?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !host.isEmpty {
+            if host != serverHost {
+                shouldReconfigureEndpoint = true
+            }
+            serverHost = host
+            defaults.set(host, forKey: serverHostDefaultsKey)
+        }
+        if let port = snapshot.serverPort, (1...65535).contains(port) {
+            let nextPort = String(port)
+            if nextPort != serverPort {
+                shouldReconfigureEndpoint = true
+            }
+            serverPort = nextPort
+            defaults.set(port, forKey: serverPortDefaultsKey)
+        }
+
+        if shouldReloadTrainerSessions {
+            configureInitialTrainerSessions()
+        }
+        if shouldReconfigureEndpoint {
+            configureRepository()
+        }
+    }
+
+    private func hydrateAppSettingsFromRepository() {
+        guard let repository else { return }
+        do {
+            if let serverSettings = try repository.loadAppSettings(), !serverSettings.isEmpty {
+                applyAppSettingsSnapshot(serverSettings)
+                let payloadBytes = (try? JSONEncoder().encode(serverSettings).count) ?? 0
+                appendClientLog(
+                    level: "INFO",
+                    message: "Loaded app settings from server (bytes=\(payloadBytes), host=\(serverSettings.serverHost ?? "-"), port=\(serverSettings.serverPort.map(String.init) ?? "-"))."
+                )
+            } else {
+                appendClientLog(level: "INFO", message: "Server app settings empty. Seeding from local settings...")
+                persistAppSettingsToRepository(reason: "seedRemoteSettingsOnEmpty")
+            }
+        } catch RepositoryError.httpError(404) {
+            // Older servers may not support app_settings yet.
+            appendClientLog(level: "WARN", message: "Server does not support app_settings endpoint (HTTP 404).")
+        } catch {
+            appendClientLog(
+                level: "ERROR",
+                message: "App settings hydrate failed: \(detailedErrorDescription(error))"
+            )
+            lastError = "Failed to sync app settings: \(error.localizedDescription)"
+        }
+    }
+
+    private func persistAppSettingsToRepository(reason: String = "unspecified") {
+        guard !isApplyingServerBackedSettings else {
+            appendClientLog(level: "INFO", message: "Skip app settings sync (\(reason)): applying server-backed settings.")
+            return
+        }
+        guard let repository else {
+            appendClientLog(level: "WARN", message: "Skip app settings sync (\(reason)): repository unavailable.")
+            return
+        }
+
+        let snapshot = currentAppSettingsSnapshot()
+        guard let payload = try? JSONEncoder().encode(snapshot) else {
+            appendClientLog(level: "ERROR", message: "Failed to encode app settings payload (\(reason)).")
+            return
+        }
+        let digest = hashDataFNV1a64(payload)
+        let digestText = String(format: "%016llx", digest)
+
+        if lastAppSettingsSyncedDigest == digest {
+            appendClientLog(level: "INFO", message: "Skip app settings sync (\(reason)): payload unchanged [\(digestText)].")
+            return
+        }
+
+        if lastAppSettingsFailedDigest == digest,
+           let failedAt = lastAppSettingsFailedAt,
+           Date().timeIntervalSince(failedAt) < 8 {
+            appendClientLog(
+                level: "WARN",
+                message: "Skip app settings retry (\(reason)): same payload failed recently [\(digestText)]."
+            )
+            return
+        }
+
+        appendClientLog(
+            level: "INFO",
+            message: "Syncing app settings (\(reason)) bytes=\(payload.count) digest=\(digestText) host=\(snapshot.serverHost ?? "-") port=\(snapshot.serverPort.map(String.init) ?? "-") baseURL=\(snapshot.serverBaseURL ?? "-")."
+        )
+
+        do {
+            try repository.saveAppSettings(snapshot)
+            lastAppSettingsSyncedDigest = digest
+            lastAppSettingsFailedDigest = nil
+            lastAppSettingsFailedAt = nil
+            appendClientLog(level: "INFO", message: "App settings sync succeeded (\(reason)) [\(digestText)].")
+        } catch RepositoryError.httpError(404) {
+            // Older servers may not support app_settings yet.
+            appendClientLog(level: "WARN", message: "Skip saving app settings: server endpoint unavailable (HTTP 404).")
+        } catch {
+            lastAppSettingsFailedDigest = digest
+            lastAppSettingsFailedAt = Date()
+            appendClientLog(
+                level: "ERROR",
+                message: "App settings sync failed (\(reason)) [\(digestText)]: \(detailedErrorDescription(error))"
+            )
+            lastError = "Failed to save app settings: \(error.localizedDescription)"
+        }
+    }
+
     private func configureRepository() {
         do {
             let host = serverHost.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -193,6 +438,7 @@ final class AppStore: ObservableObject {
                 throw RepositoryError.invalidServerURL
             }
             self.repository = try RemoteHTTPRepository(baseURL: url)
+            appendClientLog(level: "INFO", message: "Configured server repository: \(base)")
         } catch {
             self.repository = nil
             self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
@@ -202,6 +448,7 @@ final class AppStore: ObservableObject {
     func updateServerEndpoint(host: String, port: String) {
         let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedPort = port.trimmingCharacters(in: .whitespacesAndNewlines)
+        appendClientLog(level: "INFO", message: "Applying server endpoint: \(normalizedHost):\(normalizedPort)")
         guard !normalizedHost.isEmpty,
               let parsedPort = Int(normalizedPort),
               (1...65535).contains(parsedPort) else {
@@ -214,7 +461,8 @@ final class AppStore: ObservableObject {
         UserDefaults.standard.set(normalizedHost, forKey: serverHostDefaultsKey)
         UserDefaults.standard.set(parsedPort, forKey: serverPortDefaultsKey)
         configureRepository()
-        loadAllFromRepository()
+        persistAppSettingsToRepository(reason: "updateServerEndpoint")
+        bootstrap()
         syncStatus = "Server endpoint updated to \(normalizedHost):\(parsedPort)"
     }
 
@@ -331,6 +579,7 @@ final class AppStore: ObservableObject {
         do {
             let data = try JSONEncoder().encode(payload)
             UserDefaults.standard.set(data, forKey: trainerRiderConnectionStoreDefaultsKey)
+            persistAppSettingsToRepository(reason: "persistTrainerRiderConnectionStore")
         } catch {
             lastError = "Failed to save rider devices: \(error.localizedDescription)"
         }
@@ -536,6 +785,7 @@ final class AppStore: ObservableObject {
         do {
             let data = try JSONEncoder().encode(athleteProfilesByPanelID)
             UserDefaults.standard.set(data, forKey: athleteProfileStoreDefaultsKey)
+            persistAppSettingsToRepository(reason: "persistAthleteProfileStore")
         } catch {
             lastError = "Failed to save athlete profile store: \(error.localizedDescription)"
         }
@@ -731,6 +981,7 @@ final class AppStore: ObservableObject {
                 if activitiesChanged { try repository.saveActivities(activitiesUpdated) }
                 if mealPlansChanged { try repository.saveDailyMealPlans(mealPlansUpdated) }
                 if workoutsChanged { try repository.saveWorkouts(workoutsUpdated) }
+                if wellnessChanged { try repository.saveWellnessSamples(wellnessUpdated) }
                 if eventsChanged { try repository.saveCalendarEvents(eventsUpdated) }
                 if activitiesChanged || mealPlansChanged || workoutsChanged || wellnessChanged || eventsChanged {
                     try repository.saveProfile(profile)
@@ -786,6 +1037,7 @@ final class AppStore: ObservableObject {
                     try repository.saveActivities(updatedActivities)
                     try repository.saveDailyMealPlans(updatedMealPlans)
                     try repository.saveWorkouts(updatedWorkouts)
+                    try repository.saveWellnessSamples(updatedWellness)
                     try repository.saveCalendarEvents(updatedEvents)
                 }
             } catch {
@@ -801,12 +1053,16 @@ final class AppStore: ObservableObject {
 
     func bootstrap() {
         do {
+            let startedAt = Date()
+            appendClientLog(level: "INFO", message: "Bootstrap started: loading settings and repository data.")
+            hydrateAppSettingsFromRepository()
             var loadedProfile: AthleteProfile = .default
             if let repository {
                 self.activities = try repository.loadActivities()
                 self.dailyMealPlans = try repository.loadDailyMealPlans()
                 self.customFoodLibrary = try repository.loadCustomFoods()
                 self.plannedWorkouts = try repository.loadWorkouts()
+                self.wellnessSamples = try repository.loadWellnessSamples()
                 self.intervalsCalendarEvents = try repository.loadCalendarEvents()
                 self.lactateHistoryRecords = try repository.loadLactateHistoryRecords()
                 loadedProfile = try repository.loadProfile()
@@ -818,6 +1074,7 @@ final class AppStore: ObservableObject {
                 self.dailyMealPlans = []
                 self.customFoodLibrary = []
                 self.plannedWorkouts = []
+                self.wellnessSamples = []
                 self.intervalsCalendarEvents = []
                 self.lactateHistoryRecords = []
                 loadedProfile = .default
@@ -832,6 +1089,11 @@ final class AppStore: ObservableObject {
             pruneActivityMetricInsights()
             applyDefaultCredentialsIfNeeded()
             ensureTrainerRiderAutoReconnect()
+            let elapsedText = String(format: "%.2f", Date().timeIntervalSince(startedAt))
+            appendClientLog(
+                level: "INFO",
+                message: "Bootstrap complete in \(elapsedText)s (activities \(activities.count), workouts \(plannedWorkouts.count), wellness \(wellnessSamples.count))."
+            )
         } catch {
             self.lastError = "Failed to load server data: \(error.localizedDescription)"
         }
@@ -1447,6 +1709,26 @@ final class AppStore: ObservableObject {
                 averageHeartRate: avgHeartRate,
                 averageCadence: cadenceValues.isEmpty ? nil : Int((Double(cadenceValues.reduce(0, +)) / Double(cadenceValues.count)).rounded())
             )
+            let fitUploadedToServer = uploadExportedFileToRepository(
+                category: "trainer_fit",
+                athleteName: riderName,
+                fileName: fitURL.lastPathComponent,
+                mimeType: "application/fit",
+                sourcePath: fitURL.path,
+                payload: fitData,
+                createdAt: session.startedAt
+            )
+            let screenshotUploadedToServer = bikeComputerSnapshot.map { snapshot in
+                uploadExportedFileToRepository(
+                    category: "bike_computer_screenshot",
+                    athleteName: riderName,
+                    fileName: snapshot.fileName,
+                    mimeType: snapshot.mimeType,
+                    sourcePath: snapshot.savedPath,
+                    payload: snapshot.data,
+                    createdAt: end
+                )
+            }
 
             var activity = Activity(
                 date: session.startedAt,
@@ -1488,7 +1770,15 @@ final class AppStore: ObservableObject {
                 fitFileName: fitURL.lastPathComponent
             )
             let snapshotSummary = bikeComputerSnapshot?.savedPath.map { "已保存码表截图：\($0)" } ?? "未生成码表截图"
-            let finalSummary = "\(riderName) · \(reason)。已保存 FIT：\(fitURL.lastPathComponent)。\(snapshotSummary)。\(syncSummary)"
+            let uploadSummary: String = {
+                let fitState = fitUploadedToServer ? "已上传" : "未上传"
+                if let screenshotUploadedToServer {
+                    let screenshotState = screenshotUploadedToServer ? "已上传" : "未上传"
+                    return "导出上传：FIT \(fitState)，截图 \(screenshotState)"
+                }
+                return "导出上传：FIT \(fitState)"
+            }()
+            let finalSummary = "\(riderName) · \(reason)。已保存 FIT：\(fitURL.lastPathComponent)。\(snapshotSummary)。\(uploadSummary)。\(syncSummary)"
 
             var status = trainerRecordingStatus(for: sessionID)
             status.lastFitPath = fitURL.path
@@ -1608,6 +1898,42 @@ final class AppStore: ObservableObject {
 
         try imageData.write(to: candidate, options: .atomic)
         return candidate
+    }
+
+    private func uploadExportedFileToRepository(
+        category: String,
+        athleteName: String?,
+        fileName: String,
+        mimeType: String,
+        sourcePath: String?,
+        payload: Data,
+        createdAt: Date
+    ) -> Bool {
+        guard let repository else { return false }
+        let upload = ExportedFileUpload(
+            id: UUID(),
+            category: category,
+            athleteName: athleteName,
+            fileName: fileName,
+            mimeType: mimeType,
+            createdAt: createdAt,
+            sourcePath: sourcePath,
+            payload: payload
+        )
+        do {
+            try repository.uploadExportedFile(upload)
+            appendClientLog(
+                level: "INFO",
+                message: "Uploaded export \(category): \(fileName) (\(payload.count) bytes)."
+            )
+            return true
+        } catch {
+            appendClientLog(
+                level: "ERROR",
+                message: "Failed to upload export \(category) \(fileName): \(error.localizedDescription)"
+            )
+            return false
+        }
     }
 
     private func resolveWritableTrainerRecordingDirectory() throws -> URL {
@@ -2337,8 +2663,8 @@ final class AppStore: ObservableObject {
             try persistActivities(updatedActivities)
             try persistWorkouts(updatedWorkouts)
             try persistDailyMealPlans(updatedMealPlans)
+            try persistWellnessSamples(updatedWellness)
             try persistCalendarEvents(updatedEvents)
-            wellnessSamples = updatedWellness
         } catch {
             lastError = "Failed to delete athlete panel data: \(error.localizedDescription)"
             return
@@ -2835,13 +3161,18 @@ final class AppStore: ObservableObject {
     }
 
     private func runSync(_ status: String, action: () async throws -> Void) async {
+        let startedAt = Date()
         self.isSyncing = true
         self.syncStatus = status
         self.lastError = nil
 
         do {
             try await action()
+            let elapsedText = String(format: "%.2f", Date().timeIntervalSince(startedAt))
+            appendClientLog(level: "INFO", message: "Completed: \(status) (\(elapsedText)s)")
         } catch {
+            let elapsedText = String(format: "%.2f", Date().timeIntervalSince(startedAt))
+            appendClientLog(level: "ERROR", message: "Failed: \(status) (\(elapsedText)s) - \(error.localizedDescription)")
             self.lastError = error.localizedDescription
         }
 
@@ -3267,6 +3598,15 @@ final class AppStore: ObservableObject {
         self.dailyMealPlans = rows
     }
 
+    private func persistWellnessSamples(_ rows: [WellnessSample]) throws {
+        let sorted = rows.sorted { $0.date > $1.date }
+        if let repository = self.repository {
+            try repository.saveWellnessSamples(sorted)
+        }
+        self.wellnessSamples = sorted
+        appendClientLog(level: "INFO", message: "Persisted wellness samples: \(sorted.count)")
+    }
+
     private func persistCustomFoodLibrary(_ rows: [CustomFoodLibraryItem]) throws {
         if let repository = self.repository {
             try repository.saveCustomFoods(rows)
@@ -3328,7 +3668,7 @@ final class AppStore: ObservableObject {
             }
             normalized = mergeWellnessSamples(retainedOthers + taggedIncoming)
         }
-        self.wellnessSamples = normalized
+        try persistWellnessSamples(normalized)
 
         let scoped = normalized.filter { matchesSelectedAthlete(name: $0.athleteName) }
         if let latestHRV = scoped.first(where: { $0.hrv != nil })?.hrv {
@@ -3947,6 +4287,16 @@ final class AppStore: ObservableObject {
         Publishers.MergeMany(refreshSignals)
             .sink { [weak self] in
                 self?.markDerivedStateDirty()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func setupAppSettingsSyncPipeline() {
+        NotificationCenter.default
+            .publisher(for: UserDefaults.didChangeNotification)
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.persistAppSettingsToRepository(reason: "UserDefaults.didChangeNotification")
             }
             .store(in: &cancellables)
     }

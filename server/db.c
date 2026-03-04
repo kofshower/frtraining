@@ -40,7 +40,8 @@ int init_db(const char *db_path) {
     }
 
     for (size_t i = 0; i < DATA_KEYS_COUNT; i++) {
-        const char *default_json = strcmp(DATA_KEYS[i], "profile") == 0 ? "{}" : "[]";
+        int is_object_key = strcmp(DATA_KEYS[i], "profile") == 0 || strcmp(DATA_KEYS[i], "app_settings") == 0;
+        const char *default_json = is_object_key ? "{}" : "[]";
         sqlite3_bind_text(stmt, 1, DATA_KEYS[i], -1, SQLITE_STATIC);
         sqlite3_bind_text(stmt, 2, default_json, -1, SQLITE_STATIC);
         if (sqlite3_step(stmt) != SQLITE_DONE) {

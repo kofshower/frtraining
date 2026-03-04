@@ -1,5 +1,6 @@
 #include "server.h"
 #include "server_internal.h"
+#include "logger.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -62,11 +63,21 @@ static int json_is_valid(worker_db_t *db, const char *json) {
     return ok;
 }
 
-static void handle_get_data(int fd, worker_db_t *db, const char *key) {
+static void log_http_request(const char *method, const char *path, int status_code, size_t payload_bytes) {
+    if (status_code >= 500) {
+        log_error("HTTP %s %s -> %d (%zu bytes)", method, path, status_code, payload_bytes);
+    } else if (status_code >= 400) {
+        log_warn("HTTP %s %s -> %d (%zu bytes)", method, path, status_code, payload_bytes);
+    } else {
+        log_info("HTTP %s %s -> %d (%zu bytes)", method, path, status_code, payload_bytes);
+    }
+}
+
+static int handle_get_data(int fd, worker_db_t *db, const char *key) {
     sqlite3_stmt *stmt = db->get_stmt;
     if (!stmt) {
         send_response(fd, 500, "Internal Server Error", "{\"error\":\"database error\"}");
-        return;
+        return 500;
     }
 
     sqlite3_reset(stmt);
@@ -76,22 +87,29 @@ static void handle_get_data(int fd, worker_db_t *db, const char *key) {
     if (rc == SQLITE_ROW) {
         const unsigned char *value = sqlite3_column_text(stmt, 0);
         send_response(fd, 200, "OK", (const char *)value);
+        log_info("DATA READ key=%s source=db", key);
+        return 200;
     } else {
-        const char *default_json = strcmp(key, "profile") == 0 ? "{}" : "[]";
+        int is_object_key = strcmp(key, "profile") == 0 || strcmp(key, "app_settings") == 0;
+        const char *default_json = is_object_key ? "{}" : "[]";
         send_response(fd, 200, "OK", default_json);
+        log_info("DATA READ key=%s source=default", key);
+        return 200;
     }
 }
 
-static void handle_put_data(int fd, worker_db_t *db, const char *key, const char *payload) {
+static int handle_put_data(int fd, worker_db_t *db, const char *key, const char *payload, size_t payload_len) {
     if (!json_is_valid(db, payload)) {
         send_response(fd, 400, "Bad Request", "{\"error\":\"invalid json payload\"}");
-        return;
+        log_warn("DATA WRITE rejected key=%s reason=invalid_json bytes=%zu", key, payload_len);
+        return 400;
     }
 
     sqlite3_stmt *stmt = db->upsert_stmt;
     if (!stmt) {
         send_response(fd, 500, "Internal Server Error", "{\"error\":\"database error\"}");
-        return;
+        log_error("DATA WRITE failed key=%s reason=missing_upsert_stmt bytes=%zu", key, payload_len);
+        return 500;
     }
 
     sqlite3_reset(stmt);
@@ -100,10 +118,13 @@ static void handle_put_data(int fd, worker_db_t *db, const char *key, const char
     sqlite3_bind_text(stmt, 2, payload, -1, SQLITE_TRANSIENT);
     if (sqlite3_step(stmt) != SQLITE_DONE) {
         send_response(fd, 500, "Internal Server Error", "{\"error\":\"database error\"}");
-        return;
+        log_error("DATA WRITE failed key=%s reason=sqlite_step_error bytes=%zu", key, payload_len);
+        return 500;
     }
 
     send_response(fd, 204, "No Content", "");
+    log_info("DATA WRITE key=%s status=stored bytes=%zu", key, payload_len);
+    return 204;
 }
 
 int try_process_client(int fd, worker_db_t *db, conn_t *conn) {
@@ -116,28 +137,33 @@ int try_process_client(int fd, worker_db_t *db, conn_t *conn) {
     char path[512] = {0};
     if (sscanf(conn->buf, "%7s %511s", method, path) != 2) {
         send_response(fd, 400, "Bad Request", "{\"error\":\"malformed request line\"}");
+        log_http_request("UNKNOWN", "/", 400, 0);
         return 1;
     }
 
     if (strcmp(path, "/health") == 0 && strcmp(method, "GET") == 0) {
         send_response(fd, 200, "OK", "{\"status\":\"ok\"}");
+        log_http_request(method, path, 200, 0);
         return 1;
     }
 
     const char *prefix = "/v1/data/";
     if (strncmp(path, prefix, strlen(prefix)) != 0) {
         send_response(fd, 404, "Not Found", "{\"error\":\"not found\"}");
+        log_http_request(method, path, 404, 0);
         return 1;
     }
 
     const char *key = path + strlen(prefix);
     if (!is_valid_key(key)) {
         send_response(fd, 404, "Not Found", "{\"error\":\"unknown key\"}");
+        log_http_request(method, path, 404, 0);
         return 1;
     }
 
     if (strcmp(method, "GET") == 0) {
-        handle_get_data(fd, db, key);
+        int status = handle_get_data(fd, db, key);
+        log_http_request(method, path, status, 0);
         return 1;
     }
 
@@ -145,6 +171,7 @@ int try_process_client(int fd, worker_db_t *db, conn_t *conn) {
         int content_length = read_content_length(conn->buf, header_end);
         if (content_length < 0 || (size_t)content_length > REQ_BUF_SIZE - header_len) {
             send_response(fd, 400, "Bad Request", "{\"error\":\"invalid content length\"}");
+            log_http_request(method, path, 400, 0);
             return 1;
         }
         if ((size_t)content_length > conn->len - header_len) {
@@ -153,10 +180,12 @@ int try_process_client(int fd, worker_db_t *db, conn_t *conn) {
 
         char *body = conn->buf + header_len;
         body[content_length] = '\0';
-        handle_put_data(fd, db, key, body);
+        int status = handle_put_data(fd, db, key, body, (size_t)content_length);
+        log_http_request(method, path, status, (size_t)content_length);
         return 1;
     }
 
     send_response(fd, 405, "Method Not Allowed", "{\"error\":\"method not allowed\"}");
+    log_http_request(method, path, 405, 0);
     return 1;
 }

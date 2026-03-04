@@ -4,7 +4,7 @@
 #include <sqlite3.h>
 #include <stddef.h>
 
-#define REQ_BUF_SIZE 65536
+#define REQ_BUF_SIZE (8 * 1024 * 1024)
 #define HEADER_BUF_SIZE 2048
 #define DEFAULT_WORKERS 64
 #define EVENT_MAX_EVENTS 1024

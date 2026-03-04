@@ -17,12 +17,19 @@ const char *DATA_KEYS[] = {
     "custom_foods",
     "workouts",
     "events",
+    "wellness_samples",
     "profile",
+    "app_settings",
     "lactate_history_records",
 };
 const size_t DATA_KEYS_COUNT = sizeof(DATA_KEYS) / sizeof(DATA_KEYS[0]);
 
 bool is_valid_key(const char *key) {
+    const char *exported_prefix = "exported_file_";
+    size_t exported_prefix_len = strlen(exported_prefix);
+    if (strncmp(key, exported_prefix, exported_prefix_len) == 0 && key[exported_prefix_len] != '\0') {
+        return true;
+    }
     for (size_t i = 0; i < DATA_KEYS_COUNT; i++) {
         if (strcmp(DATA_KEYS[i], key) == 0) return true;
     }

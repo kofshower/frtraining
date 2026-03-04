@@ -273,16 +273,6 @@ swift test --package-path CorePackage --enable-code-coverage
 - 文档中尽量写“用户目标 + 操作路径 + 结果判断”，减少仅列参数的描述方式。
 - 对接入外部平台（Strava/Garmin/Oura）的页面，建议维护“认证方式变化记录”。
 
-<<<<<<< ours
-<<<<<<< ours
-<<<<<<< ours
-=======
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
-
-
 ---
 
 ## 12. 实时码表指标增强建议（对标 Garmin）
@@ -386,10 +376,3 @@ swift test --package-path CorePackage --enable-code-coverage
 - 区间偏离告警
 
 这 5 项能覆盖大多数用户“像 Garmin 一样可训练决策”的核心诉求。
-<<<<<<< ours
-<<<<<<< ours
->>>>>>> theirs
-=======
->>>>>>> theirs
-=======
->>>>>>> theirs
