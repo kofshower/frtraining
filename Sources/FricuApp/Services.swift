@@ -26,6 +26,7 @@ protocol DataRepository {
     func loadAppSettings() throws -> AppSettingsSnapshot?
     func saveAppSettings(_ settings: AppSettingsSnapshot) throws
     func uploadExportedFile(_ file: ExportedFileUpload) throws
+    func flushPendingWrites() throws
 }
 
 extension DataRepository {
@@ -56,6 +57,8 @@ extension DataRepository {
     func uploadExportedFile(_ file: ExportedFileUpload) throws {
         _ = file
     }
+
+    func flushPendingWrites() throws {}
 }
 
 struct AppSettingsSnapshot: Codable {
@@ -108,6 +111,7 @@ final class RemoteHTTPRepository: DataRepository {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let pendingWritesURL: URL
 
     init(baseURL: URL? = nil) throws {
         if let baseURL {
@@ -126,6 +130,16 @@ final class RemoteHTTPRepository: DataRepository {
             throw RepositoryError.invalidServerURL
         }
 
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let pendingDir = appSupport.appendingPathComponent("fricu", isDirectory: true)
+        try FileManager.default.createDirectory(at: pendingDir, withIntermediateDirectories: true)
+        self.pendingWritesURL = pendingDir.appendingPathComponent("remote_pending_writes.json")
+
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
@@ -138,6 +152,42 @@ final class RemoteHTTPRepository: DataRepository {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         self.decoder = decoder
+    }
+
+    private struct PendingWrite: Codable {
+        var key: String
+        var payload: Data
+        var createdAt: Date
+    }
+
+    private func loadPendingWrites() -> [PendingWrite] {
+        guard FileManager.default.fileExists(atPath: pendingWritesURL.path) else { return [] }
+        do {
+            let data = try Data(contentsOf: pendingWritesURL)
+            return try decoder.decode([PendingWrite].self, from: data)
+        } catch {
+            return []
+        }
+    }
+
+    private func savePendingWrites(_ writes: [PendingWrite]) {
+        do {
+            let data = try encoder.encode(writes)
+            try data.write(to: pendingWritesURL, options: .atomic)
+        } catch {
+            // Best effort: app logic will still throw original write errors.
+        }
+    }
+
+    private func enqueuePendingWrite(key: String, payload: Data) {
+        var writes = loadPendingWrites().filter { $0.key != key }
+        writes.append(PendingWrite(key: key, payload: payload, createdAt: Date()))
+        savePendingWrites(writes)
+    }
+
+    private func clearPendingWrite(for key: String) {
+        let writes = loadPendingWrites().filter { $0.key != key }
+        savePendingWrites(writes)
     }
 
     private func endpoint(_ key: String) -> URL {
@@ -155,8 +205,34 @@ final class RemoteHTTPRepository: DataRepository {
         var req = URLRequest(url: endpoint(key))
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try encoder.encode(value)
-        _ = try execute(req)
+        let body = try encoder.encode(value)
+        req.httpBody = body
+        do {
+            _ = try execute(req)
+            clearPendingWrite(for: key)
+        } catch {
+            enqueuePendingWrite(key: key, payload: body)
+            throw error
+        }
+    }
+
+    func flushPendingWrites() throws {
+        let pending = loadPendingWrites()
+        guard !pending.isEmpty else { return }
+
+        var stillPending: [PendingWrite] = []
+        for entry in pending.sorted(by: { $0.createdAt < $1.createdAt }) {
+            var req = URLRequest(url: endpoint(entry.key))
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = entry.payload
+            do {
+                _ = try execute(req)
+            } catch {
+                stillPending.append(entry)
+            }
+        }
+        savePendingWrites(stillPending)
     }
 
     private func execute(_ req: URLRequest) throws -> Data {

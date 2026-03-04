@@ -1058,6 +1058,12 @@ final class AppStore: ObservableObject {
             hydrateAppSettingsFromRepository()
             var loadedProfile: AthleteProfile = .default
             if let repository {
+                do {
+                    try repository.flushPendingWrites()
+                    appendClientLog(level: "INFO", message: "Flushed pending remote writes before bootstrap load.")
+                } catch {
+                    appendClientLog(level: "WARN", message: "Failed to flush pending remote writes: \(detailedErrorDescription(error))")
+                }
                 self.activities = try repository.loadActivities()
                 self.dailyMealPlans = try repository.loadDailyMealPlans()
                 self.customFoodLibrary = try repository.loadCustomFoods()

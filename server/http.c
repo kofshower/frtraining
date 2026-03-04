@@ -116,9 +116,35 @@ static int handle_put_data(int fd, worker_db_t *db, const char *key, const char 
     sqlite3_clear_bindings(stmt);
     sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, payload, -1, SQLITE_TRANSIENT);
-    if (sqlite3_step(stmt) != SQLITE_DONE) {
+    int rc = SQLITE_ERROR;
+    const int max_retries = 8;
+    for (int attempt = 0; attempt <= max_retries; attempt++) {
+        rc = sqlite3_step(stmt);
+        if (rc == SQLITE_DONE) {
+            break;
+        }
+
+        if ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && attempt < max_retries) {
+            sqlite3_reset(stmt);
+            struct timespec ts = {.tv_sec = 0, .tv_nsec = (long)(2000000 * (attempt + 1))};
+            nanosleep(&ts, NULL);
+            continue;
+        }
+
+        break;
+    }
+
+    if (rc != SQLITE_DONE) {
+        int ext = sqlite3_extended_errcode(db->db);
+        const char *errmsg = sqlite3_errmsg(db->db);
         send_response(fd, 500, "Internal Server Error", "{\"error\":\"database error\"}");
-        log_error("DATA WRITE failed key=%s reason=sqlite_step_error bytes=%zu", key, payload_len);
+        log_error(
+            "DATA WRITE failed key=%s reason=sqlite_step_error rc=%d ext=%d errmsg=%s bytes=%zu",
+            key,
+            rc,
+            ext,
+            errmsg ? errmsg : "unknown",
+            payload_len);
         return 500;
     }
 
