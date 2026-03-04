@@ -14,7 +14,9 @@ int init_db(const char *db_path) {
 
     const char *schema_sql =
         "PRAGMA journal_mode=WAL;"
-        "PRAGMA synchronous=NORMAL;"
+        "PRAGMA synchronous=FULL;"
+        "PRAGMA fullfsync=ON;"
+        "PRAGMA checkpoint_fullfsync=ON;"
         "PRAGMA temp_store=MEMORY;"
         "PRAGMA mmap_size=268435456;"
         "CREATE TABLE IF NOT EXISTS kv_store ("
@@ -68,7 +70,9 @@ int worker_db_open(worker_db_t *db, const char *db_path) {
     }
 
     sqlite3_exec(db->db, "PRAGMA busy_timeout=5000;", NULL, NULL, NULL);
-    sqlite3_exec(db->db, "PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);
+    sqlite3_exec(db->db, "PRAGMA synchronous=FULL;", NULL, NULL, NULL);
+    sqlite3_exec(db->db, "PRAGMA fullfsync=ON;", NULL, NULL, NULL);
+    sqlite3_exec(db->db, "PRAGMA checkpoint_fullfsync=ON;", NULL, NULL, NULL);
     sqlite3_exec(db->db, "PRAGMA temp_store=MEMORY;", NULL, NULL, NULL);
     sqlite3_exec(db->db, "PRAGMA mmap_size=268435456;", NULL, NULL, NULL);
     sqlite3_exec(db->db, "PRAGMA cache_size=-32768;", NULL, NULL, NULL);

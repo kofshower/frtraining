@@ -4,6 +4,12 @@ import Foundation
 import FoundationNetworking
 #endif
 
+#if os(Linux)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
 protocol DataRepository {
     func loadActivities() throws -> [Activity]
     func saveActivities(_ activities: [Activity]) throws
@@ -26,6 +32,7 @@ protocol DataRepository {
     func loadAppSettings() throws -> AppSettingsSnapshot?
     func saveAppSettings(_ settings: AppSettingsSnapshot) throws
     func uploadExportedFile(_ file: ExportedFileUpload) throws
+    func flushPendingWrites() throws
 }
 
 extension DataRepository {
@@ -56,6 +63,8 @@ extension DataRepository {
     func uploadExportedFile(_ file: ExportedFileUpload) throws {
         _ = file
     }
+
+    func flushPendingWrites() throws {}
 }
 
 struct AppSettingsSnapshot: Codable {
@@ -108,6 +117,7 @@ final class RemoteHTTPRepository: DataRepository {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let pendingWritesURL: URL
 
     init(baseURL: URL? = nil) throws {
         if let baseURL {
@@ -126,6 +136,16 @@ final class RemoteHTTPRepository: DataRepository {
             throw RepositoryError.invalidServerURL
         }
 
+        let appSupport = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let pendingDir = appSupport.appendingPathComponent("fricu", isDirectory: true)
+        try FileManager.default.createDirectory(at: pendingDir, withIntermediateDirectories: true)
+        self.pendingWritesURL = pendingDir.appendingPathComponent("remote_pending_writes.json")
+
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
@@ -138,6 +158,71 @@ final class RemoteHTTPRepository: DataRepository {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         self.decoder = decoder
+    }
+
+    private struct PendingWrite: Codable {
+        var key: String
+        var payload: Data
+        var createdAt: Date
+    }
+
+    private func loadPendingWrites() throws -> [PendingWrite] {
+        guard FileManager.default.fileExists(atPath: pendingWritesURL.path) else { return [] }
+        let data = try Data(contentsOf: pendingWritesURL)
+        return try decoder.decode([PendingWrite].self, from: data)
+    }
+
+    private func syncDirectory(_ directoryURL: URL) throws {
+        let fd = open(directoryURL.path, O_RDONLY)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        if fsync(fd) != 0 {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+    }
+
+    private func writeDataDurably(_ data: Data, to targetURL: URL) throws {
+        let fm = FileManager.default
+        let directoryURL = targetURL.deletingLastPathComponent()
+        let tmpURL = directoryURL.appendingPathComponent(".\(targetURL.lastPathComponent).tmp-\(UUID().uuidString)")
+
+        fm.createFile(atPath: tmpURL.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: tmpURL)
+        do {
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try handle.close()
+        } catch {
+            try? handle.close()
+            try? fm.removeItem(at: tmpURL)
+            throw error
+        }
+
+        if fm.fileExists(atPath: targetURL.path) {
+            try fm.removeItem(at: targetURL)
+        }
+        try fm.moveItem(at: tmpURL, to: targetURL)
+        try syncDirectory(directoryURL)
+    }
+
+    private func savePendingWrites(_ writes: [PendingWrite]) throws {
+        let data = try encoder.encode(writes)
+        try writeDataDurably(data, to: pendingWritesURL)
+    }
+
+    private func enqueuePendingWrite(key: String, payload: Data) throws {
+        var writes = try loadPendingWrites().filter { $0.key != key }
+        writes.append(PendingWrite(key: key, payload: payload, createdAt: Date()))
+        try savePendingWrites(writes)
+    }
+
+    private func clearPendingWrite(for key: String) {
+        do {
+            let writes = try loadPendingWrites().filter { $0.key != key }
+            try savePendingWrites(writes)
+        } catch {
+            // Keep queue on disk if cleanup fails; replay remains safe/idempotent.
+        }
     }
 
     private func endpoint(_ key: String) -> URL {
@@ -155,8 +240,33 @@ final class RemoteHTTPRepository: DataRepository {
         var req = URLRequest(url: endpoint(key))
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try encoder.encode(value)
+        let body = try encoder.encode(value)
+        req.httpBody = body
+
+        // Write-ahead queue: persist first so abrupt power loss during request cannot lose the payload.
+        try enqueuePendingWrite(key: key, payload: body)
+
         _ = try execute(req)
+        clearPendingWrite(for: key)
+    }
+
+    func flushPendingWrites() throws {
+        let pending = try loadPendingWrites()
+        guard !pending.isEmpty else { return }
+
+        var stillPending: [PendingWrite] = []
+        for entry in pending.sorted(by: { $0.createdAt < $1.createdAt }) {
+            var req = URLRequest(url: endpoint(entry.key))
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = entry.payload
+            do {
+                _ = try execute(req)
+            } catch {
+                stillPending.append(entry)
+            }
+        }
+        try savePendingWrites(stillPending)
     }
 
     private func execute(_ req: URLRequest) throws -> Data {
