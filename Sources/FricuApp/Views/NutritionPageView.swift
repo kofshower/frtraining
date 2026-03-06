@@ -2,6 +2,23 @@ import SwiftUI
 
 struct NutritionPageView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var selectedTab: NutritionTab = .planner
+
+    private enum NutritionTab: String, CaseIterable, Identifiable {
+        case planner
+        case fatLossLogic
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .planner:
+                return L10n.choose(simplifiedChinese: "饮食计划", english: "Meal Planner")
+            case .fatLossLogic:
+                return L10n.choose(simplifiedChinese: "减脂逻辑", english: "Fat-loss Logic")
+            }
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -19,7 +36,24 @@ struct NutritionPageView: View {
                     .foregroundStyle(.secondary)
                 }
 
-                NutritionPlannerCard()
+                Picker("NutritionTab", selection: $selectedTab) {
+                    ForEach(NutritionTab.allCases) { tab in
+                        Text(tab.title).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if selectedTab == .planner {
+                    NutritionPlannerCard()
+                        .padding()
+                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+                } else {
+                    FatLossPageView()
+                        .padding()
+                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+                }
+
+                FatLossLogicExplainerCard()
                     .padding()
                     .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
 

@@ -158,6 +158,91 @@ static void test_put_is_journaled_and_persisted(void) {
     assert(system(cleanup_cmd) == 0);
 }
 
+
+static void test_put_lock_is_queued_in_pending_writes(void) {
+    char dir_template[] = "/tmp/fricu-test-lock-XXXXXX";
+    char *tmpdir = mkdtemp(dir_template);
+    assert(tmpdir != NULL);
+
+    int old_cwd = open(".", O_RDONLY);
+    assert(old_cwd >= 0);
+    assert(chdir(tmpdir) == 0);
+
+    assert(init_db("state.db") == 0);
+    worker_db_t db;
+    assert(worker_db_open(&db, "state.db") == 0);
+
+    sqlite3 *locker = NULL;
+    assert(sqlite3_open_v2("state.db", &locker, SQLITE_OPEN_READWRITE, NULL) == SQLITE_OK);
+    assert(sqlite3_exec(locker, "BEGIN EXCLUSIVE;", NULL, NULL, NULL) == SQLITE_OK);
+
+    int fds[2] = {-1, -1};
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+    const char *req =
+        "PUT /v1/data/app_settings HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Content-Length: 10\r\n\r\n"
+        "{\"v\":true}";
+    conn_t conn = {0};
+    conn.cap = REQ_BUF_SIZE;
+    conn.buf = (char *)malloc(conn.cap);
+    assert(conn.buf != NULL);
+    conn.len = strlen(req);
+    memcpy(conn.buf, req, conn.len);
+    assert(try_process_client(fds[0], &db, &conn) == 1);
+
+    char resp[1024] = {0};
+    ssize_t n = read(fds[1], resp, sizeof(resp) - 1);
+    assert(n > 0);
+    assert(strstr(resp, "202 Accepted") != NULL);
+    assert(strstr(resp, "\"status\":\"queued\"") != NULL);
+
+    DIR *dir = opendir("pending_writes");
+    assert(dir != NULL);
+    struct dirent *ent;
+    int entries = 0;
+    int has_app_settings = 0;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
+            entries++;
+            if (strncmp(ent->d_name, "app_settings-", strlen("app_settings-")) == 0) {
+                has_app_settings = 1;
+            }
+        }
+    }
+    closedir(dir);
+    assert(entries > 0);
+    assert(has_app_settings == 1);
+
+    assert(sqlite3_exec(locker, "ROLLBACK;", NULL, NULL, NULL) == SQLITE_OK);
+    sqlite3_close(locker);
+
+    free(conn.buf);
+    close(fds[0]);
+    close(fds[1]);
+    worker_db_close(&db);
+
+    assert(init_db("state.db") == 0);
+
+    sqlite3 *sqlite = NULL;
+    assert(sqlite3_open_v2("state.db", &sqlite, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK);
+    sqlite3_stmt *stmt = NULL;
+    assert(sqlite3_prepare_v2(sqlite, "SELECT data_value FROM kv_store WHERE data_key='app_settings'", -1, &stmt, NULL) == SQLITE_OK);
+    assert(sqlite3_step(stmt) == SQLITE_ROW);
+    const unsigned char *v = sqlite3_column_text(stmt, 0);
+    assert(v != NULL);
+    assert(strcmp((const char *)v, "{\"v\":true}") == 0);
+    sqlite3_finalize(stmt);
+    sqlite3_close(sqlite);
+
+    assert(fchdir(old_cwd) == 0);
+    close(old_cwd);
+    char cleanup_cmd[512] = {0};
+    assert(snprintf(cleanup_cmd, sizeof(cleanup_cmd), "rm -rf '%s' >/dev/null 2>&1", tmpdir) > 0);
+    assert(system(cleanup_cmd) == 0);
+}
+
 static void test_replay_pending_write_on_restart(void) {
     char dir_template[] = "/tmp/fricu-test-replay-XXXXXX";
     char *tmpdir = mkdtemp(dir_template);
@@ -204,6 +289,7 @@ int main(void) {
     test_configure_socket_after_accept();
     test_put_is_journaled_and_persisted();
     test_replay_pending_write_on_restart();
+    test_put_lock_is_queued_in_pending_writes();
     puts("unit tests passed");
     return 0;
 }
