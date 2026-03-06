@@ -260,8 +260,24 @@ static int handle_put_data(int fd, worker_db_t *db, const char *key, const char 
         break;
     }
 
+    int ext = sqlite3_extended_errcode(db->db);
+    int transient_lock = (rc == SQLITE_BUSY || rc == SQLITE_LOCKED || ext == SQLITE_BUSY_SNAPSHOT || ext == SQLITE_BUSY_TIMEOUT);
+
+    if (rc != SQLITE_DONE && transient_lock) {
+        char response_body[512] = {0};
+        snprintf(response_body, sizeof(response_body), "{\"status\":\"queued\",\"pending\":\"%s\",\"rc\":%d,\"ext\":%d}", pending_path, rc, ext);
+        send_response(fd, 202, "Accepted", response_body);
+        log_warn(
+            "DATA WRITE queued key=%s reason=sqlite_lock rc=%d ext=%d bytes=%zu pending=%s",
+            key,
+            rc,
+            ext,
+            payload_len,
+            pending_path);
+        return 202;
+    }
+
     if (rc != SQLITE_DONE) {
-        int ext = sqlite3_extended_errcode(db->db);
         const char *errmsg = sqlite3_errmsg(db->db);
         const char *rc_name = sqlite3_errstr(rc);
         const char *ext_name = sqlite3_errstr(ext);
