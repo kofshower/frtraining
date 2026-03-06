@@ -82,8 +82,10 @@ private struct FatLossMechanismPageView: View {
                     Text(L10n.choose(simplifiedChinese: "① 原理图（渗透作用）", english: "1) Mechanism Diagram (Osmosis)"))
                         .font(.headline)
 
-                    OsmosisMechanismCard()
-                        .frame(height: 250)
+                    DiagramPanelCard {
+                        OsmosisMechanismCard()
+                            .frame(minHeight: 210)
+                    }
 
                     Text(
                         L10n.choose(
@@ -102,8 +104,10 @@ private struct FatLossMechanismPageView: View {
                     Text(L10n.choose(simplifiedChinese: "② 饮食计划生成引擎", english: "2) Meal-plan Generation Engine"))
                         .font(.headline)
 
-                    PlanGenerationFlowCard()
-                        .frame(maxWidth: .infinity)
+                    DiagramPanelCard {
+                        PlanGenerationFlowCard()
+                            .frame(maxWidth: .infinity)
+                    }
 
                     Text(
                         L10n.choose(
@@ -133,59 +137,70 @@ private struct FatLossMechanismPageView: View {
     }
 }
 
-private struct OsmosisMechanismCard: View {
-    var body: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
+private struct DiagramPanelCard<Content: View>: View {
+    @ViewBuilder let content: () -> Content
 
-            ZStack {
+    var body: some View {
+        content()
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(.background.tertiary)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+    }
+}
 
-                Path { path in
-                    let x = width * 0.5
-                    path.move(to: CGPoint(x: x, y: 18))
-                    path.addLine(to: CGPoint(x: x, y: 230))
-                }
-                .stroke(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-                .foregroundStyle(.secondary)
+private struct OsmosisMechanismCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                osmosisStateCard(
+                    title: L10n.choose(simplifiedChinese: "细胞外", english: "Extracellular"),
+                    concentration: L10n.choose(simplifiedChinese: "溶质浓度 40%", english: "Solute 40%"),
+                    markerText: "○  ○\n○"
+                )
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "细胞外", english: "Extracellular"))
-                        .font(.caption.weight(.semibold))
-                    Text(L10n.choose(simplifiedChinese: "溶质浓度 40%", english: "Solute 40%"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text("○  ○\n○")
-                        .font(.title3)
-                }
-                .position(x: width * 0.25, y: 76)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "细胞内", english: "Intracellular"))
-                        .font(.caption.weight(.semibold))
-                    Text(L10n.choose(simplifiedChinese: "溶质浓度 60%", english: "Solute 60%"))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Text("○  ○\n○  ○\n○")
-                        .font(.title3)
-                }
-                .position(x: width * 0.75, y: 84)
-
-                VStack(spacing: 2) {
+                VStack(spacing: 4) {
+                    Spacer(minLength: 0)
                     Image(systemName: "arrow.right")
                     Image(systemName: "arrow.right")
+                    Spacer(minLength: 0)
                 }
                 .font(.headline)
                 .foregroundStyle(.primary)
-                .position(x: width * 0.52, y: 112)
 
-                Text(L10n.choose(simplifiedChinese: "水分由细胞外流向细胞内", english: "Water moves from extracellular to intracellular"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .position(x: width * 0.5, y: 210)
+                osmosisStateCard(
+                    title: L10n.choose(simplifiedChinese: "细胞内", english: "Intracellular"),
+                    concentration: L10n.choose(simplifiedChinese: "溶质浓度 60%", english: "Solute 60%"),
+                    markerText: "○  ○\n○  ○\n○"
+                )
             }
+
+            Text(L10n.choose(simplifiedChinese: "水分由细胞外流向细胞内", english: "Water moves from extracellular to intracellular"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
+    }
+
+    private func osmosisStateCard(title: String, concentration: String, markerText: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+            Text(concentration)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(markerText)
+                .font(.title3)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
@@ -212,11 +227,6 @@ private struct PlanGenerationFlowCard: View {
                 tone: .green
             )
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.background.tertiary)
-        )
     }
 }
 
