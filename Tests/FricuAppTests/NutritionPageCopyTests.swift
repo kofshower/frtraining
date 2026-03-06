@@ -35,7 +35,7 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.executionTitle,
             NutritionPageCopy.screenshotInsightsTitle,
             NutritionPageCopy.appetiteMechanismTitle,
-            NutritionPageCopy.tcaInsightTitle
+            NutritionPageCopy.insulinGateTitle
         ]
 
         for title in titles {
@@ -63,11 +63,11 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
     }
 
-    /// Ensures TCA insight summary preserves key concepts from screenshot-based product intent.
-    func testTcaInsightSummaryContainsCoreConcepts() {
-        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.simplifiedChinese.contains("草酰乙酸"))
-        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.simplifiedChinese.contains("三羧酸循环"))
-        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.english.contains("oxaloacetate"))
-        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.english.contains("TCA cycle"))
+    /// Ensures the new INS-GLUT4 mechanism summary keeps key terms from screenshot logic.
+    func testInsulinGateSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.simplifiedChinese.contains("GLUT4"))
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.simplifiedChinese.contains("水重"))
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.english.contains("GLUT4"))
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.english.contains("water"))
     }
 }
