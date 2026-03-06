@@ -47,6 +47,14 @@ enum NutritionPageCopy {
         simplifiedChinese: "热量相同下，高/低 GI 的减脂速度接近，但低 GI 让血糖曲线更平缓、饥饿出现更慢，从而更容易控制总摄入。若长期高胰岛素与肥胖并存，常伴随瘦素抵抗，饱腹信号会减弱。",
         english: "At equal calories, high- and low-GI diets can yield similar fat-loss speed, but low GI smooths glycemic swings and delays hunger, improving intake control. With long-term hyperinsulinemia and obesity, leptin resistance can blunt satiety signaling."
     )
+    static let insulinGateTitle = NutritionPageBilingualCopy(
+        simplifiedChinese: "⑥ 胰岛素-GLUT4 脂肪动员闸门卡",
+        english: "6) Insulin-GLUT4 Fat-mobilization Gate Card"
+    )
+    static let insulinGateSummary = NutritionPageBilingualCopy(
+        simplifiedChinese: "高胰岛素阶段更偏向“抑制脂解 + 促进储存”；当胰岛素回落且肌细胞对 GLUT4 信号敏感时，营养分配与训练协同更利于减脂执行。",
+        english: "High-insulin phases bias toward reduced lipolysis and increased storage. When insulin falls and muscle GLUT4 signaling remains sensitive, nutrition timing and training can better support fat-loss execution."
+    )
     static let tcaFuelCardTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑥ 三羧酸循环供能协同卡", english: "6) TCA Fuel-Synergy Card")
     static let tcaFuelCardSummary = NutritionPageBilingualCopy(
         simplifiedChinese: "截图观点可归纳为：糖、脂肪、蛋白分解后都会汇入乙酰辅酶 A 与三羧酸循环；糖代谢能补充草酰乙酸，帮助循环持续运行。若碳水长期过低，循环通量下降，脂肪氧化效率也会受限。实操上应兼顾热量缺口、碳水窗口、B 族维生素/矿物质与训练刺激。",
@@ -539,6 +547,70 @@ private struct GlycemicLeptinMechanismCard: View {
     ///   - tone: Accent color used for the node border/background.
     /// - Returns: A rendered node view.
     private func mechanismNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+/// Diagram card that explains how insulin signaling and GLUT4 affect fat-loss execution.
+private struct InsulinGlut4MechanismCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            gateNode(
+                title: L10n.choose(simplifiedChinese: "进食后：胰岛素上升", english: "After Meals: Insulin Rises"),
+                detail: L10n.choose(simplifiedChinese: "碳水摄入引发胰岛素分泌，短期内更偏向抑制脂肪细胞脂解并促进营养储存。", english: "Carbohydrate intake raises insulin, which temporarily suppresses adipocyte lipolysis and favors nutrient storage."),
+                tone: .blue
+            )
+
+            gateArrow
+
+            gateNode(
+                title: L10n.choose(simplifiedChinese: "肌细胞通道：GLUT4 转位", english: "Muscle Gate: GLUT4 Translocation"),
+                detail: L10n.choose(simplifiedChinese: "在胰岛素敏感状态下，GLUT4 更易转位到细胞膜，葡萄糖优先进入肌细胞用于糖原回补与训练恢复。", english: "With good insulin sensitivity, GLUT4 translocates to the membrane so glucose is directed into muscle for glycogen refill and training recovery."),
+                tone: .green
+            )
+
+            gateArrow
+
+            gateNode(
+                title: L10n.choose(simplifiedChinese: "胰岛素长期偏高风险", english: "Risk of Persistently High Insulin"),
+                detail: L10n.choose(simplifiedChinese: "若长期高胰岛素并伴随活动不足，脂解受抑、饥饿波动增大，更容易形成‘摄入高于消耗’。", english: "If insulin stays elevated with low activity, lipolysis remains suppressed and hunger swings increase, making intake exceed expenditure."),
+                tone: .orange
+            )
+
+            gateArrow
+
+            gateNode(
+                title: L10n.choose(simplifiedChinese: "执行抓手", english: "Execution Levers"),
+                detail: L10n.choose(simplifiedChinese: "把碳水放在训练前后窗口、优先低加工食物、保留阻力训练与有氧，目标是提升胰岛素敏感性并保持脂肪动员。", english: "Place carbs around training windows, prioritize minimally processed foods, and keep resistance plus aerobic work to improve insulin sensitivity while sustaining fat mobilization."),
+                tone: .purple
+            )
+        }
+    }
+
+    private var gateArrow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.down.circle")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func gateNode(title: String, detail: String, tone: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
