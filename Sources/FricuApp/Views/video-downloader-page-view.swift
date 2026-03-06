@@ -164,6 +164,51 @@ struct MediaProbeDetails {
     let resolution: String
 }
 
+/// Locates bundled open-source decoder binaries packaged inside the app.
+struct OpenSourceDecoderRuntimeLocator {
+    /// Resolves executable path for a bundled decoder tool.
+    /// - Parameters:
+    ///   - toolName: Binary name such as `ffmpeg` or `ffprobe`.
+    ///   - bundle: Runtime bundle used to locate packaged resources.
+    ///   - fallbackSearchRoots: Optional search roots for test and CLI fallback.
+    /// - Returns: Executable absolute path when found.
+    func resolveBundledToolPath(
+        toolName: String,
+        bundle: Bundle = .main,
+        fallbackSearchRoots: [URL] = []
+    ) -> String? {
+        let fileManager = FileManager.default
+        let bundledCandidates = [
+            bundle.resourceURL?.appendingPathComponent("OpenSourceDecoder/bin/\(toolName)").path,
+            bundle.resourceURL?.appendingPathComponent("bin/\(toolName)").path,
+            bundle.bundleURL.appendingPathComponent("Contents/Resources/OpenSourceDecoder/bin/\(toolName)").path,
+            bundle.bundleURL.appendingPathComponent("Contents/Resources/bin/\(toolName)").path
+        ]
+
+        for searchRoot in fallbackSearchRoots {
+            let rootPath = searchRoot.path
+            if !bundledCandidates.contains(rootPath + "/\(toolName)") {
+                let candidate = rootPath + "/\(toolName)"
+                if fileManager.isExecutableFile(atPath: candidate) {
+                    return candidate
+                }
+            }
+            let nestedCandidate = rootPath + "/OpenSourceDecoder/bin/\(toolName)"
+            if fileManager.isExecutableFile(atPath: nestedCandidate) {
+                return nestedCandidate
+            }
+        }
+
+        for candidate in bundledCandidates.compactMap({ $0 }) {
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+}
+
 /// Generates localized explanations when a downloaded media file fails local playback.
 struct VideoPlaybackCompatibilityAdvisor {
     /// Builds a user-facing explanation for unsupported local playback.
@@ -176,8 +221,8 @@ struct VideoPlaybackCompatibilityAdvisor {
         )
 
         let platformLimit = L10n.choose(
-            simplifiedChinese: "应用使用系统 AVPlayer 解码，无法内嵌并覆盖全部第三方解码器格式（受系统能力、沙盒与授权限制）。",
-            english: "The app relies on system AVPlayer decoders and cannot embed full third-party codec coverage (due to platform capability, sandboxing, and licensing constraints)."
+            simplifiedChinese: "应用已内置开源解码链路并在播放器内直连播放，但极少数编码参数组合仍可能超出当前版本支持范围。",
+            english: "The app ships with a bundled open-source decoder pipeline for in-app playback, but rare codec/profile combinations can still exceed current support."
         )
 
         if let details {
@@ -1002,6 +1047,11 @@ struct VideoDownloaderPageView: View {
 
     /// Resolves ffmpeg executable path for optional local transcode fallback.
     private func resolveFFmpegCommand() -> String? {
+        let runtimeLocator = OpenSourceDecoderRuntimeLocator()
+        if let bundledFFmpeg = runtimeLocator.resolveBundledToolPath(toolName: "ffmpeg") {
+            return bundledFFmpeg
+        }
+
         let candidates = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
         for candidate in candidates {
             if FileManager.default.isExecutableFile(atPath: candidate) {
@@ -1013,6 +1063,11 @@ struct VideoDownloaderPageView: View {
 
     /// Resolves ffprobe executable path for playback diagnostics.
     private func resolveFFprobeCommand() -> String? {
+        let runtimeLocator = OpenSourceDecoderRuntimeLocator()
+        if let bundledFFprobe = runtimeLocator.resolveBundledToolPath(toolName: "ffprobe") {
+            return bundledFFprobe
+        }
+
         let candidates = ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"]
         for candidate in candidates {
             if FileManager.default.isExecutableFile(atPath: candidate) {
