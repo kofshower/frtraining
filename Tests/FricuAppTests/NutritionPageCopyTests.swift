@@ -32,7 +32,8 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.coreLogicTitle,
             NutritionPageCopy.mechanismTitle,
             NutritionPageCopy.engineTitle,
-            NutritionPageCopy.executionTitle
+            NutritionPageCopy.executionTitle,
+            NutritionPageCopy.screenshotInsightsTitle
         ]
 
         for title in titles {
@@ -40,4 +41,10 @@ final class NutritionPageCopyTests: XCTestCase {
             XCTAssertFalse(title.english.isEmpty)
         }
     }
+    /// Guards screenshot-derived pathway summary copy from becoming empty.
+    func testScreenshotInsightSummaryCopyIsNotEmpty() {
+        XCTAssertFalse(NutritionPageCopy.screenshotInsightsSummary.simplifiedChinese.isEmpty)
+        XCTAssertFalse(NutritionPageCopy.screenshotInsightsSummary.english.isEmpty)
+    }
 }
+

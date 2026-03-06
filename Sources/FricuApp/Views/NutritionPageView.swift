@@ -37,6 +37,11 @@ enum NutritionPageCopy {
         english: "Input layer: weight trend, training load, and recent 3-day carbs/salt/water. Rule layer: detect water-weight fluctuation first, then compute deficit and macros. Output layer: meal suggestions plus next-day adjustment strategy."
     )
     static let executionTitle = NutritionPageBilingualCopy(simplifiedChinese: "③ 页面如何指导执行", english: "3) How This Page Guides Execution")
+    static let screenshotInsightsTitle = NutritionPageBilingualCopy(simplifiedChinese: "④ 图文核心观点卡", english: "4) Core Insight Card")
+    static let screenshotInsightsSummary = NutritionPageBilingualCopy(
+        simplifiedChinese: "目标不是盲目少吃，而是让“脂肪动员→进入肌细胞→线粒体氧化→三羧酸循环→电子链产能”这条通路稳定运行。",
+        english: "The goal is not blind restriction, but keeping the pathway 'fat mobilization → muscle uptake → mitochondrial oxidation → TCA cycle → electron transport energy production' running efficiently."
+    )
 }
 
 struct NutritionPageView: View {
@@ -149,6 +154,23 @@ private struct FatLossMechanismPageView: View {
             }
 
             GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(NutritionPageCopy.screenshotInsightsTitle.localized())
+                        .font(.headline)
+
+                    DiagramPanelCard {
+                        FatLossPathwayCard()
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Text(NutritionPageCopy.screenshotInsightsSummary.localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(NutritionPageCopy.executionTitle.localized())
                         .font(.headline)
@@ -254,6 +276,76 @@ private struct PlanGenerationFlowCard: View {
                 tone: .green
             )
         }
+    }
+}
+
+private struct FatLossPathwayCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            pathwayNode(
+                title: L10n.choose(simplifiedChinese: "脂肪动员", english: "Fat Mobilization"),
+                detail: L10n.choose(simplifiedChinese: "脂肪细胞在 HSL 活性支持下，将甘油三酯分解为甘油 + 游离脂肪酸并入血", english: "With adequate HSL activity, adipose triglycerides split into glycerol + free fatty acids and enter bloodstream"),
+                tone: .pink
+            )
+
+            pathwayArrow
+
+            pathwayNode(
+                title: L10n.choose(simplifiedChinese: "运输与进入肌细胞", english: "Transport & Muscle Uptake"),
+                detail: L10n.choose(simplifiedChinese: "游离脂肪酸通过血液到达目标肌细胞，胰岛素敏感性影响进入效率", english: "Free fatty acids are delivered to target muscle cells, and insulin sensitivity affects uptake efficiency"),
+                tone: .purple
+            )
+
+            pathwayArrow
+
+            pathwayNode(
+                title: L10n.choose(simplifiedChinese: "线粒体燃烧", english: "Mitochondrial Oxidation"),
+                detail: L10n.choose(simplifiedChinese: "脂肪酸在肉碱转运系统帮助下进入线粒体，随后进行 β 氧化", english: "Fatty acids enter mitochondria via the carnitine shuttle, then undergo β-oxidation"),
+                tone: .orange
+            )
+
+            pathwayArrow
+
+            pathwayNode(
+                title: L10n.choose(simplifiedChinese: "能量释放", english: "Energy Release"),
+                detail: L10n.choose(simplifiedChinese: "乙酰辅酶 A 进入三羧酸循环与电子传递链，生成 ATP，并产生 CO₂ 与 H₂O", english: "Acetyl-CoA enters TCA cycle and electron transport chain to generate ATP with CO₂ and H₂O"),
+                tone: .green
+            )
+
+            Divider()
+
+            Text(L10n.choose(simplifiedChinese: "执行抓手：① 提升 HSL 活性 ② 维持胰岛素敏感性 ③ 做心肺/HIIT 增线粒体容量与氧化速率 ④ 补水 + B 族维生素支持代谢循环", english: "Execution handles: 1) improve HSL activity 2) maintain insulin sensitivity 3) use cardio/HIIT to improve mitochondrial capacity and oxidation rate 4) hydration + B vitamins to support metabolic cycle"))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var pathwayArrow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.down.circle.fill")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func pathwayNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
     }
 }
 
