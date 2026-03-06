@@ -6,7 +6,7 @@ struct NutritionPageView: View {
 
     private enum NutritionTab: String, CaseIterable, Identifiable {
         case planner
-        case fatLossLogic
+        case fatLossMechanism
 
         var id: String { rawValue }
 
@@ -14,8 +14,8 @@ struct NutritionPageView: View {
             switch self {
             case .planner:
                 return L10n.choose(simplifiedChinese: "饮食计划", english: "Meal Planner")
-            case .fatLossLogic:
-                return L10n.choose(simplifiedChinese: "减脂逻辑", english: "Fat-loss Logic")
+            case .fatLossMechanism:
+                return L10n.choose(simplifiedChinese: "减肥逻辑", english: "Fat-loss Logic")
             }
         }
     }
@@ -48,16 +48,6 @@ struct NutritionPageView: View {
                         .padding()
                         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
                 } else {
-                    FatLossPageView()
-                        .padding()
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-                }
-
-                if selectedTab == .planner {
-                    NutritionPlannerCard()
-                        .padding()
-                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
-                } else {
                     FatLossMechanismPageView()
                         .padding()
                         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
@@ -68,269 +58,68 @@ struct NutritionPageView: View {
     }
 }
 
-private struct FatLossPageView: View {
-    private var physiologyFlow: [String] {
-        [
-            L10n.choose(
-                simplifiedChinese: "细胞缺乏可用能量 → 触发饥饿感。",
-                english: "Cells lack usable energy → hunger signal rises."
-            ),
-            L10n.choose(
-                simplifiedChinese: "进食后血糖上升，达到阈值时胰岛素分泌明显增加。",
-                english: "After eating, blood glucose rises and insulin increases when threshold is reached."
-            ),
-            L10n.choose(
-                simplifiedChinese: "脂肪细胞分泌瘦素，瘦素进入血液并作用于下丘脑受体。",
-                english: "Fat cells release leptin, which reaches hypothalamic receptors through blood."
-            ),
-            L10n.choose(
-                simplifiedChinese: "受体结合成功时出现“吃饱”信号；若瘦素抵抗则饱腹信号减弱。",
-                english: "When receptor binding works, satiety appears; leptin resistance weakens that signal."
-            )
-        ]
-    }
+private struct FatLossMechanismPageView: View {
+    @State private var bodyWeightKg: Double = 70
+    @State private var targetSpeed: TargetSpeed = .steady
+    @State private var trainingLoad: TrainingLoad = .moderate
+    @State private var mealsPerDay: Int = 3
 
-    private var planGenerationRules: [String] {
-        [
-            L10n.choose(
-                simplifiedChinese: "先按体重、训练负荷与目标建立温和热量缺口，避免极低热量引发反弹性饥饿。",
-                english: "Start with a moderate calorie deficit from bodyweight, training load, and goal."
-            ),
-            L10n.choose(
-                simplifiedChinese: "优先低加工、低 GI 主食，降低“快速升糖→快速回落”带来的食欲波动。",
-                english: "Prefer minimally processed, lower-GI staples to reduce appetite swings."
-            ),
-            L10n.choose(
-                simplifiedChinese: "在关键训练前后安排主要碳水，非关键时段用蛋白+蔬菜+适量脂肪稳住饱腹。",
-                english: "Place most carbs around key sessions; use protein+veg+fat at other times."
-            ),
-            L10n.choose(
-                simplifiedChinese: "每餐保留足够蛋白和纤维，提升饱腹与恢复质量。",
-                english: "Keep enough protein and fiber per meal for satiety and recovery."
-            ),
-            L10n.choose(
-                simplifiedChinese: "每 7–14 天依据体重趋势、训练表现和主观饥饿度微调摄入。",
-                english: "Adjust intake every 7–14 days using weight trend, training quality, and hunger."
-            )
-        ]
-    }
+    private enum TargetSpeed: String, CaseIterable, Identifiable {
+        case steady
+        case aggressive
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.choose(simplifiedChinese: "减肥页面：底层逻辑说明", english: "Fat-loss Page: Core Logic"))
-                .font(.title3.weight(.bold))
+        var id: String { rawValue }
 
-            Text(
-                L10n.choose(
-                    simplifiedChinese: "基于你提供的示意图，这里把“血糖—胰岛素—瘦素—饱腹信号”转成可执行的饮食计划规则。",
-                    english: "Based on your diagram, this page converts glucose–insulin–leptin–satiety logic into practical diet rules."
-                )
-            )
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-
-            FatLossPrincipleDiagramCard()
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "① 生理流程", english: "1) Physiology Flow"))
-                        .font(.headline)
-                    ForEach(physiologyFlow.indices, id: \.self) { idx in
-                        Text("• \(physiologyFlow[idx])")
-                            .font(.callout)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "② 饮食计划如何生成", english: "2) How Meal Plans Are Generated"))
-                        .font(.headline)
-                    ForEach(planGenerationRules.indices, id: \.self) { idx in
-                        Text("• \(planGenerationRules[idx])")
-                            .font(.callout)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.choose(simplifiedChinese: "③ 图中关键阈值（解释性）", english: "3) Key Thresholds in Diagram"))
-                        .font(.headline)
-                    Text(L10n.choose(simplifiedChinese: "• 饥饿感常在血糖接近较低区间时增强。", english: "• Hunger often rises when glucose nears the lower range."))
-                    Text(L10n.choose(simplifiedChinese: "• 高 GI 餐可能更快升降，低 GI 餐通常更平缓更持久。", english: "• High-GI meals can spike/drop faster; low-GI tends to be steadier."))
-                    Text(L10n.choose(simplifiedChinese: "• 目标不是“极端低碳”，而是控制波动、保持训练与恢复。", english: "• Goal is not extreme low-carb, but stable fluctuations with quality training/recovery."))
-                }
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        var title: String {
+            switch self {
+            case .steady:
+                return L10n.choose(simplifiedChinese: "稳健减脂", english: "Steady Cut")
+            case .aggressive:
+                return L10n.choose(simplifiedChinese: "加速减脂", english: "Aggressive Cut")
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
 
-private struct FatLossPrincipleDiagramCard: View {
-    private struct FlowNode: Identifiable {
-        let id: Int
-        let text: String
-    }
-
-    private var leptinFlowNodes: [FlowNode] {
-        [
-            .init(
-                id: 1,
-                text: L10n.choose(simplifiedChinese: "进食后\n血糖↑ 胰岛素↑", english: "After meal\nGlucose↑ Insulin↑")
-            ),
-            .init(
-                id: 2,
-                text: L10n.choose(simplifiedChinese: "脂肪细胞\n分泌瘦素", english: "Fat cell\nLeptin release")
-            ),
-            .init(
-                id: 3,
-                text: L10n.choose(simplifiedChinese: "瘦素经血液\n到下丘脑", english: "Leptin via blood\nto hypothalamus")
-            ),
-            .init(
-                id: 4,
-                text: L10n.choose(simplifiedChinese: "受体结合成功\n饱腹信号↑", english: "Receptor binds\nSatiety↑")
-            )
-        ]
-    }
-
-    var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 14) {
-                Text(L10n.choose(simplifiedChinese: "原理图（根据你给的图整理）", english: "Principle Diagram (from your reference)"))
-                    .font(.headline)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "① 血糖曲线对比（高 GI vs 低 GI）", english: "1) Glucose Curve (High GI vs Low GI)"))
-                        .font(.subheadline.weight(.semibold))
-                    GlucoseCurveDiagramView()
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "② 瘦素饱腹信号链路", english: "2) Leptin Satiety Signal Chain"))
-                        .font(.subheadline.weight(.semibold))
-
-                    VStack(spacing: 8) {
-                        ForEach(leptinFlowNodes.indices, id: \.self) { index in
-                            LeptinFlowNodeView(text: leptinFlowNodes[index].text)
-                            if index < leptinFlowNodes.count - 1 {
-                                Image(systemName: "arrow.down")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
+        var calorieAdjustment: Double {
+            switch self {
+            case .steady: return -250
+            case .aggressive: return -450
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-}
 
-private struct LeptinFlowNodeView: View {
-    let text: String
+    private enum TrainingLoad: String, CaseIterable, Identifiable {
+        case low
+        case moderate
+        case high
 
-    var body: some View {
-        Text(text)
-            .multilineTextAlignment(.center)
-            .font(.callout.weight(.medium))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
-            .padding(.horizontal, 12)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(.secondary.opacity(0.25), lineWidth: 1)
-            )
-    }
-}
+        var id: String { rawValue }
 
-private struct GlucoseCurveDiagramView: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            GeometryReader { geo in
-                let width = geo.size.width
-                let height = geo.size.height
-                let x0 = width * 0.08
-                let y0 = height * 0.84
-                let xMax = width * 0.95
-                let yTop = height * 0.08
-                let thresholdY = height * 0.56
-
-                ZStack {
-                    Path { path in
-                        path.move(to: CGPoint(x: x0, y: y0))
-                        path.addLine(to: CGPoint(x: xMax, y: y0))
-                        path.move(to: CGPoint(x: x0, y: y0))
-                        path.addLine(to: CGPoint(x: x0, y: yTop))
-                    }
-                    .stroke(.secondary.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-
-                    Path { path in
-                        path.move(to: CGPoint(x: x0, y: thresholdY))
-                        path.addLine(to: CGPoint(x: xMax, y: thresholdY))
-                    }
-                    .stroke(.orange.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-
-                    Path { path in
-                        path.move(to: CGPoint(x: x0, y: y0))
-                        path.addCurve(
-                            to: CGPoint(x: width * 0.44, y: y0),
-                            control1: CGPoint(x: width * 0.18, y: height * 0.06),
-                            control2: CGPoint(x: width * 0.34, y: height * 0.16)
-                        )
-                    }
-                    .stroke(.red.opacity(0.85), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-
-                    Path { path in
-                        path.move(to: CGPoint(x: x0, y: y0))
-                        path.addCurve(
-                            to: CGPoint(x: width * 0.74, y: y0),
-                            control1: CGPoint(x: width * 0.25, y: height * 0.30),
-                            control2: CGPoint(x: width * 0.58, y: height * 0.32)
-                        )
-                    }
-                    .stroke(.blue.opacity(0.85), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-
-                    Text("高GI")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.red)
-                        .position(x: width * 0.29, y: height * 0.16)
-
-                    Text("低GI")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.blue)
-                        .position(x: width * 0.55, y: height * 0.28)
-
-                    Text(L10n.choose(simplifiedChinese: "胰岛素阈值", english: "Insulin threshold"))
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                        .position(x: width * 0.78, y: thresholdY - 10)
-                }
+        var title: String {
+            switch self {
+            case .low:
+                return L10n.choose(simplifiedChinese: "低训练量", english: "Low Load")
+            case .moderate:
+                return L10n.choose(simplifiedChinese: "中训练量", english: "Moderate Load")
+            case .high:
+                return L10n.choose(simplifiedChinese: "高训练量", english: "High Load")
             }
-            .frame(height: 170)
-
-            Text(
-                L10n.choose(
-                    simplifiedChinese: "高 GI 往往“升得快、掉得快”；低 GI 通常更平缓，饱腹维持更稳定。",
-                    english: "High-GI often spikes and drops faster; lower-GI is steadier with longer satiety."
-                )
-            )
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
-    }
-}
 
-private struct FatLossLogicExplainerCard: View {
-    private struct LogicStep: Identifiable {
-        let id: Int
-        let title: String
-        let detail: String
+        var carbFactor: Double {
+            switch self {
+            case .low: return 2.2
+            case .moderate: return 3.0
+            case .high: return 4.0
+            }
+        }
+
+        var baselineCaloriesPerKg: Double {
+            switch self {
+            case .low: return 29
+            case .moderate: return 33
+            case .high: return 37
+            }
+        }
     }
 
     private struct MacroPlan {
@@ -420,10 +209,15 @@ private struct FatLossLogicExplainerCard: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
 
+            FatLossPrincipleDiagramCard()
+
             GroupBox {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L10n.choose(simplifiedChinese: "1) 底层逻辑（图示同款）", english: "1) Core Logic (from diagram)"))
                         .font(.headline)
+
+                    MetabolismSchematicView()
+
                     ForEach(tcaLogicSteps.indices, id: \.self) { index in
                         Text("• \(tcaLogicSteps[index])")
                             .font(.callout)
@@ -523,6 +317,84 @@ private struct FatLossLogicExplainerCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct MetabolismSchematicView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                MetabolismNode(title: L10n.choose(simplifiedChinese: "糖", english: "Glucose"), tone: .blue)
+                MetabolismNode(title: L10n.choose(simplifiedChinese: "甘油/生糖氨基酸", english: "Glycerol/AA"), tone: .indigo)
+                MetabolismNode(title: L10n.choose(simplifiedChinese: "脂肪酸", english: "Fatty Acid"), tone: .orange)
+            }
+
+            Text("↓")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+
+            HStack(spacing: 10) {
+                MetabolismNode(title: L10n.choose(simplifiedChinese: "丙酮酸", english: "Pyruvate"), tone: .cyan)
+                Text("→")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                MetabolismNode(title: L10n.choose(simplifiedChinese: "乙酰辅酶A", english: "Acetyl-CoA"), tone: .mint)
+                Text("+", tableName: nil)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                MetabolismNode(title: L10n.choose(simplifiedChinese: "草酰乙酸", english: "OAA"), tone: .teal)
+            }
+
+            Text("↓")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+
+            MetabolismNode(title: L10n.choose(simplifiedChinese: "柠檬酸循环（三羧酸循环）", english: "Citrate Cycle (TCA)"), tone: .green)
+                .frame(maxWidth: .infinity)
+
+            Text("↓")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+
+            HStack(spacing: 10) {
+                MetabolismNode(title: L10n.choose(simplifiedChinese: "电子传递链", english: "Electron Transport Chain"), tone: .purple)
+                Text("→")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                MetabolismNode(title: "ATP + CO₂ + H₂O", tone: .pink)
+            }
+
+            Text(L10n.choose(simplifiedChinese: "图示重点：脂肪“烧得快”依赖三羧酸循环不断料，而不是极端单一饮食。", english: "Key point: faster fat oxidation depends on keeping TCA supplied, not extreme single-macro dieting."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.background.tertiary)
+        )
+    }
+}
+
+private struct MetabolismNode: View {
+    let title: String
+    let tone: Color
+
+    var body: some View {
+        Text(title)
+            .font(.callout.weight(.semibold))
+            .multilineTextAlignment(.center)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity)
+            .background(tone.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(tone.opacity(0.35), lineWidth: 1)
+            )
     }
 }
 
