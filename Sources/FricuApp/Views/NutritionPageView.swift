@@ -47,6 +47,11 @@ enum NutritionPageCopy {
         simplifiedChinese: "热量相同下，高/低 GI 的减脂速度接近，但低 GI 让血糖曲线更平缓、饥饿出现更慢，从而更容易控制总摄入。若长期高胰岛素与肥胖并存，常伴随瘦素抵抗，饱腹信号会减弱。",
         english: "At equal calories, high- and low-GI diets can yield similar fat-loss speed, but low GI smooths glycemic swings and delays hunger, improving intake control. With long-term hyperinsulinemia and obesity, leptin resistance can blunt satiety signaling."
     )
+    static let tcaInsightTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑥ 三羧酸循环减脂逻辑卡", english: "6) TCA Cycle Fat-loss Logic Card")
+    static let tcaInsightSummary = NutritionPageBilingualCopy(
+        simplifiedChinese: "糖、脂肪与氨基酸都能汇入丙酮酸/乙酰辅酶 A，再进入三羧酸循环与电子传递链。减脂关键是让这条产能通路顺畅：碳水并非天然阻脂，反而可补充草酰乙酸以维持循环闭环，支持脂肪持续氧化。",
+        english: "Carbs, fats, and amino acids converge into pyruvate/acetyl-CoA before entering the TCA cycle and electron transport chain. Fat loss depends on keeping this energy pathway efficient: carbs are not inherently anti-fat-loss and can replenish oxaloacetate to keep the cycle closed for sustained fat oxidation."
+    )
 }
 
 struct NutritionPageView: View {
@@ -193,6 +198,23 @@ private struct FatLossMechanismPageView: View {
             }
 
             GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(NutritionPageCopy.tcaInsightTitle.localized())
+                        .font(.headline)
+
+                    DiagramPanelCard {
+                        TcaCycleInsightCard()
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Text(NutritionPageCopy.tcaInsightSummary.localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(NutritionPageCopy.executionTitle.localized())
                         .font(.headline)
@@ -205,6 +227,75 @@ private struct FatLossMechanismPageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Diagram card that turns screenshot content into a practical TCA-cycle fat-loss flow.
+private struct TcaCycleInsightCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            flowNode(
+                title: L10n.choose(simplifiedChinese: "底物入口", english: "Fuel Inputs"),
+                detail: L10n.choose(simplifiedChinese: "糖、脂肪、氨基酸可逆汇入丙酮酸/乙酰辅酶 A，进入线粒体供能流程。", english: "Carbs, fats, and amino acids reversibly converge into pyruvate/acetyl-CoA for mitochondrial energy flow."),
+                tone: .blue
+            )
+
+            flowArrow
+
+            flowNode(
+                title: L10n.choose(simplifiedChinese: "循环闭环条件", english: "Cycle-Closure Requirement"),
+                detail: L10n.choose(simplifiedChinese: "乙酰辅酶 A 需与草酰乙酸结合形成柠檬酸；草酰乙酸不足时，三羧酸循环减速，脂肪氧化效率下降。", english: "Acetyl-CoA must pair with oxaloacetate to form citrate; insufficient oxaloacetate slows the TCA cycle and reduces fat oxidation efficiency."),
+                tone: .orange
+            )
+
+            flowArrow
+
+            flowNode(
+                title: L10n.choose(simplifiedChinese: "产能与燃脂", english: "Energy Output & Fat Burning"),
+                detail: L10n.choose(simplifiedChinese: "三羧酸循环接入电子传递链，产出 ATP + CO₂ + H₂O。糖脂并非“前后接力”，而是伴随供能。", english: "The TCA cycle feeds the electron transport chain to produce ATP + CO₂ + H₂O. Carbs and fats support energy production together, not in a strict relay."),
+                tone: .green
+            )
+
+            Divider()
+
+            Text(L10n.choose(simplifiedChinese: "执行要点：① 不把“零碳水”当作唯一减脂路径 ② 保持总热量可控并保障训练质量 ③ 通过耐力/间歇训练增强线粒体能力 ④ 关注 B 族维生素、铁/锌/镁与补水。", english: "Execution: 1) do not treat zero-carb as the only fat-loss path 2) keep total calories controlled while preserving training quality 3) use endurance/interval training to strengthen mitochondrial capacity 4) ensure B vitamins, iron/zinc/magnesium, and hydration."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var flowArrow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.down.circle")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Renders one node in the TCA insight flow diagram.
+    /// - Parameters:
+    ///   - title: Node title.
+    ///   - detail: Node explanatory content.
+    ///   - tone: Accent color for the node.
+    /// - Returns: A stylized flow node view.
+    private func flowNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
     }
 }
 

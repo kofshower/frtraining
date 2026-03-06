@@ -34,7 +34,8 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.engineTitle,
             NutritionPageCopy.executionTitle,
             NutritionPageCopy.screenshotInsightsTitle,
-            NutritionPageCopy.appetiteMechanismTitle
+            NutritionPageCopy.appetiteMechanismTitle,
+            NutritionPageCopy.tcaInsightTitle
         ]
 
         for title in titles {
@@ -60,5 +61,13 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.simplifiedChinese.contains("瘦素抵抗"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("low-GI"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
+    }
+
+    /// Ensures TCA insight summary preserves key concepts from screenshot-based product intent.
+    func testTcaInsightSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.simplifiedChinese.contains("草酰乙酸"))
+        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.simplifiedChinese.contains("三羧酸循环"))
+        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.english.contains("oxaloacetate"))
+        XCTAssertTrue(NutritionPageCopy.tcaInsightSummary.english.contains("TCA cycle"))
     }
 }
