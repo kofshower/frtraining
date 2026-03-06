@@ -182,6 +182,23 @@ private struct FatLossMechanismPageView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text(NutritionPageCopy.insulinGateTitle.localized())
+                        .font(.headline)
+
+                    DiagramPanelCard {
+                        InsulinGlut4MechanismCard()
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Text(NutritionPageCopy.insulinGateSummary.localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(NutritionPageCopy.screenshotInsightsTitle.localized())
                         .font(.headline)
 
@@ -227,6 +244,84 @@ private struct FatLossMechanismPageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Diagram card that summarizes INS-triggered GLUT4 transport and storage logic.
+private struct InsulinGlut4MechanismCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            insulinNode(
+                title: L10n.choose(simplifiedChinese: "碳水摄入 → 血糖上升", english: "Carb Intake → Blood Glucose Rises"),
+                detail: L10n.choose(simplifiedChinese: "食物消化吸收后，葡萄糖进入血液形成血糖信号。", english: "After digestion and absorption, glucose enters bloodstream and creates the glycemic signal."),
+                tone: .blue
+            )
+
+            insulinArrow
+
+            insulinNode(
+                title: L10n.choose(simplifiedChinese: "胰腺 β 细胞释放 INS", english: "Pancreatic β Cells Release INS"),
+                detail: L10n.choose(simplifiedChinese: "主要刺激包括高血糖、进食反应以及较高氨基酸信号。", english: "Major triggers include high glucose, feeding response, and higher amino-acid signaling."),
+                tone: .orange
+            )
+
+            insulinArrow
+
+            insulinNode(
+                title: L10n.choose(simplifiedChinese: "INS 结合受体 → GLUT4“开门”", english: "INS Binds Receptor → GLUT4 Gate Opens"),
+                detail: L10n.choose(simplifiedChinese: "肌细胞转运体活化后，葡萄糖进入细胞并优先合成糖原。", english: "Transporters activate on muscle cells, allowing glucose uptake and glycogen restoration."),
+                tone: .purple
+            )
+
+            insulinArrow
+
+            insulinNode(
+                title: L10n.choose(simplifiedChinese: "短期体重波动：糖原 + 水", english: "Short-term Scale Shift: Glycogen + Water"),
+                detail: L10n.choose(simplifiedChinese: "约 1g 糖原伴随约 3g 水，体重短期上涨并不等于脂肪显著增加。", english: "~1 g glycogen often binds with ~3 g water, so short-term scale increases are not always fat gain."),
+                tone: .green
+            )
+
+            insulinArrow
+
+            insulinNode(
+                title: L10n.choose(simplifiedChinese: "敏感性下降时的食欲风险", english: "Appetite Risk When Sensitivity Drops"),
+                detail: L10n.choose(simplifiedChinese: "长期高 INS 分泌可能伴随敏感性下降，‘能量入细胞效率’变差，饥饿反跳更常见。", english: "Chronic high INS secretion may reduce sensitivity, lowering cellular uptake efficiency and increasing rebound hunger."),
+                tone: .pink
+            )
+        }
+    }
+
+    private var insulinArrow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.down.circle")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Builds a single styled node for the INS-GLUT4 mechanism flow chart.
+    /// - Parameters:
+    ///   - title: Main title of the node.
+    ///   - detail: Supporting explanation under the title.
+    ///   - tone: Accent color used for background and border.
+    /// - Returns: A rendered node view.
+    private func insulinNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
     }
 }
 
