@@ -156,12 +156,40 @@ struct VideoDownloadResult {
 }
 
 /// Codec/container details used to explain local playback failures.
-private struct MediaProbeDetails {
+struct MediaProbeDetails {
     let container: String
     let videoCodec: String
     let audioCodec: String
     let pixelFormat: String
     let resolution: String
+}
+
+/// Generates localized explanations when a downloaded media file fails local playback.
+struct VideoPlaybackCompatibilityAdvisor {
+    /// Builds a user-facing explanation for unsupported local playback.
+    /// - Parameter details: Optional codec/container details from ffprobe.
+    /// - Returns: Localized reason describing platform decoder limits and fallback guidance.
+    func localUnplayableReason(details: MediaProbeDetails?) -> String {
+        let genericPrefix = L10n.choose(
+            simplifiedChinese: "本地文件不可播：当前播放器无法解码该视频格式。",
+            english: "Local file is not playable: current player cannot decode this media format."
+        )
+
+        let platformLimit = L10n.choose(
+            simplifiedChinese: "应用使用系统 AVPlayer 解码，无法内嵌并覆盖全部第三方解码器格式（受系统能力、沙盒与授权限制）。",
+            english: "The app relies on system AVPlayer decoders and cannot embed full third-party codec coverage (due to platform capability, sandboxing, and licensing constraints)."
+        )
+
+        if let details {
+            let detailSummary = L10n.choose(
+                simplifiedChinese: "检测到容器 \(details.container)，视频 \(details.videoCodec)（\(details.resolution), \(details.pixelFormat)），音频 \(details.audioCodec)。",
+                english: "Detected container \(details.container), video \(details.videoCodec) (\(details.resolution), \(details.pixelFormat)), audio \(details.audioCodec)."
+            )
+            return "\(genericPrefix) \(platformLimit) \(detailSummary)"
+        }
+
+        return "\(genericPrefix) \(platformLimit)"
+    }
 }
 
 /// Executes actual video download jobs using a local downloader command.
@@ -901,25 +929,19 @@ struct VideoDownloaderPageView: View {
 
     /// Builds a human-readable reason for local playback failure using ffprobe diagnostics.
     private func buildLocalUnplayableReason(inputURL: URL) async -> String {
-        let generic = L10n.choose(
-            simplifiedChinese: "本地文件不可播：当前播放器无法解码该视频格式。",
-            english: "Local file is not playable: current player cannot decode this media format."
-        )
+        let advisor = VideoPlaybackCompatibilityAdvisor()
         guard let ffprobeCommand = resolveFFprobeCommand() else {
-            return generic + " " + L10n.choose(
+            return advisor.localUnplayableReason(details: nil) + " " + L10n.choose(
                 simplifiedChinese: "（未检测到 ffprobe，无法提供编码详情）",
                 english: "(ffprobe not found, codec details unavailable)"
             )
         }
 
         guard let details = await probeMediaDetails(ffprobeCommand: ffprobeCommand, inputURL: inputURL) else {
-            return generic
+            return advisor.localUnplayableReason(details: nil)
         }
 
-        return L10n.choose(
-            simplifiedChinese: "本地文件不可播：容器 \(details.container)，视频 \(details.videoCodec)（\(details.resolution), \(details.pixelFormat)），音频 \(details.audioCodec)。",
-            english: "Local file is not playable: container \(details.container), video \(details.videoCodec) (\(details.resolution), \(details.pixelFormat)), audio \(details.audioCodec)."
-        )
+        return advisor.localUnplayableReason(details: details)
     }
 
     /// Probes container and codec information via ffprobe.
