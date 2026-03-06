@@ -215,6 +215,23 @@ private struct FatLossMechanismPageView: View {
             }
 
             GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(NutritionPageCopy.tcaInsightTitle.localized())
+                        .font(.headline)
+
+                    DiagramPanelCard {
+                        TcaCycleInsightCard()
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Text(NutritionPageCopy.tcaInsightSummary.localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(NutritionPageCopy.executionTitle.localized())
                         .font(.headline)
