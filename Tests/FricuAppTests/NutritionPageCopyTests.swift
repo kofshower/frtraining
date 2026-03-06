@@ -34,7 +34,8 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.engineTitle,
             NutritionPageCopy.executionTitle,
             NutritionPageCopy.screenshotInsightsTitle,
-            NutritionPageCopy.appetiteMechanismTitle
+            NutritionPageCopy.appetiteMechanismTitle,
+            NutritionPageCopy.carbSodiumCardTitle
         ]
 
         for title in titles {
@@ -60,5 +61,15 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.simplifiedChinese.contains("瘦素抵抗"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("low-GI"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
+    }
+
+    /// Ensures the screenshot-derived carb/sodium summary contains key osmosis and glycogen terms.
+    func testCarbSodiumCardSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("溶质"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("肌糖原"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("高盐"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("solute"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("glycogen"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("sodium"))
     }
 }
