@@ -33,7 +33,8 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.mechanismTitle,
             NutritionPageCopy.engineTitle,
             NutritionPageCopy.executionTitle,
-            NutritionPageCopy.screenshotInsightsTitle
+            NutritionPageCopy.screenshotInsightsTitle,
+            NutritionPageCopy.appetiteMechanismTitle
         ]
 
         for title in titles {
@@ -46,5 +47,18 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertFalse(NutritionPageCopy.screenshotInsightsSummary.simplifiedChinese.isEmpty)
         XCTAssertFalse(NutritionPageCopy.screenshotInsightsSummary.english.isEmpty)
     }
-}
 
+    /// Guards the screenshot-derived appetite regulation summary copy from becoming empty.
+    func testAppetiteMechanismSummaryCopyIsNotEmpty() {
+        XCTAssertFalse(NutritionPageCopy.appetiteMechanismSummary.simplifiedChinese.isEmpty)
+        XCTAssertFalse(NutritionPageCopy.appetiteMechanismSummary.english.isEmpty)
+    }
+
+    /// Ensures the new mechanism card keeps core terms for product intent.
+    func testAppetiteMechanismSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.simplifiedChinese.contains("低 GI"))
+        XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.simplifiedChinese.contains("瘦素抵抗"))
+        XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("low-GI"))
+        XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
+    }
+}

@@ -42,6 +42,11 @@ enum NutritionPageCopy {
         simplifiedChinese: "目标不是盲目少吃，而是让“脂肪动员→进入肌细胞→线粒体氧化→三羧酸循环→电子链产能”这条通路稳定运行。",
         english: "The goal is not blind restriction, but keeping the pathway 'fat mobilization → muscle uptake → mitochondrial oxidation → TCA cycle → electron transport energy production' running efficiently."
     )
+    static let appetiteMechanismTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑤ 血糖-胰岛素-瘦素减脂原理卡", english: "5) Blood Glucose–Insulin–Leptin Card")
+    static let appetiteMechanismSummary = NutritionPageBilingualCopy(
+        simplifiedChinese: "热量相同下，高/低 GI 的减脂速度接近，但低 GI 让血糖曲线更平缓、饥饿出现更慢，从而更容易控制总摄入。若长期高胰岛素与肥胖并存，常伴随瘦素抵抗，饱腹信号会减弱。",
+        english: "At equal calories, high- and low-GI diets can yield similar fat-loss speed, but low GI smooths glycemic swings and delays hunger, improving intake control. With long-term hyperinsulinemia and obesity, leptin resistance can blunt satiety signaling."
+    )
 }
 
 struct NutritionPageView: View {
@@ -149,6 +154,23 @@ private struct FatLossMechanismPageView: View {
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(NutritionPageCopy.appetiteMechanismTitle.localized())
+                        .font(.headline)
+
+                    DiagramPanelCard {
+                        GlycemicLeptinMechanismCard()
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Text(NutritionPageCopy.appetiteMechanismSummary.localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -331,6 +353,76 @@ private struct FatLossPathwayCard: View {
     }
 
     private func pathwayNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+/// Diagram card that summarizes the screenshot-derived hunger and satiety mechanism.
+private struct GlycemicLeptinMechanismCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "进食后血糖反应", english: "Post-meal Glycemic Response"),
+                detail: L10n.choose(simplifiedChinese: "高 GI：血糖 2 小时内快速冲高并回落；低 GI：约 4 小时平缓波动，饥饿更晚出现。", english: "High GI spikes and drops within ~2 hours; low GI stays steadier for ~4 hours and delays hunger."),
+                tone: .blue
+            )
+
+            mechanismArrow
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "胰岛素阈值与食欲", english: "Insulin Threshold & Appetite"),
+                detail: L10n.choose(simplifiedChinese: "当血糖频繁越过胰岛素刺激阈值，胰岛素分泌上升更明显，后续更容易出现反跳性饥饿。", english: "Frequent crossing of insulin-trigger thresholds drives larger insulin release and can increase rebound hunger."),
+                tone: .orange
+            )
+
+            mechanismArrow
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "瘦素信号链", english: "Leptin Signaling Chain"),
+                detail: L10n.choose(simplifiedChinese: "脂肪细胞分泌瘦素 → 入血 → 作用下丘脑弓状核；若出现瘦素抵抗，则‘已吃够’信号变弱。", english: "Adipocytes release leptin → bloodstream → hypothalamic arcuate nucleus; with leptin resistance, the 'enough food' signal weakens."),
+                tone: .purple
+            )
+
+            mechanismArrow
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "执行策略", english: "Action Strategy"),
+                detail: L10n.choose(simplifiedChinese: "优先天然食物与低 GI 主食、阻力训练/HIIT、规律睡眠与减脂，目标是提升胰岛素与瘦素敏感性。", english: "Prioritize whole foods and lower-GI staples, resistance training/HIIT, regular sleep, and fat reduction to improve insulin/leptin sensitivity."),
+                tone: .green
+            )
+        }
+    }
+
+    private var mechanismArrow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.down.circle")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// Creates a styled flow node for the appetite-regulation mechanism card.
+    /// - Parameters:
+    ///   - title: Main node title.
+    ///   - detail: Explanatory body copy.
+    ///   - tone: Accent color used for the node border/background.
+    /// - Returns: A rendered node view.
+    private func mechanismNode(title: String, detail: String, tone: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
