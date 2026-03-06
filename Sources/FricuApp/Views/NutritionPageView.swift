@@ -1,5 +1,44 @@
 import SwiftUI
 
+/// Bilingual copy token used by nutrition page sections.
+struct NutritionPageBilingualCopy {
+    /// Simplified Chinese text used when app language is Chinese.
+    let simplifiedChinese: String
+    /// English text used when app language is English.
+    let english: String
+
+    /// Resolve localized text according to the current app language setting.
+    /// - Returns: Localized copy chosen by ``L10n``.
+    func localized() -> String {
+        L10n.choose(simplifiedChinese: simplifiedChinese, english: english)
+    }
+}
+
+/// Centralized copy definitions for the nutrition page to keep wording consistent.
+enum NutritionPageCopy {
+    static let tabFatLoss = NutritionPageBilingualCopy(simplifiedChinese: "减脂原理", english: "Fat-loss Logic")
+    static let headerSubtitle = NutritionPageBilingualCopy(
+        simplifiedChinese: "按运动员记录每日饮食计划、实际摄入、饮水与宏量营养，独立于 Dashboard 使用。",
+        english: "Log daily meal plans, actual intake, hydration, and macros in a dedicated page."
+    )
+    static let coreLogicTitle = NutritionPageBilingualCopy(simplifiedChinese: "减脂页：底层逻辑", english: "Fat-loss: Core Logic")
+    static let coreLogicBody = NutritionPageBilingualCopy(
+        simplifiedChinese: "核心不是“某一顿吃胖了”，而是细胞内外溶质浓度变化引起的水分转移。高碳+高盐时，短期体重上涨常由水分变化主导；系统会据此区分“水重波动”和“脂肪变化”。",
+        english: "The core is not just 'one meal made me fat'. Solute shifts between extracellular and intracellular spaces move water. With high-carb + high-salt intake, short-term weight gains are often water-driven, and the planner separates water fluctuation from fat change."
+    )
+    static let mechanismTitle = NutritionPageBilingualCopy(simplifiedChinese: "① 原理图（渗透作用）", english: "1) Mechanism Diagram (Osmosis)")
+    static let mechanismBody = NutritionPageBilingualCopy(
+        simplifiedChinese: "当细胞内“溶质浓度”更高时，水分向细胞内移动；当间质液钠负荷更高时，水分更易滞留在细胞外。系统将该逻辑用于解释体重日波动。",
+        english: "When intracellular solute concentration is higher, water shifts into cells. When extracellular sodium load is higher, water is retained outside cells. The system uses this to explain day-to-day weight changes."
+    )
+    static let engineTitle = NutritionPageBilingualCopy(simplifiedChinese: "② 饮食计划生成引擎", english: "2) Meal-plan Generation Engine")
+    static let engineBody = NutritionPageBilingualCopy(
+        simplifiedChinese: "输入层：体重趋势、训练负荷、近 3 日碳水/盐/饮水；规则层：先判别水重波动，再计算热量缺口与三大营养素；输出层：生成每餐建议与次日调节策略。",
+        english: "Input layer: weight trend, training load, and recent 3-day carbs/salt/water. Rule layer: detect water-weight fluctuation first, then compute deficit and macros. Output layer: meal suggestions plus next-day adjustment strategy."
+    )
+    static let executionTitle = NutritionPageBilingualCopy(simplifiedChinese: "③ 页面如何指导执行", english: "3) How This Page Guides Execution")
+}
+
 struct NutritionPageView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedTab: NutritionTab = .planner
@@ -15,7 +54,7 @@ struct NutritionPageView: View {
             case .planner:
                 return L10n.choose(simplifiedChinese: "饮食计划", english: "Meal Planner")
             case .fatLossMechanism:
-                return L10n.choose(simplifiedChinese: "减肥逻辑", english: "Fat-loss Logic")
+                return NutritionPageCopy.tabFatLoss.localized()
             }
         }
     }
@@ -27,10 +66,7 @@ struct NutritionPageView: View {
                     Text(L10n.choose(simplifiedChinese: "饮食", english: "Nutrition"))
                         .font(.system(size: 42, weight: .heavy, design: .rounded))
                     Text(
-                        L10n.choose(
-                            simplifiedChinese: "按运动员记录每日饮食计划、实际摄入、饮水与宏量营养，独立于 Dashboard 使用。",
-                            english: "Log daily meal plans, actual intake, hydration, and macros in a dedicated page."
-                        )
+                        NutritionPageCopy.headerSubtitle.localized()
                     )
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -63,13 +99,10 @@ private struct FatLossMechanismPageView: View {
         VStack(alignment: .leading, spacing: 12) {
             GroupBox {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "减肥页：底层逻辑", english: "Fat-loss: Core Logic"))
+                    Text(NutritionPageCopy.coreLogicTitle.localized())
                         .font(.headline)
                     Text(
-                        L10n.choose(
-                            simplifiedChinese: "核心不是“某一顿吃胖了”，而是细胞内外溶质浓度变化引起的水分转移。高碳+高盐时，短期体重上涨常由水分变化主导；计划会据此区分“水重波动”和“脂肪变化”。",
-                            english: "The core is not just 'one meal made me fat'. Solute shifts between extracellular and intracellular spaces move water. With high-carb + high-salt intake, short-term weight gains are often water-driven, and the planner separates water fluctuation from fat change."
-                        )
+                        NutritionPageCopy.coreLogicBody.localized()
                     )
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -79,7 +112,7 @@ private struct FatLossMechanismPageView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(L10n.choose(simplifiedChinese: "① 原理图（渗透作用）", english: "1) Mechanism Diagram (Osmosis)"))
+                    Text(NutritionPageCopy.mechanismTitle.localized())
                         .font(.headline)
 
                     DiagramPanelCard {
@@ -88,10 +121,7 @@ private struct FatLossMechanismPageView: View {
                     }
 
                     Text(
-                        L10n.choose(
-                            simplifiedChinese: "当细胞内“溶质浓度”更高时，水分向细胞内移动；当间质液钠负荷更高时，水分更易滞留在细胞外。系统将该逻辑用于解释体重日波动。",
-                            english: "When intracellular solute concentration is higher, water shifts into cells. When extracellular sodium load is higher, water is retained outside cells. The system uses this to explain day-to-day weight changes."
-                        )
+                        NutritionPageCopy.mechanismBody.localized()
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -101,7 +131,7 @@ private struct FatLossMechanismPageView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(L10n.choose(simplifiedChinese: "② 饮食计划生成引擎", english: "2) Meal-plan Generation Engine"))
+                    Text(NutritionPageCopy.engineTitle.localized())
                         .font(.headline)
 
                     DiagramPanelCard {
@@ -110,10 +140,7 @@ private struct FatLossMechanismPageView: View {
                     }
 
                     Text(
-                        L10n.choose(
-                            simplifiedChinese: "输入层：体重趋势、训练负荷、近 3 日碳水/盐/饮水；规则层：先判别水重波动，再计算热量缺口与三大营养素；输出层：生成每餐建议与次日调节策略。",
-                            english: "Input layer: weight trend, training load, and recent 3-day carbs/salt/water. Rule layer: detect water-weight fluctuation first, then compute deficit and macros. Output layer: meal suggestions plus next-day adjustment strategy."
-                        )
+                        NutritionPageCopy.engineBody.localized()
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -123,7 +150,7 @@ private struct FatLossMechanismPageView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.choose(simplifiedChinese: "③ 页面如何指导执行", english: "3) How This Page Guides Execution"))
+                    Text(NutritionPageCopy.executionTitle.localized())
                         .font(.headline)
 
                     BulletText(text: L10n.choose(simplifiedChinese: "若体重上涨但围度稳定，优先提示“水分/电解质回调”，不是立刻大幅降热量。", english: "If weight rises but circumference is stable, prioritize water/electrolyte adjustment instead of aggressive calorie cuts."))
