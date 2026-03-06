@@ -34,7 +34,8 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.engineTitle,
             NutritionPageCopy.executionTitle,
             NutritionPageCopy.screenshotInsightsTitle,
-            NutritionPageCopy.appetiteMechanismTitle
+            NutritionPageCopy.appetiteMechanismTitle,
+            NutritionPageCopy.insulinGateTitle
         ]
 
         for title in titles {
@@ -60,5 +61,13 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.simplifiedChinese.contains("瘦素抵抗"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("low-GI"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
+    }
+
+    /// Ensures the new INS-GLUT4 mechanism summary keeps key terms from screenshot logic.
+    func testInsulinGateSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.simplifiedChinese.contains("GLUT4"))
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.simplifiedChinese.contains("水重"))
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.english.contains("GLUT4"))
+        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.english.contains("water"))
     }
 }
