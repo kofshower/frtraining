@@ -209,6 +209,8 @@ private struct FatLossMechanismPageView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
 
+            FatLossPrincipleDiagramCard()
+
             GroupBox {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L10n.choose(simplifiedChinese: "1) 底层逻辑（图示同款）", english: "1) Core Logic (from diagram)"))
@@ -393,5 +395,81 @@ private struct MetabolismNode: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(tone.opacity(0.35), lineWidth: 1)
             )
+    }
+}
+
+private struct FatLossMechanismDiagram: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(L10n.choose(simplifiedChinese: "原理图", english: "Mechanism Diagram"))
+                .font(.headline)
+
+            HStack(alignment: .center, spacing: 8) {
+                DiagramNode(title: L10n.choose(simplifiedChinese: "脂肪细胞", english: "Fat Cell"), subtitle: "HSL")
+                DiagramArrow()
+                DiagramNode(title: L10n.choose(simplifiedChinese: "游离脂肪酸", english: "FFA"), subtitle: L10n.choose(simplifiedChinese: "入血运输", english: "Bloodstream"))
+                DiagramArrow()
+                DiagramNode(title: L10n.choose(simplifiedChinese: "肌细胞", english: "Muscle Cell"), subtitle: L10n.choose(simplifiedChinese: "肉碱穿梭", english: "Carnitine shuttle"))
+            }
+
+            HStack(alignment: .center, spacing: 8) {
+                DiagramNode(title: L10n.choose(simplifiedChinese: "线粒体", english: "Mitochondria"), subtitle: L10n.choose(simplifiedChinese: "β氧化", english: "β-oxidation"))
+                DiagramArrow()
+                DiagramNode(title: L10n.choose(simplifiedChinese: "三羧酸循环", english: "TCA Cycle"), subtitle: "Krebs")
+                DiagramArrow()
+                DiagramNode(title: "ETC", subtitle: "CO₂ + H₂O + ATP")
+            }
+
+            Text(
+                L10n.choose(
+                    simplifiedChinese: "计划生成映射：训练负荷→碳水分配；体重目标→总热量缺口；恢复需求→蛋白与补水下限。",
+                    english: "Plan mapping: training load→carb allocation; weight goal→energy deficit; recovery demand→protein and hydration floors."
+                )
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.background.tertiary)
+        )
+    }
+}
+
+private struct DiagramNode: View {
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.accentColor.opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+        )
+    }
+}
+
+private struct DiagramArrow: View {
+    var body: some View {
+        Image(systemName: "arrow.right")
+            .font(.body.weight(.bold))
+            .foregroundStyle(.secondary)
+            .frame(width: 18)
     }
 }
