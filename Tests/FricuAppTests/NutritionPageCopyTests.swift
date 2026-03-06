@@ -34,7 +34,8 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.engineTitle,
             NutritionPageCopy.executionTitle,
             NutritionPageCopy.screenshotInsightsTitle,
-            NutritionPageCopy.appetiteMechanismTitle
+            NutritionPageCopy.appetiteMechanismTitle,
+            NutritionPageCopy.tcaFuelCardTitle
         ]
 
         for title in titles {
@@ -60,5 +61,13 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.simplifiedChinese.contains("瘦素抵抗"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("low-GI"))
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
+    }
+
+    /// Ensures TCA fuel-synergy summary keeps key pathway concepts from screenshot content.
+    func testTcaFuelCardSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.simplifiedChinese.contains("三羧酸循环"))
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.simplifiedChinese.contains("草酰乙酸"))
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.english.contains("TCA"))
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.english.contains("oxaloacetate"))
     }
 }

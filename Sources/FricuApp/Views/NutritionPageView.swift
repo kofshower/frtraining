@@ -47,6 +47,11 @@ enum NutritionPageCopy {
         simplifiedChinese: "热量相同下，高/低 GI 的减脂速度接近，但低 GI 让血糖曲线更平缓、饥饿出现更慢，从而更容易控制总摄入。若长期高胰岛素与肥胖并存，常伴随瘦素抵抗，饱腹信号会减弱。",
         english: "At equal calories, high- and low-GI diets can yield similar fat-loss speed, but low GI smooths glycemic swings and delays hunger, improving intake control. With long-term hyperinsulinemia and obesity, leptin resistance can blunt satiety signaling."
     )
+    static let tcaFuelCardTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑥ 三羧酸循环供能协同卡", english: "6) TCA Fuel-Synergy Card")
+    static let tcaFuelCardSummary = NutritionPageBilingualCopy(
+        simplifiedChinese: "截图观点可归纳为：糖、脂肪、蛋白分解后都会汇入乙酰辅酶 A 与三羧酸循环；糖代谢能补充草酰乙酸，帮助循环持续运行。若碳水长期过低，循环通量下降，脂肪氧化效率也会受限。实操上应兼顾热量缺口、碳水窗口、B 族维生素/矿物质与训练刺激。",
+        english: "Core screenshot logic: carbohydrate, fat, and protein catabolism all converge at acetyl-CoA and the TCA cycle; carbohydrate metabolism helps replenish oxaloacetate to keep cycle throughput stable. With chronically very low carbohydrate intake, TCA flux can drop and fat-oxidation efficiency may also decline. In practice, combine calorie deficit, carb timing, B-vitamins/minerals, and training stimulus."
+    )
 }
 
 struct NutritionPageView: View {
@@ -193,6 +198,23 @@ private struct FatLossMechanismPageView: View {
             }
 
             GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(NutritionPageCopy.tcaFuelCardTitle.localized())
+                        .font(.headline)
+
+                    DiagramPanelCard {
+                        TcaFuelSynergyCard()
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Text(NutritionPageCopy.tcaFuelCardSummary.localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(NutritionPageCopy.executionTitle.localized())
                         .font(.headline)
@@ -205,6 +227,83 @@ private struct FatLossMechanismPageView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Diagram card that summarizes screenshot-derived TCA cycle fueling logic.
+private struct TcaFuelSynergyCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                fuelNode(
+                    title: L10n.choose(simplifiedChinese: "糖", english: "Carbs"),
+                    detail: L10n.choose(simplifiedChinese: "糖酵解 → 丙酮酸", english: "Glycolysis → pyruvate"),
+                    tone: .blue
+                )
+
+                fuelNode(
+                    title: L10n.choose(simplifiedChinese: "脂肪", english: "Fat"),
+                    detail: L10n.choose(simplifiedChinese: "脂解/β 氧化 → 乙酰辅酶 A", english: "Lipolysis/β-oxidation → acetyl-CoA"),
+                    tone: .orange
+                )
+
+                fuelNode(
+                    title: L10n.choose(simplifiedChinese: "蛋白", english: "Protein"),
+                    detail: L10n.choose(simplifiedChinese: "生糖/生酮氨基酸补充中间体", english: "Glucogenic/ketogenic amino acids replenish intermediates"),
+                    tone: .purple
+                )
+            }
+
+            HStack {
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.down")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+
+            fuelNode(
+                title: L10n.choose(simplifiedChinese: "循环枢纽：乙酰辅酶 A + 草酰乙酸", english: "Cycle Hub: acetyl-CoA + oxaloacetate"),
+                detail: L10n.choose(simplifiedChinese: "草酰乙酸不足时，三羧酸循环通量下降，脂肪氧化‘火力’也会受限。", english: "When oxaloacetate is insufficient, TCA throughput drops and fat oxidation can be constrained."),
+                tone: .green
+            )
+
+            HStack {
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.down.circle")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+
+            fuelNode(
+                title: L10n.choose(simplifiedChinese: "输出与实操", english: "Output & Execution"),
+                detail: L10n.choose(simplifiedChinese: "电子传递链产出 ATP/CO₂/H₂O；减脂需在热量缺口下，保留训练前后碳水、补充 B 族维生素与铁锌镁、保持水合并强化耐力/间歇训练。", english: "ETC outputs ATP/CO₂/H₂O; fat loss still requires calorie deficit with carb windows around training, B-vitamins + iron/zinc/magnesium support, hydration, and endurance/interval training."),
+                tone: .pink
+            )
+        }
+    }
+
+    /// Creates a styled node for the TCA fuel-synergy card.
+    /// - Parameters:
+    ///   - title: Main text of the node.
+    ///   - detail: Support text that explains causal logic.
+    ///   - tone: Accent color for readability grouping.
+    /// - Returns: A rendered node view.
+    private func fuelNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
     }
 }
 
