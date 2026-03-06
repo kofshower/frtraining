@@ -35,7 +35,7 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.executionTitle,
             NutritionPageCopy.screenshotInsightsTitle,
             NutritionPageCopy.appetiteMechanismTitle,
-            NutritionPageCopy.carbSodiumCardTitle
+            NutritionPageCopy.tcaFuelCardTitle
         ]
 
         for title in titles {
@@ -63,13 +63,11 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
     }
 
-    /// Ensures the screenshot-derived carb/sodium summary contains key osmosis and glycogen terms.
-    func testCarbSodiumCardSummaryContainsCoreConcepts() {
-        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("溶质"))
-        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("肌糖原"))
-        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("高盐"))
-        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("solute"))
-        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("glycogen"))
-        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("sodium"))
+    /// Ensures TCA fuel-synergy summary keeps key pathway concepts from screenshot content.
+    func testTcaFuelCardSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.simplifiedChinese.contains("三羧酸循环"))
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.simplifiedChinese.contains("草酰乙酸"))
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.english.contains("TCA"))
+        XCTAssertTrue(NutritionPageCopy.tcaFuelCardSummary.english.contains("oxaloacetate"))
     }
 }

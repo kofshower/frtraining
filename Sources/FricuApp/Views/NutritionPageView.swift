@@ -47,10 +47,10 @@ enum NutritionPageCopy {
         simplifiedChinese: "热量相同下，高/低 GI 的减脂速度接近，但低 GI 让血糖曲线更平缓、饥饿出现更慢，从而更容易控制总摄入。若长期高胰岛素与肥胖并存，常伴随瘦素抵抗，饱腹信号会减弱。",
         english: "At equal calories, high- and low-GI diets can yield similar fat-loss speed, but low GI smooths glycemic swings and delays hunger, improving intake control. With long-term hyperinsulinemia and obesity, leptin resistance can blunt satiety signaling."
     )
-    static let carbSodiumCardTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑥ 高碳/盐分与体重波动原理卡", english: "6) Carb/Sodium Weight-Fluctuation Card")
-    static let carbSodiumCardSummary = NutritionPageBilingualCopy(
-        simplifiedChinese: "截图文案核心：‘哪里溶质高，水分就往哪里走’。高碳可提升肌糖原并把水带入细胞内；高盐会提高细胞外钠负荷并锁水。两者叠加时，体重短期变化多为水分，不等同于脂肪增减。",
-        english: "Core insight from the screenshot: 'water goes where solute concentration is higher.' High-carb intake raises glycogen and draws water into cells, while high sodium raises extracellular load and retains water. Combined intake often changes body weight through water, not immediate fat gain/loss."
+    static let tcaFuelCardTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑥ 三羧酸循环供能协同卡", english: "6) TCA Fuel-Synergy Card")
+    static let tcaFuelCardSummary = NutritionPageBilingualCopy(
+        simplifiedChinese: "截图观点可归纳为：糖、脂肪、蛋白分解后都会汇入乙酰辅酶 A 与三羧酸循环；糖代谢能补充草酰乙酸，帮助循环持续运行。若碳水长期过低，循环通量下降，脂肪氧化效率也会受限。实操上应兼顾热量缺口、碳水窗口、B 族维生素/矿物质与训练刺激。",
+        english: "Core screenshot logic: carbohydrate, fat, and protein catabolism all converge at acetyl-CoA and the TCA cycle; carbohydrate metabolism helps replenish oxaloacetate to keep cycle throughput stable. With chronically very low carbohydrate intake, TCA flux can drop and fat-oxidation efficiency may also decline. In practice, combine calorie deficit, carb timing, B-vitamins/minerals, and training stimulus."
     )
 }
 
@@ -216,15 +216,15 @@ private struct FatLossMechanismPageView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(NutritionPageCopy.carbSodiumCardTitle.localized())
+                    Text(NutritionPageCopy.tcaFuelCardTitle.localized())
                         .font(.headline)
 
                     DiagramPanelCard {
-                        CarbSodiumWaterMechanismCard()
+                        TcaFuelSynergyCard()
                             .frame(maxWidth: .infinity)
                     }
 
-                    Text(NutritionPageCopy.carbSodiumCardSummary.localized())
+                    Text(NutritionPageCopy.tcaFuelCardSummary.localized())
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -247,66 +247,65 @@ private struct FatLossMechanismPageView: View {
     }
 }
 
-/// Diagram card that summarizes INS-triggered GLUT4 transport and storage logic.
-private struct InsulinGlut4MechanismCard: View {
+/// Diagram card that summarizes screenshot-derived TCA cycle fueling logic.
+private struct TcaFuelSynergyCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            insulinNode(
-                title: L10n.choose(simplifiedChinese: "碳水摄入 → 血糖上升", english: "Carb Intake → Blood Glucose Rises"),
-                detail: L10n.choose(simplifiedChinese: "食物消化吸收后，葡萄糖进入血液形成血糖信号。", english: "After digestion and absorption, glucose enters bloodstream and creates the glycemic signal."),
-                tone: .blue
-            )
+            HStack(alignment: .top, spacing: 8) {
+                fuelNode(
+                    title: L10n.choose(simplifiedChinese: "糖", english: "Carbs"),
+                    detail: L10n.choose(simplifiedChinese: "糖酵解 → 丙酮酸", english: "Glycolysis → pyruvate"),
+                    tone: .blue
+                )
 
-            insulinArrow
+                fuelNode(
+                    title: L10n.choose(simplifiedChinese: "脂肪", english: "Fat"),
+                    detail: L10n.choose(simplifiedChinese: "脂解/β 氧化 → 乙酰辅酶 A", english: "Lipolysis/β-oxidation → acetyl-CoA"),
+                    tone: .orange
+                )
 
-            insulinNode(
-                title: L10n.choose(simplifiedChinese: "胰腺 β 细胞释放 INS", english: "Pancreatic β Cells Release INS"),
-                detail: L10n.choose(simplifiedChinese: "主要刺激包括高血糖、进食反应以及较高氨基酸信号。", english: "Major triggers include high glucose, feeding response, and higher amino-acid signaling."),
-                tone: .orange
-            )
+                fuelNode(
+                    title: L10n.choose(simplifiedChinese: "蛋白", english: "Protein"),
+                    detail: L10n.choose(simplifiedChinese: "生糖/生酮氨基酸补充中间体", english: "Glucogenic/ketogenic amino acids replenish intermediates"),
+                    tone: .purple
+                )
+            }
 
-            insulinArrow
+            HStack {
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.down")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
 
-            insulinNode(
-                title: L10n.choose(simplifiedChinese: "INS 结合受体 → GLUT4“开门”", english: "INS Binds Receptor → GLUT4 Gate Opens"),
-                detail: L10n.choose(simplifiedChinese: "肌细胞转运体活化后，葡萄糖进入细胞并优先合成糖原。", english: "Transporters activate on muscle cells, allowing glucose uptake and glycogen restoration."),
-                tone: .purple
-            )
-
-            insulinArrow
-
-            insulinNode(
-                title: L10n.choose(simplifiedChinese: "短期体重波动：糖原 + 水", english: "Short-term Scale Shift: Glycogen + Water"),
-                detail: L10n.choose(simplifiedChinese: "约 1g 糖原伴随约 3g 水，体重短期上涨并不等于脂肪显著增加。", english: "~1 g glycogen often binds with ~3 g water, so short-term scale increases are not always fat gain."),
+            fuelNode(
+                title: L10n.choose(simplifiedChinese: "循环枢纽：乙酰辅酶 A + 草酰乙酸", english: "Cycle Hub: acetyl-CoA + oxaloacetate"),
+                detail: L10n.choose(simplifiedChinese: "草酰乙酸不足时，三羧酸循环通量下降，脂肪氧化‘火力’也会受限。", english: "When oxaloacetate is insufficient, TCA throughput drops and fat oxidation can be constrained."),
                 tone: .green
             )
 
-            insulinArrow
+            HStack {
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.down.circle")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
 
-            insulinNode(
-                title: L10n.choose(simplifiedChinese: "敏感性下降时的食欲风险", english: "Appetite Risk When Sensitivity Drops"),
-                detail: L10n.choose(simplifiedChinese: "长期高 INS 分泌可能伴随敏感性下降，‘能量入细胞效率’变差，饥饿反跳更常见。", english: "Chronic high INS secretion may reduce sensitivity, lowering cellular uptake efficiency and increasing rebound hunger."),
+            fuelNode(
+                title: L10n.choose(simplifiedChinese: "输出与实操", english: "Output & Execution"),
+                detail: L10n.choose(simplifiedChinese: "电子传递链产出 ATP/CO₂/H₂O；减脂需在热量缺口下，保留训练前后碳水、补充 B 族维生素与铁锌镁、保持水合并强化耐力/间歇训练。", english: "ETC outputs ATP/CO₂/H₂O; fat loss still requires calorie deficit with carb windows around training, B-vitamins + iron/zinc/magnesium support, hydration, and endurance/interval training."),
                 tone: .pink
             )
         }
     }
 
-    private var insulinArrow: some View {
-        HStack {
-            Spacer(minLength: 0)
-            Image(systemName: "arrow.down.circle")
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 0)
-        }
-    }
-
-    /// Builds a single styled node for the INS-GLUT4 mechanism flow chart.
+    /// Creates a styled node for the TCA fuel-synergy card.
     /// - Parameters:
-    ///   - title: Main title of the node.
-    ///   - detail: Supporting explanation under the title.
-    ///   - tone: Accent color used for background and border.
+    ///   - title: Main text of the node.
+    ///   - detail: Support text that explains causal logic.
+    ///   - tone: Accent color for readability grouping.
     /// - Returns: A rendered node view.
-    private func insulinNode(title: String, detail: String, tone: Color) -> some View {
+    private func fuelNode(title: String, detail: String, tone: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
