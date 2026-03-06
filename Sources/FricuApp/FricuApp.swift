@@ -49,6 +49,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case dashboard
     case trainer
     case lactateLab
+    case videoDownloader
     case proSuite
     case nutrition
     case workoutBuilder
@@ -63,6 +64,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .dashboard: return "app.section.dashboard"
         case .trainer: return "app.section.trainer"
         case .lactateLab: return "app.section.lactateLab"
+        case .videoDownloader: return "app.section.videoDownloader"
         case .proSuite: return "app.section.prosuite"
         case .nutrition: return "app.section.nutrition"
         case .workoutBuilder: return "app.section.workoutBuilder"
@@ -80,6 +82,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return L10n.choose(simplifiedChinese: "骑行台", english: "Trainer")
         case .lactateLab:
             return L10n.choose(simplifiedChinese: "乳酸实验室", english: "Lactate Lab")
+        case .videoDownloader:
+            return L10n.choose(simplifiedChinese: "视频下载", english: "Video Downloader")
         case .proSuite:
             return L10n.choose(simplifiedChinese: "专业套件", english: "Pro Suite")
         case .nutrition:
@@ -100,6 +104,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .dashboard: return "speedometer"
         case .trainer: return "bicycle"
         case .lactateLab: return "testtube.2"
+        case .videoDownloader: return "square.and.arrow.down"
         case .proSuite: return "square.grid.3x3"
         case .nutrition: return "fork.knife"
         case .workoutBuilder: return "pencil.and.ruler"
@@ -123,6 +128,8 @@ struct RootView: View {
                 TrainerPageView()
             case .lactateLab:
                 LactateLabView()
+            case .videoDownloader:
+                VideoDownloaderPageView()
             case .proSuite:
                 ProSuiteView()
             case .nutrition:

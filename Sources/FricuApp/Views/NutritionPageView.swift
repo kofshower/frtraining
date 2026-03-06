@@ -182,6 +182,23 @@ private struct FatLossMechanismPageView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
+                    Text(NutritionPageCopy.insulinGateTitle.localized())
+                        .font(.headline)
+
+                    DiagramPanelCard {
+                        InsulinGlut4MechanismCard()
+                            .frame(maxWidth: .infinity)
+                    }
+
+                    Text(NutritionPageCopy.insulinGateSummary.localized())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            GroupBox {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(NutritionPageCopy.screenshotInsightsTitle.localized())
                         .font(.headline)
 
@@ -552,6 +569,65 @@ private struct FlowNode: View {
             Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+/// Diagram card that converts screenshot copy into a practical carb-sodium-water decision map.
+private struct CarbSodiumWaterMechanismCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "核心定律", english: "Core Rule"),
+                detail: L10n.choose(simplifiedChinese: "哪里溶质浓度更高，水分就向哪里移动。", english: "Water shifts toward the compartment with higher solute concentration."),
+                tone: .blue
+            )
+
+            Image(systemName: "arrow.down")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "高碳（尤其训练后）", english: "High Carb (Especially Post-workout)"),
+                detail: L10n.choose(simplifiedChinese: "肌糖原回补（约 1g 糖原结合 3–4g 水）→ 水分更多进入细胞内，外观可能更饱满。", english: "Glycogen refill (about 1g glycogen binds 3–4g water) draws more water into cells and can make muscles look fuller."),
+                tone: .green
+            )
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "高盐（钠负荷升高）", english: "High Salt (Higher Sodium Load)"),
+                detail: L10n.choose(simplifiedChinese: "细胞外液渗透压上升 → 水分更易滞留在细胞外/间质液，体重与浮肿感可能上升。", english: "Extracellular osmotic pressure rises, so water is retained outside cells/interstitial fluid, increasing scale weight and puffiness."),
+                tone: .orange
+            )
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "结果判读", english: "How to Interpret"),
+                detail: L10n.choose(simplifiedChinese: "短期体重↑ 不等于脂肪↑；先看 7–14 天趋势，再结合围度、盐与碳水记录判断。", english: "Short-term weight gain is not equal to fat gain; review 7–14 day trend with circumference plus sodium/carb logs."),
+                tone: .purple
+            )
+        }
+    }
+
+    /// Builds a colored node used by the screenshot-summary mechanism card.
+    /// - Parameters:
+    ///   - title: Node title in the current language.
+    ///   - detail: Node explanatory copy in the current language.
+    ///   - tone: Accent color for node styling.
+    /// - Returns: A rendered card node.
+    private func mechanismNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

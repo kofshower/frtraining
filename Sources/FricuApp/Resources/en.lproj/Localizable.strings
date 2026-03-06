@@ -1,6 +1,7 @@
 "app.section.dashboard" = "Dashboard";
 "app.section.trainer" = "Trainer";
 "app.section.lactateLab" = "Lactate Lab";
+"app.section.videoDownloader" = "Video Downloader";
 "app.section.prosuite" = "Pro Suite";
 "app.section.nutrition" = "Nutrition";
 "app.section.workoutBuilder" = "Workout Builder";
