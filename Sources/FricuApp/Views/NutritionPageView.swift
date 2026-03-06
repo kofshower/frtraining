@@ -58,139 +58,17 @@ struct NutritionPageView: View {
     }
 }
 
-private struct FatLossPageView: View {
-    private struct DailyMeal: Identifiable {
-        let id: Int
-        let meal: String
-        let strategy: String
-    }
-
-    private var physiologyFlow: [String] {
-        [
-            L10n.choose(
-                simplifiedChinese: "糖、甘油、生糖氨基酸可汇入丙酮酸；丙酮酸可回补草酰乙酸。",
-                english: "Glucose, glycerol, and glucogenic amino acids can feed pyruvate; pyruvate can replenish oxaloacetate."
-            ),
-            L10n.choose(
-                simplifiedChinese: "丙酮酸可转为乙酰辅酶A，脂肪酸 β 氧化也会产生乙酰辅酶A。",
-                english: "Pyruvate converts to acetyl-CoA, while fatty-acid β-oxidation also generates acetyl-CoA."
-            ),
-            L10n.choose(
-                simplifiedChinese: "乙酰辅酶A需要与草酰乙酸结合进入柠檬酸循环，才能高效产能。",
-                english: "Acetyl-CoA needs oxaloacetate to enter the citrate cycle for efficient energy output."
-            ),
-            L10n.choose(
-                simplifiedChinese: "三羧酸循环产物进入电子传递链，最终形成 ATP、CO₂ 和 H₂O。",
-                english: "TCA products feed the electron transport chain to produce ATP, CO₂, and H₂O."
-            ),
-            L10n.choose(
-                simplifiedChinese: "因此减脂不是单纯极低碳，而是保证循环不断料：适量碳水 + 足够蛋白 + 必需脂肪 + 线粒体刺激。",
-                english: "So fat loss is not extreme low-carb; keep the cycle fueled with enough carbs, protein, fat, and mitochondrial stimulus."
-            )
-        ]
-    }
-
-    private var generatedRules: [String] {
-        [
-            L10n.choose(
-                simplifiedChinese: "碳水按训练负荷分配：关键训练前后放主碳水，休息时段收敛碳水。",
-                english: "Distribute carbs by training demand: more around key sessions, less on easy periods."
-            ),
-            L10n.choose(
-                simplifiedChinese: "蛋白固定优先（约 1.8 g/kg）用于保肌和提升饱腹。",
-                english: "Lock protein first (~1.8 g/kg) to preserve muscle and satiety."
-            ),
-            L10n.choose(
-                simplifiedChinese: "脂肪保持底线（约 0.8 g/kg）支持激素和恢复，不做极低脂。",
-                english: "Keep fat at a minimum (~0.8 g/kg) for hormonal support and recovery."
-            ),
-            L10n.choose(
-                simplifiedChinese: "补齐 B 族维生素、铁锌镁与水分，避免三羧酸循环和电子传递链“降速”。",
-                english: "Ensure B vitamins, iron/zinc/magnesium, and hydration to avoid slowing TCA/ETC throughput."
-            )
-        ]
-    }
-
-    private var generatedDayPlan: [DailyMeal] {
-        [
-            .init(
-                id: 1,
-                meal: L10n.choose(simplifiedChinese: "早餐", english: "Breakfast"),
-                strategy: L10n.choose(
-                    simplifiedChinese: "高蛋白 + 高纤维（如鸡蛋/酸奶 + 燕麦 + 水果），降低上午血糖波动。",
-                    english: "High protein + high fiber (e.g., eggs/yogurt + oats + fruit) to reduce morning glucose swings."
-                )
-            ),
-            .init(
-                id: 2,
-                meal: L10n.choose(simplifiedChinese: "训练前后", english: "Pre/Post Training"),
-                strategy: L10n.choose(
-                    simplifiedChinese: "把主要碳水放在训练窗口，优先补糖原并减少其他时段饥饿反扑。",
-                    english: "Place most carbs in the training window to replenish glycogen and reduce rebound hunger later."
-                )
-            ),
-            .init(
-                id: 3,
-                meal: L10n.choose(simplifiedChinese: "午/晚餐", english: "Lunch/Dinner"),
-                strategy: L10n.choose(
-                    simplifiedChinese: "采用“蛋白 + 蔬菜 + 适量主食 + 适量脂肪”结构，稳定胰岛素并保留饱腹。",
-                    english: "Use the structure: protein + vegetables + moderate carbs + moderate fats for insulin stability and satiety."
-                )
-            ),
-            .init(
-                id: 4,
-                meal: L10n.choose(simplifiedChinese: "加餐策略", english: "Snack Strategy"),
-                strategy: L10n.choose(
-                    simplifiedChinese: "优先低热量高体积食物（蔬果、无糖酸奶、清汤）应对食欲峰值。",
-                    english: "Prefer low-calorie high-volume foods (fruit/veg, unsweetened yogurt, broth) for appetite peaks."
-                )
-            )
-        ]
-    }
-
+private struct FatLossMechanismPageView: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.choose(simplifiedChinese: "减肥页面：底层逻辑 → 饮食计划生成", english: "Fat-loss Page: Core Logic → Meal Generation"))
-                .font(.title3.weight(.bold))
-
-            Text(
-                L10n.choose(
-                    simplifiedChinese: "根据你提供的三羧酸循环示意图，下面把“代谢路径”翻译成可执行的饮食模板。",
-                    english: "Based on your TCA-cycle sketch, the page translates metabolic pathways into executable meal templates."
-                )
-            )
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-
-            FatLossPrincipleDiagramCard()
-
+        VStack(alignment: .leading, spacing: 12) {
             GroupBox {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "1) 底层逻辑（图示同款）", english: "1) Core Logic (from diagram)"))
+                    Text(L10n.choose(simplifiedChinese: "减肥页：底层逻辑", english: "Fat-loss: Core Logic"))
                         .font(.headline)
-
-                    MetabolismSchematicView()
-
-                    ForEach(tcaLogicSteps.indices, id: \.self) { index in
-                        Text("• \(tcaLogicSteps[index])")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "② 单卡片原理图（血糖-INS-GLUT4-瘦素）", english: "2) Single-card Diagram (Glucose-INS-GLUT4-Leptin)"))
-                        .font(.headline)
-                    FatLossMechanismDiagramView()
-                        .frame(height: 250)
-
                     Text(
                         L10n.choose(
-                            simplifiedChinese: "图示表达：碳水→血糖上升→胰岛素→GLUT4开门→葡萄糖入肌细胞；脂肪细胞分泌瘦素回路决定饱腹信号强弱。",
-                            english: "The diagram shows carbs → blood glucose rise → insulin → GLUT4 gate opening → muscle glucose uptake; leptin loop from fat cells affects satiety strength."
+                            simplifiedChinese: "核心不是“某一顿吃胖了”，而是细胞内外溶质浓度变化引起的水分转移。高碳+高盐时，短期体重上涨常由水分变化主导；计划会据此区分“水重波动”和“脂肪变化”。",
+                            english: "The core is not just 'one meal made me fat'. Solute shifts between extracellular and intracellular spaces move water. With high-carb + high-salt intake, short-term weight gains are often water-driven, and the planner separates water fluctuation from fat change."
                         )
                     )
                     .font(.callout)
@@ -200,107 +78,53 @@ private struct FatLossPageView: View {
             }
 
             GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "③ 饮食计划如何生成", english: "3) How Meal Plans Are Generated"))
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L10n.choose(simplifiedChinese: "① 原理图（渗透作用）", english: "1) Mechanism Diagram (Osmosis)"))
                         .font(.headline)
 
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(L10n.choose(simplifiedChinese: "体重 (kg)", english: "Bodyweight (kg)"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Stepper(value: $bodyWeightKg, in: 40 ... 130, step: 1) {
-                                Text("\(Int(bodyWeightKg)) kg")
-                            }
-                        }
+                    OsmosisMechanismCard()
+                        .frame(height: 250)
 
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(L10n.choose(simplifiedChinese: "每日餐次", english: "Meals per Day"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Stepper(value: $mealsPerDay, in: 2 ... 6) {
-                                Text("\(mealsPerDay)")
-                            }
-                        }
-                    }
-
-                    Picker(L10n.choose(simplifiedChinese: "减脂速度", english: "Cut Speed"), selection: $targetSpeed) {
-                        ForEach(TargetSpeed.allCases) { speed in
-                            Text(speed.title).tag(speed)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Picker(L10n.choose(simplifiedChinese: "训练负荷", english: "Training Load"), selection: $trainingLoad) {
-                        ForEach(TrainingLoad.allCases) { load in
-                            Text(load.title).tag(load)
-                        }
-                    }
-                    .pickerStyle(.segmented)
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "当细胞内“溶质浓度”更高时，水分向细胞内移动；当间质液钠负荷更高时，水分更易滞留在细胞外。系统将该逻辑用于解释体重日波动。",
+                            english: "When intracellular solute concentration is higher, water shifts into cells. When extracellular sodium load is higher, water is retained outside cells. The system uses this to explain day-to-day weight changes."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "④ 自动生成的一日示例", english: "4) Auto-generated Day Example"))
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L10n.choose(simplifiedChinese: "② 饮食计划生成引擎", english: "2) Meal-plan Generation Engine"))
                         .font(.headline)
-                    ForEach(generatedDayPlan) { item in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("\(item.id). \(item.meal)")
-                                .font(.subheadline.weight(.semibold))
-                            Text(item.strategy)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
+
+                    PlanGenerationFlowCard()
+                        .frame(maxWidth: .infinity)
+
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "输入层：体重趋势、训练负荷、近 3 日碳水/盐/饮水；规则层：先判别水重波动，再计算热量缺口与三大营养素；输出层：生成每餐建议与次日调节策略。",
+                            english: "Input layer: weight trend, training load, and recent 3-day carbs/salt/water. Rule layer: detect water-weight fluctuation first, then compute deficit and macros. Output layer: meal suggestions plus next-day adjustment strategy."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(L10n.choose(simplifiedChinese: "⑤ 图中关键阈值（解释性）", english: "5) Key Thresholds in Diagram"))
+                    Text(L10n.choose(simplifiedChinese: "③ 页面如何指导执行", english: "3) How This Page Guides Execution"))
                         .font(.headline)
 
-                    Text(L10n.choose(simplifiedChinese: "建议总热量", english: "Suggested Calories"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(generatedPlan.calories) kcal/day")
-                        .font(.title3.weight(.semibold))
-
-                    HStack(spacing: 14) {
-                        Label("P \(generatedPlan.protein)g", systemImage: "figure.strengthtraining.traditional")
-                        Label("C \(generatedPlan.carbs)g", systemImage: "bolt.fill")
-                        Label("F \(generatedPlan.fat)g", systemImage: "drop.fill")
-                    }
-                    .font(.callout)
-
-                    Divider()
-
-                    Text(L10n.choose(simplifiedChinese: "每餐分配（\(mealsPerDay) 餐）", english: "Per-meal split (\(mealsPerDay) meals)"))
-                        .font(.subheadline.weight(.semibold))
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "每餐蛋白约 \(perMealProtein)g，每餐碳水约 \(perMealCarbs)g。关键训练前后餐可上浮 15–25% 碳水。",
-                            english: "About \(perMealProtein)g protein and \(perMealCarbs)g carbs per meal. Increase carbs by 15–25% around key sessions."
-                        )
-                    )
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "4) 由逻辑推导出的执行规则", english: "4) Execution Rules Derived from Logic"))
-                        .font(.headline)
-                    ForEach(generatedRules.indices, id: \.self) { index in
-                        Text("• \(generatedRules[index])")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
+                    BulletText(text: L10n.choose(simplifiedChinese: "若体重上涨但围度稳定，优先提示“水分/电解质回调”，不是立刻大幅降热量。", english: "If weight rises but circumference is stable, prioritize water/electrolyte adjustment instead of aggressive calorie cuts."))
+                    BulletText(text: L10n.choose(simplifiedChinese: "关键训练日前后保留碳水窗口，避免“训练能力下降→消耗下降”。", english: "Keep carb windows around key sessions to avoid reduced training output and reduced expenditure."))
+                    BulletText(text: L10n.choose(simplifiedChinese: "连续 7–14 天再评估脂肪趋势，避免被单日体重噪音误导。", english: "Assess fat trend over 7–14 days to avoid being misled by single-day weight noise."))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -309,140 +133,86 @@ private struct FatLossPageView: View {
     }
 }
 
-
-private struct FatLossMechanismDiagramView: View {
+private struct OsmosisMechanismCard: View {
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
-            let left = CGPoint(x: width * 0.2, y: 52)
-            let right = CGPoint(x: width * 0.78, y: 82)
-            let bottom = CGPoint(x: width * 0.5, y: 190)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(.background)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.background.tertiary)
 
                 Path { path in
-                    path.move(to: CGPoint(x: left.x + 46, y: left.y + 8))
-                    path.addLine(to: CGPoint(x: right.x - 52, y: right.y + 8))
-                    path.move(to: CGPoint(x: right.x - 58, y: right.y + 8))
-                    path.addLine(to: CGPoint(x: right.x - 68, y: right.y + 2))
-                    path.move(to: CGPoint(x: right.x - 58, y: right.y + 8))
-                    path.addLine(to: CGPoint(x: right.x - 68, y: right.y + 14))
-
-                    path.move(to: CGPoint(x: right.x - 8, y: right.y + 48))
-                    path.addLine(to: CGPoint(x: bottom.x + 20, y: bottom.y - 34))
-                    path.move(to: CGPoint(x: bottom.x + 20, y: bottom.y - 34))
-                    path.addLine(to: CGPoint(x: bottom.x + 28, y: bottom.y - 36))
-                    path.move(to: CGPoint(x: bottom.x + 20, y: bottom.y - 34))
-                    path.addLine(to: CGPoint(x: bottom.x + 24, y: bottom.y - 27))
-
-                    path.move(to: CGPoint(x: bottom.x - 16, y: bottom.y - 28))
-                    path.addLine(to: CGPoint(x: right.x - 18, y: right.y + 62))
-                    path.move(to: CGPoint(x: right.x - 18, y: right.y + 62))
-                    path.addLine(to: CGPoint(x: right.x - 25, y: right.y + 55))
-                    path.move(to: CGPoint(x: right.x - 18, y: right.y + 62))
-                    path.addLine(to: CGPoint(x: right.x - 12, y: right.y + 54))
+                    let x = width * 0.5
+                    path.move(to: CGPoint(x: x, y: 18))
+                    path.addLine(to: CGPoint(x: x, y: 230))
                 }
-                .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                .stroke(style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+                .foregroundStyle(.secondary)
 
-                MechanismNode(title: L10n.choose(simplifiedChinese: "吃碳水", english: "Carbs"), subtitle: L10n.choose(simplifiedChinese: "血糖↑", english: "Glucose↑"), tint: .orange)
-                    .position(left)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.choose(simplifiedChinese: "细胞外", english: "Extracellular"))
+                        .font(.caption.weight(.semibold))
+                    Text(L10n.choose(simplifiedChinese: "溶质浓度 40%", english: "Solute 40%"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("○  ○\n○")
+                        .font(.title3)
+                }
+                .position(x: width * 0.25, y: 76)
 
-                MechanismNode(title: "GLUT4", subtitle: L10n.choose(simplifiedChinese: "肌细胞开门", english: "Cell gate"), tint: .blue)
-                    .position(right)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.choose(simplifiedChinese: "细胞内", english: "Intracellular"))
+                        .font(.caption.weight(.semibold))
+                    Text(L10n.choose(simplifiedChinese: "溶质浓度 60%", english: "Solute 60%"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text("○  ○\n○  ○\n○")
+                        .font(.title3)
+                }
+                .position(x: width * 0.75, y: 84)
 
-                MechanismNode(title: L10n.choose(simplifiedChinese: "脂肪细胞", english: "Fat cell"), subtitle: L10n.choose(simplifiedChinese: "瘦素→饱腹", english: "Leptin→satiety"), tint: .green)
-                    .position(bottom)
+                VStack(spacing: 2) {
+                    Image(systemName: "arrow.right")
+                    Image(systemName: "arrow.right")
+                }
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .position(x: width * 0.52, y: 112)
 
-                Text(L10n.choose(simplifiedChinese: "胰岛素（INS）", english: "Insulin (INS)"))
-                    .font(.caption.weight(.medium))
+                Text(L10n.choose(simplifiedChinese: "水分由细胞外流向细胞内", english: "Water moves from extracellular to intracellular"))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .position(x: width * 0.52, y: 40)
-
-                Text(L10n.choose(simplifiedChinese: "受体结合", english: "Receptor binding"))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .position(x: width * 0.7, y: 120)
+                    .position(x: width * 0.5, y: 210)
             }
         }
     }
 }
 
-private struct MechanismNode: View {
-    let title: String
-    let subtitle: String
-    let tint: Color
-
+private struct PlanGenerationFlowCard: View {
     var body: some View {
-        VStack(spacing: 3) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-            Text(subtitle)
-                .font(.caption)
+        VStack(spacing: 8) {
+            FlowNode(
+                title: L10n.choose(simplifiedChinese: "输入", english: "Inputs"),
+                detail: L10n.choose(simplifiedChinese: "体重趋势 + 训练负荷 + 碳水/盐/饮水记录", english: "Weight trend + training load + carbs/salt/hydration logs"),
+                tone: .blue
+            )
+            Image(systemName: "arrow.down")
                 .foregroundStyle(.secondary)
+            FlowNode(
+                title: L10n.choose(simplifiedChinese: "判别层", english: "Decision Layer"),
+                detail: L10n.choose(simplifiedChinese: "区分水重波动 / 脂肪趋势", english: "Separate water fluctuation from fat trend"),
+                tone: .orange
+            )
+            Image(systemName: "arrow.down")
+                .foregroundStyle(.secondary)
+            FlowNode(
+                title: L10n.choose(simplifiedChinese: "输出", english: "Outputs"),
+                detail: L10n.choose(simplifiedChinese: "当日热量、三大营养素、每餐分配与次日调节", english: "Calories, macros, per-meal split, and next-day adjustments"),
+                tone: .green
+            )
         }
-        .multilineTextAlignment(.center)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(tint.opacity(0.45), lineWidth: 1)
-        )
-    }
-}
-
-private struct FatLossLogicExplainerCard: View {
-    private struct LogicStep: Identifiable {
-        let id: Int
-        let title: String
-        let detail: String
-    }
-
-            Text("↓")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-
-            HStack(spacing: 10) {
-                MetabolismNode(title: L10n.choose(simplifiedChinese: "丙酮酸", english: "Pyruvate"), tone: .cyan)
-                Text("→")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                MetabolismNode(title: L10n.choose(simplifiedChinese: "乙酰辅酶A", english: "Acetyl-CoA"), tone: .mint)
-                Text("+", tableName: nil)
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                MetabolismNode(title: L10n.choose(simplifiedChinese: "草酰乙酸", english: "OAA"), tone: .teal)
-            }
-
-            Text("↓")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-
-            MetabolismNode(title: L10n.choose(simplifiedChinese: "柠檬酸循环（三羧酸循环）", english: "Citrate Cycle (TCA)"), tone: .green)
-                .frame(maxWidth: .infinity)
-
-            Text("↓")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-
-            HStack(spacing: 10) {
-                MetabolismNode(title: L10n.choose(simplifiedChinese: "电子传递链", english: "Electron Transport Chain"), tone: .purple)
-                Text("→")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                MetabolismNode(title: "ATP + CO₂ + H₂O", tone: .pink)
-            }
-
-            Text(L10n.choose(simplifiedChinese: "图示重点：脂肪“烧得快”依赖三羧酸循环不断料，而不是极端单一饮食。", english: "Key point: faster fat oxidation depends on keeping TCA supplied, not extreme single-macro dieting."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(12)
+        .padding(10)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(.background.tertiary)
@@ -450,97 +220,36 @@ private struct FatLossLogicExplainerCard: View {
     }
 }
 
-private struct MetabolismNode: View {
+private struct FlowNode: View {
     let title: String
+    let detail: String
     let tone: Color
 
     var body: some View {
-        Text(title)
-            .font(.callout.weight(.semibold))
-            .multilineTextAlignment(.center)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity)
-            .background(tone.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(tone.opacity(0.35), lineWidth: 1)
-            )
-    }
-}
-
-private struct FatLossMechanismDiagram: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L10n.choose(simplifiedChinese: "原理图", english: "Mechanism Diagram"))
-                .font(.headline)
-
-            HStack(alignment: .center, spacing: 8) {
-                DiagramNode(title: L10n.choose(simplifiedChinese: "脂肪细胞", english: "Fat Cell"), subtitle: "HSL")
-                DiagramArrow()
-                DiagramNode(title: L10n.choose(simplifiedChinese: "游离脂肪酸", english: "FFA"), subtitle: L10n.choose(simplifiedChinese: "入血运输", english: "Bloodstream"))
-                DiagramArrow()
-                DiagramNode(title: L10n.choose(simplifiedChinese: "肌细胞", english: "Muscle Cell"), subtitle: L10n.choose(simplifiedChinese: "肉碱穿梭", english: "Carnitine shuttle"))
-            }
-
-            HStack(alignment: .center, spacing: 8) {
-                DiagramNode(title: L10n.choose(simplifiedChinese: "线粒体", english: "Mitochondria"), subtitle: L10n.choose(simplifiedChinese: "β氧化", english: "β-oxidation"))
-                DiagramArrow()
-                DiagramNode(title: L10n.choose(simplifiedChinese: "三羧酸循环", english: "TCA Cycle"), subtitle: "Krebs")
-                DiagramArrow()
-                DiagramNode(title: "ETC", subtitle: "CO₂ + H₂O + ATP")
-            }
-
-            Text(
-                L10n.choose(
-                    simplifiedChinese: "计划生成映射：训练负荷→碳水分配；体重目标→总热量缺口；恢复需求→蛋白与补水下限。",
-                    english: "Plan mapping: training load→carb allocation; weight goal→energy deficit; recovery demand→protein and hydration floors."
-                )
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.background.tertiary)
-        )
-    }
-}
-
-private struct DiagramNode: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .multilineTextAlignment(.center)
-            Text(subtitle)
+            Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 10)
-        .padding(.horizontal, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.accentColor.opacity(0.12))
-        )
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.accentColor.opacity(0.25), lineWidth: 1)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
         )
     }
 }
 
-private struct DiagramArrow: View {
+private struct BulletText: View {
+    let text: String
+
     var body: some View {
-        Image(systemName: "arrow.right")
-            .font(.body.weight(.bold))
+        Text("• \(text)")
+            .font(.callout)
             .foregroundStyle(.secondary)
-            .frame(width: 18)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
