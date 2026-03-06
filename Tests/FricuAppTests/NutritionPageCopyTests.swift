@@ -35,7 +35,7 @@ final class NutritionPageCopyTests: XCTestCase {
             NutritionPageCopy.executionTitle,
             NutritionPageCopy.screenshotInsightsTitle,
             NutritionPageCopy.appetiteMechanismTitle,
-            NutritionPageCopy.insulinGateTitle
+            NutritionPageCopy.carbSodiumCardTitle
         ]
 
         for title in titles {
@@ -63,11 +63,13 @@ final class NutritionPageCopyTests: XCTestCase {
         XCTAssertTrue(NutritionPageCopy.appetiteMechanismSummary.english.contains("leptin resistance"))
     }
 
-    /// Ensures the new INS-GLUT4 mechanism summary keeps key terms from screenshot logic.
-    func testInsulinGateSummaryContainsCoreConcepts() {
-        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.simplifiedChinese.contains("GLUT4"))
-        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.simplifiedChinese.contains("水重"))
-        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.english.contains("GLUT4"))
-        XCTAssertTrue(NutritionPageCopy.insulinGateSummary.english.contains("water"))
+    /// Ensures the screenshot-derived carb/sodium summary contains key osmosis and glycogen terms.
+    func testCarbSodiumCardSummaryContainsCoreConcepts() {
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("溶质"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("肌糖原"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.simplifiedChinese.contains("高盐"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("solute"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("glycogen"))
+        XCTAssertTrue(NutritionPageCopy.carbSodiumCardSummary.english.contains("sodium"))
     }
 }

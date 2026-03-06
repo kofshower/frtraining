@@ -47,10 +47,10 @@ enum NutritionPageCopy {
         simplifiedChinese: "热量相同下，高/低 GI 的减脂速度接近，但低 GI 让血糖曲线更平缓、饥饿出现更慢，从而更容易控制总摄入。若长期高胰岛素与肥胖并存，常伴随瘦素抵抗，饱腹信号会减弱。",
         english: "At equal calories, high- and low-GI diets can yield similar fat-loss speed, but low GI smooths glycemic swings and delays hunger, improving intake control. With long-term hyperinsulinemia and obesity, leptin resistance can blunt satiety signaling."
     )
-    static let insulinGateTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑥ INS-GLUT4“开门-合成”原理卡", english: "6) INS-GLUT4 Gate & Storage Card")
-    static let insulinGateSummary = NutritionPageBilingualCopy(
-        simplifiedChinese: "碳水升高血糖后，胰岛素（INS）与受体结合可激活 GLUT4“开门”，让葡萄糖进入肌细胞并优先补糖原；1g 糖原常伴随约 3g 水，短期体重上升常是水重。若长期高分泌导致敏感性下降，能量入细胞效率变差，饥饿与食欲更易反复。",
-        english: "When carbs raise blood glucose, insulin (INS) binds receptors and activates GLUT4 gates so glucose enters muscle cells and replenishes glycogen first. About 1 g glycogen often stores with ~3 g water, so short-term weight gain is frequently water weight. If chronically elevated insulin lowers sensitivity, cellular energy uptake efficiency drops and hunger/appetite rebounds more easily."
+    static let carbSodiumCardTitle = NutritionPageBilingualCopy(simplifiedChinese: "⑥ 高碳/盐分与体重波动原理卡", english: "6) Carb/Sodium Weight-Fluctuation Card")
+    static let carbSodiumCardSummary = NutritionPageBilingualCopy(
+        simplifiedChinese: "截图文案核心：‘哪里溶质高，水分就往哪里走’。高碳可提升肌糖原并把水带入细胞内；高盐会提高细胞外钠负荷并锁水。两者叠加时，体重短期变化多为水分，不等同于脂肪增减。",
+        english: "Core insight from the screenshot: 'water goes where solute concentration is higher.' High-carb intake raises glycogen and draws water into cells, while high sodium raises extracellular load and retains water. Combined intake often changes body weight through water, not immediate fat gain/loss."
     )
 }
 
@@ -216,15 +216,15 @@ private struct FatLossMechanismPageView: View {
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(NutritionPageCopy.tcaInsightTitle.localized())
+                    Text(NutritionPageCopy.carbSodiumCardTitle.localized())
                         .font(.headline)
 
                     DiagramPanelCard {
-                        TcaCycleInsightCard()
+                        CarbSodiumWaterMechanismCard()
                             .frame(maxWidth: .infinity)
                     }
 
-                    Text(NutritionPageCopy.tcaInsightSummary.localized())
+                    Text(NutritionPageCopy.carbSodiumCardSummary.localized())
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -570,6 +570,65 @@ private struct FlowNode: View {
             Text(detail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(tone.opacity(0.4), lineWidth: 1)
+        )
+    }
+}
+
+/// Diagram card that converts screenshot copy into a practical carb-sodium-water decision map.
+private struct CarbSodiumWaterMechanismCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "核心定律", english: "Core Rule"),
+                detail: L10n.choose(simplifiedChinese: "哪里溶质浓度更高，水分就向哪里移动。", english: "Water shifts toward the compartment with higher solute concentration."),
+                tone: .blue
+            )
+
+            Image(systemName: "arrow.down")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "高碳（尤其训练后）", english: "High Carb (Especially Post-workout)"),
+                detail: L10n.choose(simplifiedChinese: "肌糖原回补（约 1g 糖原结合 3–4g 水）→ 水分更多进入细胞内，外观可能更饱满。", english: "Glycogen refill (about 1g glycogen binds 3–4g water) draws more water into cells and can make muscles look fuller."),
+                tone: .green
+            )
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "高盐（钠负荷升高）", english: "High Salt (Higher Sodium Load)"),
+                detail: L10n.choose(simplifiedChinese: "细胞外液渗透压上升 → 水分更易滞留在细胞外/间质液，体重与浮肿感可能上升。", english: "Extracellular osmotic pressure rises, so water is retained outside cells/interstitial fluid, increasing scale weight and puffiness."),
+                tone: .orange
+            )
+
+            mechanismNode(
+                title: L10n.choose(simplifiedChinese: "结果判读", english: "How to Interpret"),
+                detail: L10n.choose(simplifiedChinese: "短期体重↑ 不等于脂肪↑；先看 7–14 天趋势，再结合围度、盐与碳水记录判断。", english: "Short-term weight gain is not equal to fat gain; review 7–14 day trend with circumference plus sodium/carb logs."),
+                tone: .purple
+            )
+        }
+    }
+
+    /// Builds a colored node used by the screenshot-summary mechanism card.
+    /// - Parameters:
+    ///   - title: Node title in the current language.
+    ///   - detail: Node explanatory copy in the current language.
+    ///   - tone: Accent color for node styling.
+    /// - Returns: A rendered card node.
+    private func mechanismNode(title: String, detail: String, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
