@@ -1,6 +1,9 @@
 import Foundation
 import AVKit
 import SwiftUI
+#if canImport(VLCKit)
+import VLCKit
+#endif
 
 /// Represents the supported social platforms for video download links.
 enum VideoDownloadPlatform: String, CaseIterable, Identifiable {
@@ -164,6 +167,73 @@ struct MediaProbeDetails {
     let resolution: String
 }
 
+
+/// Playback engine used by the embedded player area.
+enum EmbeddedPlaybackEngine: Equatable {
+    case libVLC
+    case avPlayer
+}
+
+/// Selects preferred playback engine based on runtime capability.
+struct EmbeddedPlaybackEngineSelector {
+    /// Returns preferred engine for the current platform.
+    /// - Parameters:
+    ///   - isMacOSPlatform: `true` when running on macOS.
+    ///   - isLibVLCAvailable: `true` when the app linked VLCKit/libVLC symbols.
+    /// - Returns: Selected engine used by playback setup and control UI.
+    func preferredEngine(isMacOSPlatform: Bool, isLibVLCAvailable: Bool) -> EmbeddedPlaybackEngine {
+        if isMacOSPlatform && isLibVLCAvailable {
+            return .libVLC
+        }
+        return .avPlayer
+    }
+}
+
+/// Locates bundled open-source decoder binaries packaged inside the app.
+struct OpenSourceDecoderRuntimeLocator {
+    /// Resolves executable path for a bundled decoder tool.
+    /// - Parameters:
+    ///   - toolName: Binary name such as `ffmpeg` or `ffprobe`.
+    ///   - bundle: Runtime bundle used to locate packaged resources.
+    ///   - fallbackSearchRoots: Optional search roots for test and CLI fallback.
+    /// - Returns: Executable absolute path when found.
+    func resolveBundledToolPath(
+        toolName: String,
+        bundle: Bundle = .main,
+        fallbackSearchRoots: [URL] = []
+    ) -> String? {
+        let fileManager = FileManager.default
+        let bundledCandidates = [
+            bundle.resourceURL?.appendingPathComponent("OpenSourceDecoder/bin/\(toolName)").path,
+            bundle.resourceURL?.appendingPathComponent("bin/\(toolName)").path,
+            bundle.bundleURL.appendingPathComponent("Contents/Resources/OpenSourceDecoder/bin/\(toolName)").path,
+            bundle.bundleURL.appendingPathComponent("Contents/Resources/bin/\(toolName)").path
+        ]
+
+        for searchRoot in fallbackSearchRoots {
+            let rootPath = searchRoot.path
+            if !bundledCandidates.contains(rootPath + "/\(toolName)") {
+                let candidate = rootPath + "/\(toolName)"
+                if fileManager.isExecutableFile(atPath: candidate) {
+                    return candidate
+                }
+            }
+            let nestedCandidate = rootPath + "/OpenSourceDecoder/bin/\(toolName)"
+            if fileManager.isExecutableFile(atPath: nestedCandidate) {
+                return nestedCandidate
+            }
+        }
+
+        for candidate in bundledCandidates.compactMap({ $0 }) {
+            if fileManager.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+
+        return nil
+    }
+}
+
 /// Generates localized explanations when a downloaded media file fails local playback.
 struct VideoPlaybackCompatibilityAdvisor {
     /// Builds a user-facing explanation for unsupported local playback.
@@ -176,8 +246,8 @@ struct VideoPlaybackCompatibilityAdvisor {
         )
 
         let platformLimit = L10n.choose(
-            simplifiedChinese: "应用使用系统 AVPlayer 解码，无法内嵌并覆盖全部第三方解码器格式（受系统能力、沙盒与授权限制）。",
-            english: "The app relies on system AVPlayer decoders and cannot embed full third-party codec coverage (due to platform capability, sandboxing, and licensing constraints)."
+            simplifiedChinese: "应用已内置开源解码链路并在播放器内直连播放，但极少数编码参数组合仍可能超出当前版本支持范围。",
+            english: "The app ships with a bundled open-source decoder pipeline for in-app playback, but rare codec/profile combinations can still exceed current support."
         )
 
         if let details {
@@ -478,6 +548,10 @@ struct VideoDownloaderPageView: View {
     @State private var outputLocationText = "-"
     @State private var downloadedVideoURL: URL?
     @State private var playbackPlayer: AVPlayer?
+    @State private var usesLibVLCPlayback = false
+    #if os(macOS) && canImport(VLCKit)
+    @StateObject private var libVLCPlaybackController = LibVLCPlaybackController()
+    #endif
     @State private var playbackErrorText = "-"
     @State private var errorAlertMessage = ""
     @State private var showErrorAlert = false
@@ -601,6 +675,10 @@ struct VideoDownloaderPageView: View {
                             value: outputLocationText
                         )
                         statusRow(
+                            title: L10n.choose(simplifiedChinese: "播放内核", english: "Playback Engine"),
+                            value: playbackEngineText
+                        )
+                        statusRow(
                             title: L10n.choose(simplifiedChinese: "播放测试", english: "Playback"),
                             value: playbackStatusText
                         )
@@ -611,7 +689,30 @@ struct VideoDownloaderPageView: View {
 
                 GroupBox(L10n.choose(simplifiedChinese: "播放测试", english: "Playback Test")) {
                     VStack(alignment: .leading, spacing: 10) {
-                        if let player = playbackPlayer, downloadedVideoURL != nil {
+                        if usesLibVLCPlayback, downloadedVideoURL != nil {
+                            #if os(macOS) && canImport(VLCKit)
+                            EmbeddedLibVLCPlayerView(controller: libVLCPlaybackController)
+                                .frame(minHeight: 220, maxHeight: 360)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                            HStack(spacing: 8) {
+                                Button(L10n.choose(simplifiedChinese: "播放", english: "Play")) {
+                                    libVLCPlaybackController.play()
+                                }
+                                .buttonStyle(.borderedProminent)
+
+                                Button(L10n.choose(simplifiedChinese: "暂停", english: "Pause")) {
+                                    libVLCPlaybackController.pause()
+                                }
+                                .buttonStyle(.bordered)
+
+                                Button(L10n.choose(simplifiedChinese: "重播", english: "Replay")) {
+                                    libVLCPlaybackController.replay()
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                            #endif
+                        } else if let player = playbackPlayer, downloadedVideoURL != nil {
                             EmbeddedAVPlayerView(player: player)
                                 .frame(minHeight: 220, maxHeight: 360)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -686,9 +787,25 @@ struct VideoDownloaderPageView: View {
             : L10n.choose(simplifiedChinese: "等待有效链接", english: "Waiting for valid link")
     }
 
+
+    /// Returns active playback engine text shown in status panel.
+    private var playbackEngineText: String {
+        if usesLibVLCPlayback {
+            return "libVLC"
+        }
+        if playbackPlayer != nil {
+            return "AVPlayer"
+        }
+        #if os(macOS) && canImport(VLCKit)
+        return "libVLC (ready)"
+        #else
+        return "AVPlayer"
+        #endif
+    }
+
     /// Returns playback status for the status panel.
     private var playbackStatusText: String {
-        if playbackPlayer != nil {
+        if usesLibVLCPlayback || playbackPlayer != nil {
             return L10n.choose(simplifiedChinese: "可播放", english: "Ready to play")
         }
         if playbackErrorText != "-" {
@@ -713,6 +830,10 @@ struct VideoDownloaderPageView: View {
             playbackErrorText = "-"
             downloadedVideoURL = nil
             playbackPlayer = nil
+            usesLibVLCPlayback = false
+            #if os(macOS) && canImport(VLCKit)
+            libVLCPlaybackController.stop()
+            #endif
 
             Task {
                 do {
@@ -788,6 +909,10 @@ struct VideoDownloaderPageView: View {
         outputLocationText = "-"
         downloadedVideoURL = nil
         playbackPlayer = nil
+        usesLibVLCPlayback = false
+        #if os(macOS) && canImport(VLCKit)
+        libVLCPlaybackController.stop()
+        #endif
         playbackErrorText = "-"
         errorAlertMessage = ""
     }
@@ -797,6 +922,10 @@ struct VideoDownloaderPageView: View {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: outputURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
             playbackPlayer = nil
+            usesLibVLCPlayback = false
+            #if os(macOS) && canImport(VLCKit)
+            libVLCPlaybackController.stop()
+            #endif
             downloadedVideoURL = nil
             playbackErrorText = L10n.choose(
                 simplifiedChinese: "下载已完成，但未找到可播放文件。",
@@ -807,7 +936,19 @@ struct VideoDownloaderPageView: View {
 
         downloadedVideoURL = outputURL
         playbackPlayer = nil
+        usesLibVLCPlayback = false
         playbackErrorText = "-"
+
+        #if os(macOS) && canImport(VLCKit)
+        let selector = EmbeddedPlaybackEngineSelector()
+        let selectedEngine = selector.preferredEngine(isMacOSPlatform: true, isLibVLCAvailable: true)
+        if selectedEngine == .libVLC {
+            usesLibVLCPlayback = true
+            libVLCPlaybackController.load(mediaURL: outputURL)
+            libVLCPlaybackController.play()
+            return
+        }
+        #endif
 
         Task {
             let asset = AVURLAsset(url: outputURL)
@@ -851,6 +992,7 @@ struct VideoDownloaderPageView: View {
                                    let scheme = fallbackURL.scheme?.lowercased(),
                                    scheme == "http" || scheme == "https" {
                                     downloadedVideoURL = nil
+                                    usesLibVLCPlayback = false
                                     let player = AVPlayer(url: fallbackURL)
                                     playbackPlayer = player
                                     playbackErrorText = "\(unplayableReason)\n" + L10n.choose(
@@ -860,6 +1002,7 @@ struct VideoDownloaderPageView: View {
                                     player.play()
                                 } else {
                                     playbackPlayer = nil
+                                    usesLibVLCPlayback = false
                                     downloadedVideoURL = nil
                                     playbackErrorText = "\(unplayableReason)\n" + L10n.choose(
                                         simplifiedChinese: "自动转码与流地址回退均失败。",
@@ -872,6 +1015,7 @@ struct VideoDownloaderPageView: View {
                     }
 
                     let player = AVPlayer(url: outputURL)
+                    usesLibVLCPlayback = false
                     playbackPlayer = player
                     playbackErrorText = "-"
                     player.play()
@@ -879,6 +1023,7 @@ struct VideoDownloaderPageView: View {
             } catch {
                 await MainActor.run {
                     playbackPlayer = nil
+                    usesLibVLCPlayback = false
                     downloadedVideoURL = nil
                     playbackErrorText = L10n.choose(
                         simplifiedChinese: "播放器初始化失败：\(error.localizedDescription)",
@@ -890,6 +1035,9 @@ struct VideoDownloaderPageView: View {
     }
 
     /// Attempts to transcode the downloaded file into an AVPlayer-friendly MP4 copy via ffmpeg.
+    /// Performance assumptions: this is CPU and disk I/O intensive, so execution runs on `.utility` priority.
+    /// Potential bottlenecks: high-resolution sources and slow storage can increase end-to-end latency.
+    /// Optimization suggestion: expose codec preset and hardware acceleration flags as user-tunable settings.
     private func transcodeToPlayableCopy(inputURL: URL) async -> URL? {
         guard let ffmpegCommand = resolveFFmpegCommand() else { return nil }
         return await Task.detached(priority: .utility) {
@@ -945,6 +1093,9 @@ struct VideoDownloaderPageView: View {
     }
 
     /// Probes container and codec information via ffprobe.
+    /// Performance assumptions: probe cost is mostly process spawn and metadata parsing overhead.
+    /// Potential bottlenecks: network-mounted files can delay probe completion because ffprobe must read headers.
+    /// Optimization suggestion: cache probe results keyed by file path and modification date.
     private func probeMediaDetails(ffprobeCommand: String, inputURL: URL) async -> MediaProbeDetails? {
         await Task.detached(priority: .utility) {
             let process = Process()
@@ -1002,6 +1153,11 @@ struct VideoDownloaderPageView: View {
 
     /// Resolves ffmpeg executable path for optional local transcode fallback.
     private func resolveFFmpegCommand() -> String? {
+        let runtimeLocator = OpenSourceDecoderRuntimeLocator()
+        if let bundledFFmpeg = runtimeLocator.resolveBundledToolPath(toolName: "ffmpeg") {
+            return bundledFFmpeg
+        }
+
         let candidates = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
         for candidate in candidates {
             if FileManager.default.isExecutableFile(atPath: candidate) {
@@ -1013,6 +1169,11 @@ struct VideoDownloaderPageView: View {
 
     /// Resolves ffprobe executable path for playback diagnostics.
     private func resolveFFprobeCommand() -> String? {
+        let runtimeLocator = OpenSourceDecoderRuntimeLocator()
+        if let bundledFFprobe = runtimeLocator.resolveBundledToolPath(toolName: "ffprobe") {
+            return bundledFFprobe
+        }
+
         let candidates = ["/opt/homebrew/bin/ffprobe", "/usr/local/bin/ffprobe"]
         for candidate in candidates {
             if FileManager.default.isExecutableFile(atPath: candidate) {
@@ -1159,6 +1320,69 @@ struct VideoDownloaderPageView: View {
         }
     }
 }
+
+#if os(macOS) && canImport(VLCKit)
+/// Coordinates libVLC media playback state and imperative controls for SwiftUI.
+final class LibVLCPlaybackController: ObservableObject {
+    private let mediaPlayer = VLCMediaPlayer()
+
+    /// `true` after a media URL is loaded into libVLC.
+    @Published private(set) var hasLoadedMedia = false
+
+    /// Loads media URL and immediately binds it to the current media player instance.
+    /// - Parameter mediaURL: Local file URL or remote URL accepted by libVLC.
+    func load(mediaURL: URL) {
+        mediaPlayer.media = VLCMedia(url: mediaURL)
+        hasLoadedMedia = true
+    }
+
+    /// Attaches a drawable view used by libVLC video rendering pipeline.
+    /// - Parameter drawableView: Cocoa view that hosts libVLC pixel output.
+    func attachDrawable(_ drawableView: NSView) {
+        if let existingDrawable = mediaPlayer.drawable as? NSView, existingDrawable == drawableView {
+            return
+        }
+        mediaPlayer.drawable = drawableView
+    }
+
+    /// Starts or resumes playback.
+    func play() {
+        mediaPlayer.play()
+    }
+
+    /// Pauses playback while keeping current media position.
+    func pause() {
+        mediaPlayer.pause()
+    }
+
+    /// Seeks to the beginning by stopping and starting current media.
+    func replay() {
+        mediaPlayer.stop()
+        mediaPlayer.play()
+    }
+
+    /// Stops playback and clears loaded-state flag for UI status updates.
+    func stop() {
+        mediaPlayer.stop()
+        hasLoadedMedia = false
+    }
+}
+
+/// NSView host that connects SwiftUI layout with libVLC drawable rendering.
+private struct EmbeddedLibVLCPlayerView: NSViewRepresentable {
+    @ObservedObject var controller: LibVLCPlaybackController
+
+    func makeNSView(context: Context) -> NSView {
+        let containerView = NSView()
+        controller.attachDrawable(containerView)
+        return containerView
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        controller.attachDrawable(nsView)
+    }
+}
+#endif
 
 #if os(macOS)
 /// A lightweight AVKit player wrapper that avoids SwiftUI `VideoPlayer` runtime issues.

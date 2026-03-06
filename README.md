@@ -86,6 +86,7 @@ xcodegen generate
 
 - macOS 14+
 - Xcode 15+ (Swift toolchain)
+- libVLC runtime via VLCKit (recommended `VLCKit 4.0.0+`) for in-app decoder playback on macOS
 
 ## Run
 

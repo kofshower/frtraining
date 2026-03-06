@@ -22,7 +22,7 @@ final class VideoPlaybackCompatibilityAdvisorTests: XCTestCase {
         let reason = advisor.localUnplayableReason(details: nil)
 
         XCTAssertTrue(reason.contains("cannot decode this media format"))
-        XCTAssertTrue(reason.contains("cannot embed full third-party codec coverage"))
+        XCTAssertTrue(reason.contains("bundled open-source decoder pipeline"))
     }
 
     /// Verifies that codec/container diagnostics are included when probe details are available.
