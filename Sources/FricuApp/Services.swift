@@ -430,16 +430,22 @@ final class LocalJSONRepository: DataRepository {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    init() throws {
-        let fm = FileManager.default
-        guard let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+    /// Returns the canonical data directory for local repository files.
+    /// - Throws: `RepositoryError.appSupportUnavailable` if Application Support is inaccessible.
+    /// - Returns: The `Fricu` application support directory URL.
+    static func dataDirectoryURL(fileManager: FileManager = .default) throws -> URL {
+        guard let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             throw RepositoryError.appSupportUnavailable
         }
-
         let root = appSupport.appendingPathComponent("Fricu", isDirectory: true)
-        if !fm.fileExists(atPath: root.path) {
-            try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        if !fileManager.fileExists(atPath: root.path) {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         }
+        return root
+    }
+
+    init() throws {
+        let root = try Self.dataDirectoryURL()
 
         self.activitiesURL = root.appendingPathComponent("activities.json")
         self.activityMetricInsightsURL = root.appendingPathComponent("activity_metric_insights.json")
