@@ -176,14 +176,27 @@ final class RemoteFirstRepository: DataRepository {
     private let client: FricuServerClient
     private let config: RemoteRepositoryConfig
     private let uploadQueue = DispatchQueue(label: "fricu.remote.repository.upload", qos: .utility)
+    private let offlineBackupWriter: ActivityOfflineBackupWriter
     private let hydrateLock = NSLock()
     private var didHydrateFromServer = false
     private var pendingUploadWorkItem: DispatchWorkItem?
+    private var retryTimer: DispatchSourceTimer?
+    private var hasPendingUploadFailure = false
 
     init(config: RemoteRepositoryConfig, local: LocalJSONRepository) {
         self.config = config
         self.local = local
         self.client = FricuServerClient(config: config)
+        let backupDirectory: URL
+        do {
+            backupDirectory = try LocalJSONRepository.dataDirectoryURL().appendingPathComponent("offline-activity-backups", isDirectory: true)
+        } catch {
+            backupDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("fricu-offline-activity-backups", isDirectory: true)
+        }
+        self.offlineBackupWriter = ActivityOfflineBackupWriter(
+            backupDirectory: backupDirectory
+        )
     }
 
     func loadActivities() throws -> [Activity] {
@@ -286,17 +299,61 @@ final class RemoteFirstRepository: DataRepository {
 
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
-                do {
-                    let snapshot = try self.makeLocalSnapshot()
-                    try self.client.pushSnapshot(snapshot, timeout: self.config.uploadTimeout)
-                } catch {
-                    print("Remote repository upload failed: \(error.localizedDescription)")
-                }
+                self.attemptUploadNow()
             }
 
             self.pendingUploadWorkItem = work
             self.uploadQueue.asyncAfter(deadline: .now() + self.config.uploadDebounceSeconds, execute: work)
         }
+    }
+
+    /// Attempts one immediate upload and manages offline backup + retry loop.
+    private func attemptUploadNow() {
+        do {
+            let snapshot = try self.makeLocalSnapshot()
+            try self.client.pushSnapshot(snapshot, timeout: self.config.uploadTimeout)
+            self.hasPendingUploadFailure = false
+            stopRetryTimerIfNeeded()
+        } catch {
+            self.hasPendingUploadFailure = true
+            backupActivitiesForOfflineRecovery()
+            startRetryTimerIfNeeded()
+            print("Remote repository upload failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Writes deterministic FIT backups so failed server uploads never lose activity data.
+    private func backupActivitiesForOfflineRecovery() {
+        do {
+            let activities = try local.loadActivities()
+            let backupURLs = try offlineBackupWriter.backup(activities: activities)
+            if !backupURLs.isEmpty {
+                print("Wrote \(backupURLs.count) offline FIT backups")
+            }
+        } catch {
+            print("Offline FIT backup failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Starts a lightweight periodic retry for pending failed uploads.
+    private func startRetryTimerIfNeeded() {
+        guard retryTimer == nil else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: uploadQueue)
+        timer.schedule(deadline: .now() + 5.0, repeating: 15.0)
+        timer.setEventHandler { [weak self] in
+            guard let self, self.hasPendingUploadFailure else { return }
+            self.attemptUploadNow()
+        }
+        timer.resume()
+        retryTimer = timer
+    }
+
+    /// Stops the retry timer once pending upload failures are resolved.
+    private func stopRetryTimerIfNeeded() {
+        guard let retryTimer else { return }
+        retryTimer.cancel()
+        self.retryTimer = nil
     }
 
     private func makeLocalSnapshot() throws -> RemoteDataSnapshot {
