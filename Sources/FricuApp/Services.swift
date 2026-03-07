@@ -119,7 +119,7 @@ final class RemoteHTTPRepository: DataRepository {
     private let decoder: JSONDecoder
     private let pendingWritesURL: URL
 
-    init(baseURL: URL? = nil) throws {
+    init(baseURL: URL? = nil, session: URLSession? = nil) throws {
         if let baseURL {
             self.baseURL = baseURL
         } else if let custom = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey),
@@ -146,10 +146,14 @@ final class RemoteHTTPRepository: DataRepository {
         try FileManager.default.createDirectory(at: pendingDir, withIntermediateDirectories: true)
         self.pendingWritesURL = pendingDir.appendingPathComponent("remote_pending_writes.json")
 
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
-        self.session = URLSession(configuration: config)
+        if let session {
+            self.session = session
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 30
+            config.timeoutIntervalForResource = 60
+            self.session = URLSession(configuration: config)
+        }
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -164,6 +168,11 @@ final class RemoteHTTPRepository: DataRepository {
         var key: String
         var payload: Data
         var createdAt: Date
+    }
+
+    /// Compatibility wrapper for deployments that expose activities inside a snapshot object.
+    private struct ActivitiesSnapshotEnvelope: Decodable {
+        let activities: [Activity]
     }
 
     private func loadPendingWrites() throws -> [PendingWrite] {
@@ -300,7 +309,19 @@ final class RemoteHTTPRepository: DataRepository {
     }
 
     func loadActivities() throws -> [Activity] {
-        try fetch("activities", as: [Activity].self).sorted { $0.date > $1.date }
+        var req = URLRequest(url: endpoint("activities"))
+        req.httpMethod = "GET"
+        let data = try execute(req)
+        if let rows = try? decoder.decode([Activity].self, from: data) {
+            return rows.sorted { $0.date > $1.date }
+        }
+
+        // Backward/interop safety: accept `{ "activities": [...] }` payloads.
+        if let envelope = try? decoder.decode(ActivitiesSnapshotEnvelope.self, from: data) {
+            return envelope.activities.sorted { $0.date > $1.date }
+        }
+
+        return try decoder.decode([Activity].self, from: data).sorted { $0.date > $1.date }
     }
 
     func saveActivities(_ activities: [Activity]) throws {

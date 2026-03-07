@@ -221,6 +221,20 @@ final class AppStore: ObservableObject {
         clientLogLines = []
     }
 
+    /// Persists `Data` to `UserDefaults` only when bytes change.
+    /// - Parameters:
+    ///   - data: Encoded payload to persist.
+    ///   - key: Target `UserDefaults` key.
+    /// - Returns: `true` if the value changed and was written, otherwise `false`.
+    private func saveDefaultsDataIfChanged(_ data: Data, forKey key: String) -> Bool {
+        let defaults = UserDefaults.standard
+        if let existing = defaults.data(forKey: key), existing == data {
+            return false
+        }
+        defaults.set(data, forKey: key)
+        return true
+    }
+
     private func hashDataFNV1a64(_ data: Data) -> UInt64 {
         var hash: UInt64 = 0xcbf29ce484222325
         for byte in data {
@@ -578,7 +592,9 @@ final class AppStore: ObservableObject {
         let payload = TrainerRiderConnectionStore(primarySessionID: primaryTrainerSessionID, riders: riders)
         do {
             let data = try JSONEncoder().encode(payload)
-            UserDefaults.standard.set(data, forKey: trainerRiderConnectionStoreDefaultsKey)
+            guard saveDefaultsDataIfChanged(data, forKey: trainerRiderConnectionStoreDefaultsKey) else {
+                return
+            }
             persistAppSettingsToRepository(reason: "persistTrainerRiderConnectionStore")
         } catch {
             lastError = "Failed to save rider devices: \(error.localizedDescription)"
@@ -784,7 +800,9 @@ final class AppStore: ObservableObject {
     private func persistAthleteProfileStore() {
         do {
             let data = try JSONEncoder().encode(athleteProfilesByPanelID)
-            UserDefaults.standard.set(data, forKey: athleteProfileStoreDefaultsKey)
+            guard saveDefaultsDataIfChanged(data, forKey: athleteProfileStoreDefaultsKey) else {
+                return
+            }
             persistAppSettingsToRepository(reason: "persistAthleteProfileStore")
         } catch {
             lastError = "Failed to save athlete profile store: \(error.localizedDescription)"
