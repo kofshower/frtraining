@@ -80,9 +80,9 @@ struct FatLossAssistantPageView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(FatLossAssistantCopy.reviewTitle.localized())
                             .font(.headline)
-                        BulletText(text: L10n.choose(simplifiedChinese: "以 7–14 天趋势作为主要判断，不被单日体重影响。", english: "Use 7–14 day trends as the primary signal, not single-day scale changes."))
-                        BulletText(text: L10n.choose(simplifiedChinese: "若围度下降且训练状态稳定，即使体重平台也可继续当前策略。", english: "If waist decreases and training quality is stable, keep the current strategy even with weight plateau."))
-                        BulletText(text: L10n.choose(simplifiedChinese: "连续两周无变化时，再微调碳水时段或总热量。", english: "Only after two static weeks, fine-tune carb timing or total calories."))
+                        FatLossAssistantBulletText(text: L10n.choose(simplifiedChinese: "以 7–14 天趋势作为主要判断，不被单日体重影响。", english: "Use 7–14 day trends as the primary signal, not single-day scale changes."))
+                        FatLossAssistantBulletText(text: L10n.choose(simplifiedChinese: "若围度下降且训练状态稳定，即使体重平台也可继续当前策略。", english: "If waist decreases and training quality is stable, keep the current strategy even with weight plateau."))
+                        FatLossAssistantBulletText(text: L10n.choose(simplifiedChinese: "连续两周无变化时，再微调碳水时段或总热量。", english: "Only after two static weeks, fine-tune carb timing or total calories."))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -139,6 +139,23 @@ struct FatLossAssistantPageView: View {
             Text(FatLossAssistantCopy.subtitle.localized())
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Renders a single bullet row using body copy style.
+private struct FatLossAssistantBulletText: View {
+    /// Display text rendered next to the leading bullet symbol.
+    let text: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text("•")
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
