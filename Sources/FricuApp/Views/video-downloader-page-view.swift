@@ -249,20 +249,18 @@ struct OpenSourceDecoderRuntimeLocator {
         fallbackSearchRoots: [URL] = []
     ) -> String? {
         let fileManager = FileManager.default
-        let bundledCandidates = [
+        let bundledCandidates: [String] = [
             bundle.resourceURL?.appendingPathComponent("OpenSourceDecoder/bin/\(toolName)").path,
             bundle.resourceURL?.appendingPathComponent("bin/\(toolName)").path,
             bundle.bundleURL.appendingPathComponent("Contents/Resources/OpenSourceDecoder/bin/\(toolName)").path,
             bundle.bundleURL.appendingPathComponent("Contents/Resources/bin/\(toolName)").path
-        ]
+        ].compactMap { $0 }
 
         for searchRoot in fallbackSearchRoots {
             let rootPath = searchRoot.path
-            if !bundledCandidates.contains(rootPath + "/\(toolName)") {
-                let candidate = rootPath + "/\(toolName)"
-                if fileManager.isExecutableFile(atPath: candidate) {
-                    return candidate
-                }
+            let candidate = rootPath + "/\(toolName)"
+            if !bundledCandidates.contains(candidate) && fileManager.isExecutableFile(atPath: candidate) {
+                return candidate
             }
             let nestedCandidate = rootPath + "/OpenSourceDecoder/bin/\(toolName)"
             if fileManager.isExecutableFile(atPath: nestedCandidate) {
@@ -270,7 +268,7 @@ struct OpenSourceDecoderRuntimeLocator {
             }
         }
 
-        for candidate in bundledCandidates.compactMap({ $0 }) {
+        for candidate in bundledCandidates {
             if fileManager.isExecutableFile(atPath: candidate) {
                 return candidate
             }
