@@ -24,20 +24,6 @@ enum FatLossAssistantCopy {
     static let dailyChecklistTitle = FatLossAssistantBilingualCopy(simplifiedChinese: "今日执行清单", english: "Today's Execution Checklist")
     static let strategyTitle = FatLossAssistantBilingualCopy(simplifiedChinese: "策略卡", english: "Strategy Cards")
     static let reviewTitle = FatLossAssistantBilingualCopy(simplifiedChinese: "复盘规则", english: "Review Rules")
-    static let reviewRules: [FatLossAssistantBilingualCopy] = [
-        FatLossAssistantBilingualCopy(
-            simplifiedChinese: "以 7–14 天趋势作为主要判断，不被单日体重影响。",
-            english: "Use 7–14 day trends as the primary signal, not single-day scale changes."
-        ),
-        FatLossAssistantBilingualCopy(
-            simplifiedChinese: "若围度下降且训练状态稳定，即使体重平台也可继续当前策略。",
-            english: "If waist decreases and training quality is stable, keep the current strategy even with weight plateau."
-        ),
-        FatLossAssistantBilingualCopy(
-            simplifiedChinese: "连续两周无变化时，再微调碳水时段或总热量。",
-            english: "Only after two static weeks, fine-tune carb timing or total calories."
-        ),
-    ]
 }
 
 /// A dedicated page that summarizes the fat-loss workflow with actionable guidance.
@@ -94,9 +80,9 @@ struct FatLossAssistantPageView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(FatLossAssistantCopy.reviewTitle.localized())
                             .font(.headline)
-                        ForEach(Array(FatLossAssistantCopy.reviewRules.enumerated()), id: \.offset) { _, rule in
-                            BulletText(text: rule.localized())
-                        }
+                        BulletText(text: L10n.choose(simplifiedChinese: "以 7–14 天趋势作为主要判断，不被单日体重影响。", english: "Use 7–14 day trends as the primary signal, not single-day scale changes."))
+                        BulletText(text: L10n.choose(simplifiedChinese: "若围度下降且训练状态稳定，即使体重平台也可继续当前策略。", english: "If waist decreases and training quality is stable, keep the current strategy even with weight plateau."))
+                        BulletText(text: L10n.choose(simplifiedChinese: "连续两周无变化时，再微调碳水时段或总热量。", english: "Only after two static weeks, fine-tune carb timing or total calories."))
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -154,22 +140,5 @@ struct FatLossAssistantPageView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-    }
-}
-
-/// A compact bullet row used by review sections.
-private struct BulletText: View {
-    /// Localized bullet content.
-    let text: String
-
-    /// Renders one bullet point line with leading alignment.
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text("•")
-            Text(text)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .font(.subheadline)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

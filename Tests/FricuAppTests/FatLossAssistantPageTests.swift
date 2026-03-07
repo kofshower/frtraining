@@ -45,14 +45,4 @@ final class FatLossAssistantPageTests: XCTestCase {
             XCTAssertFalse(token.english.isEmpty)
         }
     }
-
-    /// Ensures review bullet rules remain complete and localized in both languages.
-    func testReviewRulesCopyIsCompleteAndNonEmpty() {
-        XCTAssertEqual(FatLossAssistantCopy.reviewRules.count, 3)
-
-        for rule in FatLossAssistantCopy.reviewRules {
-            XCTAssertFalse(rule.simplifiedChinese.isEmpty)
-            XCTAssertFalse(rule.english.isEmpty)
-        }
-    }
 }
