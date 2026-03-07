@@ -167,6 +167,52 @@ struct MediaProbeDetails {
     let resolution: String
 }
 
+/// Formats playback progress and timestamp labels for embedded player controls.
+struct VideoPlaybackProgressFormatter {
+    /// Converts current and duration seconds into a slider-safe progress value.
+    /// - Parameters:
+    ///   - currentSeconds: Current playback time in seconds.
+    ///   - durationSeconds: Total media duration in seconds.
+    /// - Returns: Clamped progress ratio in range `[0, 1]`.
+    static func clampedProgress(currentSeconds: Double, durationSeconds: Double) -> Double {
+        guard durationSeconds.isFinite, durationSeconds > 0 else {
+            return 0
+        }
+        return min(max(currentSeconds / durationSeconds, 0), 1)
+    }
+
+    /// Formats seconds into `MM:SS` or `H:MM:SS` for player timeline labels.
+    /// - Parameter seconds: Raw second value.
+    /// - Returns: Human-readable timestamp string.
+    static func formatTimestamp(seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else {
+            return "00:00"
+        }
+
+        let wholeSeconds = Int(seconds.rounded(.down))
+        let hours = wholeSeconds / 3600
+        let minutes = (wholeSeconds % 3600) / 60
+        let remainSeconds = wholeSeconds % 60
+
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, remainSeconds)
+        }
+        return String(format: "%02d:%02d", minutes, remainSeconds)
+    }
+
+    /// Maps a slider progress value back to an absolute seek time.
+    /// - Parameters:
+    ///   - progress: Slider progress in `[0, 1]`.
+    ///   - durationSeconds: Total media duration in seconds.
+    /// - Returns: Clamped seek target in seconds.
+    static func seekTime(progress: Double, durationSeconds: Double) -> Double {
+        guard durationSeconds.isFinite, durationSeconds > 0 else {
+            return 0
+        }
+        return min(max(progress, 0), 1) * durationSeconds
+    }
+}
+
 
 /// Playback engine used by the embedded player area.
 enum EmbeddedPlaybackEngine: Equatable {
@@ -548,6 +594,11 @@ struct VideoDownloaderPageView: View {
     @State private var outputLocationText = "-"
     @State private var downloadedVideoURL: URL?
     @State private var playbackPlayer: AVPlayer?
+    @State private var playbackCurrentSeconds: Double = 0
+    @State private var playbackDurationSeconds: Double = 0
+    @State private var isSeekingPlaybackPosition = false
+    @State private var playbackTimeObserver: Any?
+    @State private var isPlayerExpanded = false
     @State private var usesLibVLCPlayback = false
     #if os(macOS) && canImport(VLCKit)
     @StateObject private var libVLCPlaybackController = LibVLCPlaybackController()
@@ -692,7 +743,7 @@ struct VideoDownloaderPageView: View {
                         if usesLibVLCPlayback, downloadedVideoURL != nil {
                             #if os(macOS) && canImport(VLCKit)
                             EmbeddedLibVLCPlayerView(controller: libVLCPlaybackController)
-                                .frame(minHeight: 220, maxHeight: 360)
+                                .frame(minHeight: playerMinHeight, maxHeight: playerMaxHeight)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                             HStack(spacing: 8) {
@@ -710,14 +761,55 @@ struct VideoDownloaderPageView: View {
                                     libVLCPlaybackController.replay()
                                 }
                                 .buttonStyle(.bordered)
+
+                                playerSizeToggleButton
                             }
                             #endif
                         } else if let player = playbackPlayer, downloadedVideoURL != nil {
                             EmbeddedAVPlayerView(player: player)
-                                .frame(minHeight: 220, maxHeight: 360)
+                                .frame(minHeight: playerMinHeight, maxHeight: playerMaxHeight)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
+                            VStack(spacing: 6) {
+                                Slider(
+                                    value: Binding(
+                                        get: {
+                                            VideoPlaybackProgressFormatter.clampedProgress(
+                                                currentSeconds: playbackCurrentSeconds,
+                                                durationSeconds: playbackDurationSeconds
+                                            )
+                                        },
+                                        set: { updatedProgress in
+                                            playbackCurrentSeconds = VideoPlaybackProgressFormatter.seekTime(
+                                                progress: updatedProgress,
+                                                durationSeconds: playbackDurationSeconds
+                                            )
+                                        }
+                                    ),
+                                    in: 0...1,
+                                    onEditingChanged: { isEditing in
+                                        isSeekingPlaybackPosition = isEditing
+                                        if !isEditing {
+                                            seekPlayback(to: playbackCurrentSeconds)
+                                        }
+                                    }
+                                )
+
+                                HStack {
+                                    Text(VideoPlaybackProgressFormatter.formatTimestamp(seconds: playbackCurrentSeconds))
+                                    Spacer()
+                                    Text(VideoPlaybackProgressFormatter.formatTimestamp(seconds: playbackDurationSeconds))
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            }
+
                             HStack(spacing: 8) {
+                                Button(L10n.choose(simplifiedChinese: "后退10秒", english: "-10s")) {
+                                    seekPlayback(by: -10)
+                                }
+                                .buttonStyle(.bordered)
+
                                 Button(L10n.choose(simplifiedChinese: "播放", english: "Play")) {
                                     player.play()
                                 }
@@ -729,10 +821,17 @@ struct VideoDownloaderPageView: View {
                                 .buttonStyle(.bordered)
 
                                 Button(L10n.choose(simplifiedChinese: "重播", english: "Replay")) {
-                                    player.seek(to: .zero)
+                                    seekPlayback(to: 0)
                                     player.play()
                                 }
                                 .buttonStyle(.bordered)
+
+                                Button(L10n.choose(simplifiedChinese: "前进10秒", english: "+10s")) {
+                                    seekPlayback(by: 10)
+                                }
+                                .buttonStyle(.bordered)
+
+                                playerSizeToggleButton
                             }
                         } else {
                             Text(
@@ -767,6 +866,29 @@ struct VideoDownloaderPageView: View {
         .onChange(of: sourceURLText) { _, _ in
             resetJobFeedback()
         }
+        .onDisappear {
+            removePlaybackTimeObserverIfNeeded()
+        }
+    }
+
+    private var playerMinHeight: CGFloat {
+        isPlayerExpanded ? 320 : 220
+    }
+
+    private var playerMaxHeight: CGFloat {
+        isPlayerExpanded ? 560 : 360
+    }
+
+    @ViewBuilder
+    private var playerSizeToggleButton: some View {
+        Button(
+            isPlayerExpanded
+                ? L10n.choose(simplifiedChinese: "最小化", english: "Minimize")
+                : L10n.choose(simplifiedChinese: "最大化", english: "Maximize")
+        ) {
+            isPlayerExpanded.toggle()
+        }
+        .buttonStyle(.bordered)
     }
 
     /// Indicates whether the current input is ready for a download action.
@@ -829,6 +951,7 @@ struct VideoDownloaderPageView: View {
             outputLocationText = "-"
             playbackErrorText = "-"
             downloadedVideoURL = nil
+            removePlaybackTimeObserverIfNeeded()
             playbackPlayer = nil
             usesLibVLCPlayback = false
             #if os(macOS) && canImport(VLCKit)
@@ -908,7 +1031,10 @@ struct VideoDownloaderPageView: View {
         extractedMediaURLText = "-"
         outputLocationText = "-"
         downloadedVideoURL = nil
+        removePlaybackTimeObserverIfNeeded()
         playbackPlayer = nil
+        playbackCurrentSeconds = 0
+        playbackDurationSeconds = 0
         usesLibVLCPlayback = false
         #if os(macOS) && canImport(VLCKit)
         libVLCPlaybackController.stop()
@@ -921,6 +1047,7 @@ struct VideoDownloaderPageView: View {
     private func configurePlaybackPlayer(with outputURL: URL, fallbackMediaURLText: String) {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: outputURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            removePlaybackTimeObserverIfNeeded()
             playbackPlayer = nil
             usesLibVLCPlayback = false
             #if os(macOS) && canImport(VLCKit)
@@ -935,7 +1062,10 @@ struct VideoDownloaderPageView: View {
         }
 
         downloadedVideoURL = outputURL
+        removePlaybackTimeObserverIfNeeded()
         playbackPlayer = nil
+        playbackCurrentSeconds = 0
+        playbackDurationSeconds = 0
         usesLibVLCPlayback = false
         playbackErrorText = "-"
 
@@ -974,6 +1104,7 @@ struct VideoDownloaderPageView: View {
                                             downloadedVideoURL = transcodedURL
                                             let player = AVPlayer(url: transcodedURL)
                                             playbackPlayer = player
+                                            attachPlaybackTimeObserver(to: player)
                                             playbackErrorText = "\(unplayableReason)\n" + L10n.choose(
                                                 simplifiedChinese: "已自动转码为兼容格式进行播放测试（原文件保留）。",
                                                 english: "Auto-transcoded to a compatible format for playback test (original file kept)."
@@ -995,12 +1126,14 @@ struct VideoDownloaderPageView: View {
                                     usesLibVLCPlayback = false
                                     let player = AVPlayer(url: fallbackURL)
                                     playbackPlayer = player
+                                    attachPlaybackTimeObserver(to: player)
                                     playbackErrorText = "\(unplayableReason)\n" + L10n.choose(
                                         simplifiedChinese: "已回退为在线流地址播放测试。",
                                         english: "Falling back to stream URL for playback test."
                                     )
                                     player.play()
                                 } else {
+                                    removePlaybackTimeObserverIfNeeded()
                                     playbackPlayer = nil
                                     usesLibVLCPlayback = false
                                     downloadedVideoURL = nil
@@ -1017,11 +1150,13 @@ struct VideoDownloaderPageView: View {
                     let player = AVPlayer(url: outputURL)
                     usesLibVLCPlayback = false
                     playbackPlayer = player
+                    attachPlaybackTimeObserver(to: player)
                     playbackErrorText = "-"
                     player.play()
                 }
             } catch {
                 await MainActor.run {
+                    removePlaybackTimeObserverIfNeeded()
                     playbackPlayer = nil
                     usesLibVLCPlayback = false
                     downloadedVideoURL = nil
@@ -1032,6 +1167,57 @@ struct VideoDownloaderPageView: View {
                 }
             }
         }
+    }
+
+    /// Attaches periodic playback observation for custom timeline controls.
+    /// - Parameter player: Active AVPlayer instance.
+    private func attachPlaybackTimeObserver(to player: AVPlayer) {
+        removePlaybackTimeObserverIfNeeded()
+        let updateInterval = CMTime(seconds: 0.25, preferredTimescale: CMTimeScale(NSEC_PER_SEC))
+        playbackTimeObserver = player.addPeriodicTimeObserver(forInterval: updateInterval, queue: .main) { currentTime in
+            guard !isSeekingPlaybackPosition else {
+                return
+            }
+
+            let currentSeconds = CMTimeGetSeconds(currentTime)
+            if currentSeconds.isFinite {
+                playbackCurrentSeconds = max(0, currentSeconds)
+            }
+
+            let durationSeconds = CMTimeGetSeconds(player.currentItem?.duration ?? .invalid)
+            if durationSeconds.isFinite, durationSeconds > 0 {
+                playbackDurationSeconds = durationSeconds
+            }
+        }
+    }
+
+    /// Removes playback observation to prevent duplicated observer callbacks.
+    private func removePlaybackTimeObserverIfNeeded() {
+        guard let existingObserver = playbackTimeObserver, let player = playbackPlayer else {
+            playbackTimeObserver = nil
+            return
+        }
+        player.removeTimeObserver(existingObserver)
+        playbackTimeObserver = nil
+    }
+
+    /// Seeks playback by a relative offset.
+    /// - Parameter offsetSeconds: Relative offset in seconds.
+    private func seekPlayback(by offsetSeconds: Double) {
+        seekPlayback(to: playbackCurrentSeconds + offsetSeconds)
+    }
+
+    /// Seeks playback to an absolute target position.
+    /// - Parameter absoluteSeconds: Target playback position in seconds.
+    private func seekPlayback(to absoluteSeconds: Double) {
+        guard let player = playbackPlayer else {
+            return
+        }
+
+        let boundedSeconds = min(max(absoluteSeconds, 0), max(playbackDurationSeconds, 0))
+        let seekTarget = CMTime(seconds: boundedSeconds, preferredTimescale: 600)
+        player.seek(to: seekTarget, toleranceBefore: .zero, toleranceAfter: .zero)
+        playbackCurrentSeconds = boundedSeconds
     }
 
     /// Attempts to transcode the downloaded file into an AVPlayer-friendly MP4 copy via ffmpeg.

@@ -52,6 +52,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case videoDownloader
     case proSuite
     case nutrition
+    case fatLossAssistant
     case workoutBuilder
     case library
     case insights
@@ -67,6 +68,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .videoDownloader: return "app.section.videoDownloader"
         case .proSuite: return "app.section.prosuite"
         case .nutrition: return "app.section.nutrition"
+        case .fatLossAssistant: return "app.section.fatLossAssistant"
         case .workoutBuilder: return "app.section.workoutBuilder"
         case .library: return "app.section.library"
         case .insights: return "app.section.insights"
@@ -88,6 +90,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return L10n.choose(simplifiedChinese: "专业套件", english: "Pro Suite")
         case .nutrition:
             return L10n.choose(simplifiedChinese: "饮食", english: "Nutrition")
+        case .fatLossAssistant:
+            return L10n.choose(simplifiedChinese: "减脂助手", english: "Fat-loss Assistant")
         case .workoutBuilder:
             return L10n.choose(simplifiedChinese: "训练构建", english: "Workout Builder")
         case .library:
@@ -107,6 +111,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .videoDownloader: return "square.and.arrow.down"
         case .proSuite: return "square.grid.3x3"
         case .nutrition: return "fork.knife"
+        case .fatLossAssistant: return "figure.run"
         case .workoutBuilder: return "pencil.and.ruler"
         case .library: return "calendar"
         case .insights: return "chart.xyaxis.line"
@@ -134,6 +139,8 @@ struct RootView: View {
                 ProSuiteView()
             case .nutrition:
                 NutritionPageView()
+            case .fatLossAssistant:
+                FatLossAssistantPageView()
             case .workoutBuilder:
                 WorkoutBuilderView()
             case .library:

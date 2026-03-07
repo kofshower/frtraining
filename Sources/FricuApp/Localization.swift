@@ -94,6 +94,10 @@ enum L10n {
             return fallbackByOption(option: option, english: "Trainer", simplifiedChinese: "骑行台")
         case "app.section.prosuite":
             return fallbackByOption(option: option, english: "Pro Suite", simplifiedChinese: "专业套件")
+        case "app.section.nutrition":
+            return fallbackByOption(option: option, english: "Nutrition", simplifiedChinese: "饮食")
+        case "app.section.fatLossAssistant":
+            return fallbackByOption(option: option, english: "Fat-loss Assistant", simplifiedChinese: "减脂助手")
         case "app.section.workoutBuilder":
             return fallbackByOption(option: option, english: "Workout Builder", simplifiedChinese: "训练构建")
         case "app.section.library":
