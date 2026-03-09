@@ -1,13 +1,55 @@
 import SwiftUI
+import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 @main
 struct FricuApp: App {
-    @StateObject private var store = AppStore()
+    @StateObject private var store: AppStore
     @AppStorage(AppLanguageOption.storageKey) private var appLanguageRawValue = AppLanguageOption.system.rawValue
 
     init() {
         L10n.installBundleBridgeIfNeeded()
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--backfill-trainer-fits") {
+            let includeInProgress = !args.contains("--exclude-in-progress")
+            let cliStore = AppStore()
+            cliStore.bootstrap(runTrainerFITSelfHeal: false)
+            let outputText = cliStore.runOneTimeTrainerFITBackfill(includeInProgress: includeInProgress)
+            print(outputText)
+            fflush(stdout)
+            exit(0)
+        }
+        if let athlete = Self.argumentValue("--force-trainer-fit-athlete", in: args) {
+            let dateToken = Self.argumentValue("--force-trainer-fit-date", in: args)
+            let fileListRaw = Self.argumentValue("--force-trainer-fit-files", in: args)
+            let fileNames = fileListRaw?
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty } ?? []
+
+            let cliStore = AppStore()
+            cliStore.bootstrap(runTrainerFITSelfHeal: false)
+            let outputText = cliStore.forceReassignTrainerFITSnapshots(
+                athleteName: athlete,
+                dateToken: dateToken,
+                fileNames: fileNames
+            )
+            print(outputText)
+            fflush(stdout)
+            exit(0)
+        }
         PowerAssertionController.shared.beginPreventingSleep()
+        _store = StateObject(wrappedValue: AppStore())
+    }
+
+    private static func argumentValue(_ key: String, in args: [String]) -> String? {
+        guard let idx = args.firstIndex(of: key), idx + 1 < args.count else { return nil }
+        let value = args[idx + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 
     private var appLocale: Locale {
@@ -50,6 +92,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case trainer
     case lactateLab
     case videoDownloader
+    case videoFitting
     case proSuite
     case nutrition
     case fatLossAssistant
@@ -66,6 +109,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .trainer: return "app.section.trainer"
         case .lactateLab: return "app.section.lactateLab"
         case .videoDownloader: return "app.section.videoDownloader"
+        case .videoFitting: return "app.section.videoFitting"
         case .proSuite: return "app.section.prosuite"
         case .nutrition: return "app.section.nutrition"
         case .fatLossAssistant: return "app.section.fatLossAssistant"
@@ -86,6 +130,8 @@ enum AppSection: String, CaseIterable, Identifiable {
             return L10n.choose(simplifiedChinese: "乳酸实验室", english: "Lactate Lab")
         case .videoDownloader:
             return L10n.choose(simplifiedChinese: "视频下载", english: "Video Downloader")
+        case .videoFitting:
+            return L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting")
         case .proSuite:
             return L10n.choose(simplifiedChinese: "专业套件", english: "Pro Suite")
         case .nutrition:
@@ -109,6 +155,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .trainer: return "bicycle"
         case .lactateLab: return "testtube.2"
         case .videoDownloader: return "square.and.arrow.down"
+        case .videoFitting: return "figure.cooldown"
         case .proSuite: return "square.grid.3x3"
         case .nutrition: return "fork.knife"
         case .fatLossAssistant: return "figure.run"
@@ -135,6 +182,8 @@ struct RootView: View {
                 LactateLabView()
             case .videoDownloader:
                 VideoDownloaderPageView()
+            case .videoFitting:
+                VideoFittingPageView()
             case .proSuite:
                 ProSuiteView()
             case .nutrition:

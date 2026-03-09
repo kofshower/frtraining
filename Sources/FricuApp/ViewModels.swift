@@ -6,6 +6,9 @@ import SwiftUI
 #if canImport(AppKit)
 import AppKit
 #endif
+#if canImport(SQLite3)
+import SQLite3
+#endif
 
 struct TrainerRiderSession: Identifiable {
     let id: UUID
@@ -39,6 +42,83 @@ struct TrainerRecordingStatus {
     var elevationGainMeters: Double = 0
     var lastFitPath: String?
     var lastSyncSummary: String?
+}
+
+struct TrainerFITRecoveryReport {
+    var scannedCount: Int = 0
+    var alreadyLinkedCount: Int = 0
+    var recoveredCount: Int = 0
+    var failedCount: Int = 0
+    var uploadedOrQueuedCount: Int = 0
+    var recoveredFiles: [String] = []
+    var failedFiles: [String] = []
+
+    var summaryLine: String {
+        "Trainer FIT self-heal: scanned \(scannedCount), linked \(alreadyLinkedCount), recovered \(recoveredCount), failed \(failedCount), server-upload/queue \(uploadedOrQueuedCount)."
+    }
+
+    var detailedText: String {
+        var rows = [summaryLine]
+        if !recoveredFiles.isEmpty {
+            rows.append("Recovered files: \(recoveredFiles.joined(separator: ", "))")
+        }
+        if !failedFiles.isEmpty {
+            rows.append("Failed files: \(failedFiles.joined(separator: ", "))")
+        }
+        return rows.joined(separator: "\n")
+    }
+}
+
+private struct TrainerFITExportHint {
+    let athleteName: String
+    let createdAt: Date?
+}
+
+private struct TrainerFITOwnershipRepairReport {
+    var scannedCount: Int = 0
+    var reassignedCount: Int = 0
+    var failedPersist: Bool = false
+
+    var summaryLine: String {
+        var line = "Trainer FIT ownership repair: scanned \(scannedCount), reassigned \(reassignedCount)."
+        if failedPersist {
+            line += " persist failed."
+        }
+        return line
+    }
+}
+
+private struct TrainerFITForceReassignReport {
+    var matchedFiles: [String] = []
+    var reassignedExistingCount: Int = 0
+    var importedMissingCount: Int = 0
+    var failedFiles: [String] = []
+
+    var summaryLine: String {
+        "Trainer FIT force reassignment: matched \(matchedFiles.count), reassigned \(reassignedExistingCount), imported \(importedMissingCount), failed \(failedFiles.count)."
+    }
+
+    var detailedText: String {
+        var rows = [summaryLine]
+        if !matchedFiles.isEmpty {
+            rows.append("Matched files: \(matchedFiles.joined(separator: ", "))")
+        }
+        if !failedFiles.isEmpty {
+            rows.append("Failed files: \(failedFiles.joined(separator: ", "))")
+        }
+        return rows.joined(separator: "\n")
+    }
+}
+
+private struct TrainerFITPowerRepairReport {
+    var scannedCount: Int = 0
+    var repairedCount: Int = 0
+    var warningCount: Int = 0
+    var failedCount: Int = 0
+
+    var summaryLine: String {
+        "Trainer FIT power repair: scanned \(scannedCount), repaired \(repairedCount), warned \(warningCount), failed \(failedCount)."
+    }
 }
 
 private struct TrainerRiderConnectionMemory: Codable {
@@ -165,6 +245,7 @@ final class AppStore: ObservableObject {
     private var isFinalizingTrainerRecordingBySession: Set<UUID> = []
     private var trainerConnectionCancellableBySession: [UUID: AnyCancellable] = [:]
     private var trainerPowerCancellableBySession: [UUID: AnyCancellable] = [:]
+    private var powerMeterPowerCancellableBySession: [UUID: AnyCancellable] = [:]
     private var trainerRiderConnectionMemoryBySessionID: [UUID: TrainerRiderConnectionMemory] = [:]
     private let trainerRiderConnectionStoreDefaultsKey = "fricu.trainer.rider.connection.store.v1"
     private let athleteProfileStoreDefaultsKey = "fricu.athlete.profile.store.v1"
@@ -178,6 +259,8 @@ final class AppStore: ObservableObject {
     private var lastAppSettingsSyncedDigest: UInt64?
     private var lastAppSettingsFailedDigest: UInt64?
     private var lastAppSettingsFailedAt: Date?
+    private let trainerRecordingAutoStopInactivitySec: TimeInterval = 180
+    private let trainerRecordingCheckpointWriteIntervalSec: TimeInterval = 5
     private static let clientLogTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -185,6 +268,18 @@ final class AppStore: ObservableObject {
         formatter.dateFormat = "HH:mm:ss"
         return formatter
     }()
+    private static let trainerFITRecoveryFileNameDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter
+    }()
+
+    private static func activitiesCacheFileURL() throws -> URL {
+        try LocalJSONRepository.dataDirectoryURL().appendingPathComponent("activities.json")
+    }
 
     init() {
         loadServerEndpointFromDefaults()
@@ -506,6 +601,7 @@ final class AppStore: ObservableObject {
             uniqueKeysWithValues: trainerRiderSessions.map { ($0.id, TrainerRecordingStatus()) }
         )
         refreshPrimaryTrainerRecordingSnapshot()
+        setupTrainerRecordingPipeline()
     }
 
     private func makeTrainerRiderSession(
@@ -669,6 +765,7 @@ final class AppStore: ObservableObject {
         updateTrainerRecordingStatus(TrainerRecordingStatus(), for: session.id)
         observeTrainerConnection(for: session)
         observeTrainerPower(for: session)
+        observePowerMeterPower(for: session)
         persistTrainerRiderConnectionStore()
         refreshAthletePanelsAndSelection(preferSpecificSelection: false)
     }
@@ -724,6 +821,8 @@ final class AppStore: ObservableObject {
         trainerConnectionCancellableBySession[id] = nil
         trainerPowerCancellableBySession[id]?.cancel()
         trainerPowerCancellableBySession[id] = nil
+        powerMeterPowerCancellableBySession[id]?.cancel()
+        powerMeterPowerCancellableBySession[id] = nil
         trainerRecordingStatusBySession[id] = nil
         trainerRecordingSessionByRider[id] = nil
         trainerRecordingTimerTaskBySession[id]?.cancel()
@@ -731,6 +830,7 @@ final class AppStore: ObservableObject {
         trainerRecordingFinalizationTaskBySession[id]?.cancel()
         trainerRecordingFinalizationTaskBySession[id] = nil
         isFinalizingTrainerRecordingBySession.remove(id)
+        removeTrainerRecordingCheckpointFIT(for: id)
         persistTrainerRiderConnectionStore()
         refreshAthletePanelsAndSelection(preferSpecificSelection: false)
         refreshPrimaryTrainerRecordingSnapshot()
@@ -738,6 +838,19 @@ final class AppStore: ObservableObject {
 
     private func trainerRiderSession(id: UUID) -> TrainerRiderSession? {
         trainerRiderSessions.first { $0.id == id }
+    }
+
+    private var primaryTrainerRiderName: String? {
+        if let primaryID = primaryTrainerSessionID,
+           let primarySession = trainerRiderSession(id: primaryID),
+           let normalized = normalizedNonEmptyString(primarySession.name) {
+            return normalized
+        }
+        if let first = trainerRiderSessions.first,
+           let normalized = normalizedNonEmptyString(first.name) {
+            return normalized
+        }
+        return nil
     }
 
     func trainerRecordingStatus(for sessionID: UUID) -> TrainerRecordingStatus {
@@ -771,8 +884,7 @@ final class AppStore: ObservableObject {
     }
 
     private var fallbackAthleteName: String {
-        if let primary = trainerRiderSessions.first?.name.trimmingCharacters(in: .whitespacesAndNewlines),
-           !primary.isEmpty {
+        if let primary = primaryTrainerRiderName {
             return primary
         }
         if let existing = activities
@@ -931,6 +1043,13 @@ final class AppStore: ObservableObject {
         } else if preferSpecificSelection, previousSelection == AthletePanel.allID {
             selectedAthletePanelID = rows.first?.id ?? AthletePanel.allID
         }
+        if selectedAthletePanelID != AthletePanel.allID,
+           let selectedPanel = athletePanelsCache.first(where: { $0.id == selectedAthletePanelID }),
+           selectedPanel.count == 0,
+           isDisposablePlaceholderAthleteName(selectedPanel.title),
+           let firstWithActivities = rows.first(where: { $0.count > 0 }) {
+            selectedAthletePanelID = firstWithActivities.id
+        }
 
         for panel in rows where athleteProfilesByPanelID[panel.id] == nil {
             athleteProfilesByPanelID[panel.id] = profile
@@ -1069,25 +1188,62 @@ final class AppStore: ObservableObject {
         persistAthleteProfileStore()
     }
 
-    func bootstrap() {
+    func bootstrap(runTrainerFITSelfHeal: Bool = true) {
         do {
             let startedAt = Date()
             appendClientLog(level: "INFO", message: "Bootstrap started: loading settings and repository data.")
             hydrateAppSettingsFromRepository()
             var loadedProfile: AthleteProfile = .default
-            if let repository {
-                do {
-                    try repository.flushPendingWrites()
-                    appendClientLog(level: "INFO", message: "Flushed pending remote writes before bootstrap load.")
-                } catch {
-                    appendClientLog(level: "WARN", message: "Failed to flush pending remote writes: \(detailedErrorDescription(error))")
-                }
-                self.activities = try repository.loadActivities()
-                self.dailyMealPlans = try repository.loadDailyMealPlans()
-                self.customFoodLibrary = try repository.loadCustomFoods()
-                self.plannedWorkouts = try repository.loadWorkouts()
-                self.wellnessSamples = try repository.loadWellnessSamples()
-                self.intervalsCalendarEvents = try repository.loadCalendarEvents()
+                if let repository {
+                    do {
+                        try repository.flushPendingWrites()
+                        appendClientLog(level: "INFO", message: "Flushed pending remote writes before bootstrap load.")
+                    } catch {
+                        appendClientLog(level: "WARN", message: "Failed to flush pending remote writes: \(detailedErrorDescription(error))")
+                    }
+                    do {
+                        self.activities = try repository.loadActivities()
+                    } catch {
+                        appendClientLog(
+                            level: "WARN",
+                            message: "Failed to load remote activities: \(detailedErrorDescription(error))"
+                        )
+                        if let cached = loadActivitiesFromLocalCache(), !cached.isEmpty {
+                            self.activities = deduplicateActivities(cached)
+                            appendClientLog(
+                                level: "WARN",
+                                message: "Recovered \(self.activities.count) activities from local cache after remote load failure."
+                            )
+                        } else {
+                            throw error
+                        }
+                    }
+                    if self.activities.isEmpty,
+                       let cached = loadActivitiesFromLocalCache(),
+                       !cached.isEmpty {
+                        self.activities = deduplicateActivities(cached)
+                        appendClientLog(
+                            level: "WARN",
+                            message: "Remote activities empty. Restored \(self.activities.count) activities from local cache."
+                        )
+                        do {
+                            try repository.saveActivities(self.activities)
+                            appendClientLog(
+                                level: "INFO",
+                                message: "Rehydrated remote activities from local cache (\(self.activities.count))."
+                            )
+                        } catch {
+                            appendClientLog(
+                                level: "WARN",
+                                message: "Failed to rehydrate remote activities: \(detailedErrorDescription(error))"
+                            )
+                        }
+                    }
+                    self.dailyMealPlans = try repository.loadDailyMealPlans()
+                    self.customFoodLibrary = try repository.loadCustomFoods()
+                    self.plannedWorkouts = try repository.loadWorkouts()
+                    self.wellnessSamples = try repository.loadWellnessSamples()
+                    self.intervalsCalendarEvents = try repository.loadCalendarEvents()
                 self.lactateHistoryRecords = try repository.loadLactateHistoryRecords()
                 loadedProfile = try repository.loadProfile()
                 self.activityMetricInsightsCache = Dictionary(
@@ -1106,6 +1262,30 @@ final class AppStore: ObservableObject {
             }
 
             self.profile = loadedProfile
+            if runTrainerFITSelfHeal {
+                let recovery = recoverUnlinkedTrainerFITActivities(
+                    includeInProgress: true,
+                    trigger: "bootstrap"
+                )
+                appendClientLog(
+                    level: recovery.failedCount > 0 ? "WARN" : "INFO",
+                    message: recovery.summaryLine
+                )
+                if recovery.recoveredCount > 0 {
+                    syncStatus = recovery.summaryLine
+                }
+                let ownershipRepair = repairTrainerFITOwnershipFromExportedHints(trigger: "bootstrap")
+                if ownershipRepair.reassignedCount > 0 || ownershipRepair.failedPersist {
+                    appendClientLog(
+                        level: ownershipRepair.failedPersist ? "WARN" : "INFO",
+                        message: ownershipRepair.summaryLine
+                    )
+                }
+            }
+            let powerRepair = repairTrainerActivitiesMissingPower(trigger: "bootstrap")
+            if powerRepair.repairedCount > 0 {
+                syncStatus = powerRepair.summaryLine
+            }
             migrateLegacyAthleteNamesIfNeeded()
             loadAthleteProfileStoreIfNeeded(fallback: loadedProfile)
             refreshAthletePanelsAndSelection(preferSpecificSelection: true)
@@ -1121,6 +1301,264 @@ final class AppStore: ObservableObject {
         } catch {
             self.lastError = "Failed to load server data: \(error.localizedDescription)"
         }
+    }
+
+    @discardableResult
+    func runOneTimeTrainerFITBackfill(includeInProgress: Bool = true) -> String {
+        let recovery = recoverUnlinkedTrainerFITActivities(
+            includeInProgress: includeInProgress,
+            trigger: "manual_tool"
+        )
+        let ownershipRepair = repairTrainerFITOwnershipFromExportedHints(trigger: "manual_tool")
+        let powerRepair = repairTrainerActivitiesMissingPower(trigger: "manual_tool")
+        if recovery.recoveredCount > 0 || ownershipRepair.reassignedCount > 0 || powerRepair.repairedCount > 0 {
+            refreshAthletePanelsAndSelection(preferSpecificSelection: false)
+            markDerivedStateDirty()
+        }
+        let text = [recovery.detailedText, ownershipRepair.summaryLine, powerRepair.summaryLine].joined(separator: "\n")
+        syncStatus = [recovery.summaryLine, ownershipRepair.summaryLine, powerRepair.summaryLine].joined(separator: " ")
+        return text
+    }
+
+    @discardableResult
+    func forceReassignTrainerFITSnapshots(
+        athleteName: String,
+        dateToken: String?,
+        fileNames: [String]
+    ) -> String {
+        guard let targetAthlete = normalizedNonEmptyString(athleteName) else {
+            return "Trainer FIT force reassignment skipped: athlete name is empty."
+        }
+        let normalizedDateToken = normalizedTrainerFITDateToken(dateToken)
+        let targetFiles = Set(
+            fileNames.compactMap { normalizedNonEmptyString($0)?.lowercased() }
+        )
+
+        var report = TrainerFITForceReassignReport()
+        var updatedActivities = activities
+        var activityIndexBySourceFile: [String: Int] = [:]
+        for idx in updatedActivities.indices {
+            if let lower = normalizedNonEmptyString(updatedActivities[idx].sourceFileName)?.lowercased() {
+                activityIndexBySourceFile[lower] = idx
+            }
+        }
+
+        let exportedHintsByFileName = trainerFITExportHintsByFileName()
+        let matchedFITURLs = discoverTrainerFITRecoveryCandidates(includeInProgress: true).filter { url in
+            let lower = url.lastPathComponent.lowercased()
+            if !targetFiles.isEmpty {
+                return targetFiles.contains(lower)
+            }
+            guard let normalizedDateToken else {
+                return false
+            }
+            guard let fileToken = trainerFITDateTokenForMatching(lowerFileName: lower) else {
+                return false
+            }
+            return fileToken == normalizedDateToken
+        }
+
+        if matchedFITURLs.isEmpty {
+            return "Trainer FIT force reassignment skipped: no matched files."
+        }
+
+        for fitURL in matchedFITURLs {
+            let fitFileName = fitURL.lastPathComponent
+            let fitFileNameLower = fitFileName.lowercased()
+            let exportedHint = exportedHintsByFileName[fitFileNameLower]
+            report.matchedFiles.append(fitFileName)
+
+            if let existingIndex = activityIndexBySourceFile[fitFileNameLower] {
+                do {
+                    let fileData = try Data(contentsOf: fitURL)
+                    guard !fileData.isEmpty else {
+                        throw NSError(
+                            domain: "Fricu.TrainerForceReassign",
+                            code: 2,
+                            userInfo: [NSLocalizedDescriptionKey: "FIT file is empty"]
+                        )
+                    }
+
+                    let fallbackDate = fallbackDateForTrainerFITImport(at: fitURL)
+                    let imported = try ActivityFileImporter.importFile(
+                        at: fitURL,
+                        profile: profile,
+                        fitFallbackDate: fallbackDate ?? exportedHint?.createdAt
+                    )
+
+                    var updated = updatedActivities[existingIndex]
+                    updated.date = imported.date
+                    updated.sport = imported.sport
+                    updated.durationSec = imported.durationSec
+                    updated.distanceKm = imported.distanceKm
+                    updated.tss = imported.tss
+                    updated.normalizedPower = imported.normalizedPower
+                    updated.avgHeartRate = imported.avgHeartRate
+                    updated.intervals = imported.intervals
+                    updated.athleteName = targetAthlete
+                    updated.notes = "\(targetAthlete) · Forced trainer FIT reassignment · \(IntervalsDateFormatter.dateTimeLocal.string(from: updated.date))"
+                    updated.sourceFileName = fitFileName
+                    updated.sourceFileType = "fit"
+                    updated.sourceFileBase64 = fileData.base64EncodedString()
+
+                    updatedActivities[existingIndex] = updated
+                    report.reassignedExistingCount += 1
+                } catch {
+                    report.failedFiles.append(fitFileName)
+                    appendClientLog(
+                        level: "WARN",
+                        message: "Trainer FIT force reassignment failed to refresh existing \(fitFileName): \(detailedErrorDescription(error))"
+                    )
+                }
+                continue
+            }
+
+            do {
+                let fileData = try Data(contentsOf: fitURL)
+                guard !fileData.isEmpty else {
+                    throw NSError(
+                        domain: "Fricu.TrainerForceReassign",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "FIT file is empty"]
+                    )
+                }
+
+                let fallbackDate = fallbackDateForTrainerFITImport(at: fitURL)
+                var imported = try ActivityFileImporter.importFile(
+                    at: fitURL,
+                    profile: profile,
+                    fitFallbackDate: fallbackDate ?? exportedHint?.createdAt
+                )
+                imported.athleteName = targetAthlete
+                let unixDate = Int(imported.date.timeIntervalSince1970)
+                if let sessionID = trainerSessionIDFromInProgressFITFileName(fitFileName) {
+                    imported.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):forced"
+                } else if let sessionID = trainerSessionIDFromFinalizedFITFileName(fitFileName) {
+                    imported.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):forced"
+                } else {
+                    let token = fitFileNameLower.replacingOccurrences(of: " ", with: "_")
+                    let athleteToken = athletePanelID(forName: targetAthlete)
+                    imported.externalID = "fricu:trainer-forced:\(athleteToken):\(token):\(unixDate)"
+                }
+                imported.notes = "\(targetAthlete) · Forced trainer FIT reassignment · \(IntervalsDateFormatter.dateTimeLocal.string(from: imported.date))"
+                imported.sourceFileName = fitFileName
+                imported.sourceFileType = "fit"
+                imported.sourceFileBase64 = fileData.base64EncodedString()
+
+                updatedActivities.append(imported)
+                activityIndexBySourceFile[fitFileNameLower] = updatedActivities.count - 1
+                report.importedMissingCount += 1
+            } catch {
+                report.failedFiles.append(fitFileName)
+                appendClientLog(
+                    level: "WARN",
+                    message: "Trainer FIT force reassignment failed for \(fitFileName): \(detailedErrorDescription(error))"
+                )
+            }
+        }
+
+        if report.reassignedExistingCount > 0 || report.importedMissingCount > 0 {
+            do {
+                let merged = deduplicateActivities(updatedActivities)
+                try persistActivities(merged)
+                refreshAthletePanelsAndSelection(preferSpecificSelection: false)
+                markDerivedStateDirty()
+                syncStatus = report.summaryLine
+            } catch {
+                appendClientLog(
+                    level: "ERROR",
+                    message: "Trainer FIT force reassignment persist failed: \(detailedErrorDescription(error))"
+                )
+                return report.detailedText + "\nPersist failed: \(error.localizedDescription)"
+            }
+        }
+
+        return report.detailedText
+    }
+
+    @discardableResult
+    private func repairTrainerActivitiesMissingPower(trigger: String) -> TrainerFITPowerRepairReport {
+        var report = TrainerFITPowerRepairReport()
+        var updatedActivities = activities
+
+        for index in updatedActivities.indices {
+            var activity = updatedActivities[index]
+            let fileName = activity.sourceFileName?.lowercased() ?? ""
+            let fileType = activity.sourceFileType?.lowercased() ?? ""
+            let externalID = activity.externalID?.lowercased() ?? ""
+            let isTrainer = fileName.hasPrefix("trainer-")
+                || fileName.hasPrefix("in-progress-")
+                || externalID.contains("fricu:trainer")
+            guard isTrainer, fileType == "fit" else { continue }
+
+            report.scannedCount += 1
+            guard activity.normalizedPower == nil else { continue }
+            guard let encoded = activity.sourceFileBase64,
+                  let data = Data(base64Encoded: encoded),
+                  !data.isEmpty else {
+                report.warningCount += 1
+                if !activity.notes.contains("WARNING: missing power telemetry") {
+                    activity.notes += (activity.notes.isEmpty ? "" : " · ") + "WARNING: missing power telemetry"
+                    updatedActivities[index] = activity
+                }
+                continue
+            }
+
+            do {
+                let summary = try FITActivityParser.parse(data: data, fallbackDate: activity.date)
+                if let repairedPower = summary.normalizedPower ?? summary.avgPower {
+                    activity.date = summary.date
+                    activity.sport = summary.sport
+                    activity.durationSec = max(1, summary.durationSec)
+                    activity.distanceKm = max(0, summary.distanceKm)
+                    activity.normalizedPower = repairedPower
+                    activity.avgHeartRate = summary.avgHeartRate ?? activity.avgHeartRate
+                    activity.tss = TSSEstimator.estimate(
+                        durationSec: activity.durationSec,
+                        sport: activity.sport,
+                        avgPower: summary.avgPower,
+                        normalizedPower: activity.normalizedPower,
+                        avgHeartRate: activity.avgHeartRate,
+                        profile: profile,
+                        date: activity.date
+                    )
+                    updatedActivities[index] = activity
+                    report.repairedCount += 1
+                } else {
+                    report.warningCount += 1
+                    if !activity.notes.contains("WARNING: missing power telemetry") {
+                        activity.notes += (activity.notes.isEmpty ? "" : " · ") + "WARNING: missing power telemetry"
+                        updatedActivities[index] = activity
+                    }
+                }
+            } catch {
+                report.failedCount += 1
+                appendClientLog(
+                    level: "WARN",
+                    message: "Trainer FIT power repair (\(trigger)) failed for \(activity.sourceFileName ?? activity.id.uuidString): \(detailedErrorDescription(error))"
+                )
+            }
+        }
+
+        if report.repairedCount > 0 || report.warningCount > 0 {
+            do {
+                try persistActivities(updatedActivities)
+                refreshAthletePanelsAndSelection(preferSpecificSelection: false)
+                markDerivedStateDirty()
+            } catch {
+                appendClientLog(
+                    level: "WARN",
+                    message: "Trainer FIT power repair (\(trigger)) persist failed: \(detailedErrorDescription(error))"
+                )
+                report.failedCount += 1
+            }
+        }
+
+        appendClientLog(
+            level: report.failedCount > 0 ? "WARN" : "INFO",
+            message: report.summaryLine
+        )
+        return report
     }
 
     func addLactateHistoryRecord(type: LactateTestType, points: [LactateSamplePoint]) {
@@ -1205,7 +1643,7 @@ final class AppStore: ObservableObject {
            let panel = athletePanelsCache.first(where: { $0.id == selectedAthletePanelID }) {
             return panel.title
         }
-        if let primary = trainerRiderSessions.first?.name.trimmingCharacters(in: .whitespacesAndNewlines), !primary.isEmpty {
+        if let primary = primaryTrainerRiderName {
             return primary
         }
         return L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
@@ -1453,6 +1891,8 @@ final class AppStore: ObservableObject {
     private struct TrainerRecordingSession {
         var startedAt: Date
         var lastSampleAt: Date
+        var lastMotionAt: Date
+        var lastCheckpointWriteAt: Date?
         var samples: [LiveRideSample]
         var cumulativeDistanceMeters: Double
         var cumulativeElevationGainMeters: Double
@@ -1496,6 +1936,7 @@ final class AppStore: ObservableObject {
         for session in trainerRiderSessions {
             observeTrainerConnection(for: session)
             observeTrainerPower(for: session)
+            observePowerMeterPower(for: session)
         }
     }
 
@@ -1523,10 +1964,23 @@ final class AppStore: ObservableObject {
         let sessionID = session.id
         trainerPowerCancellableBySession[sessionID]?.cancel()
         trainerPowerCancellableBySession[sessionID] = session.trainer.$livePowerWatts
+            .removeDuplicates()
             .sink { [weak self] watts in
                 guard let self else { return }
                 guard let watts, watts > 0 else { return }
                 self.startTrainerRecording(for: sessionID, reason: "Power detected")
+            }
+    }
+
+    private func observePowerMeterPower(for session: TrainerRiderSession) {
+        let sessionID = session.id
+        powerMeterPowerCancellableBySession[sessionID]?.cancel()
+        powerMeterPowerCancellableBySession[sessionID] = session.powerMeter.$livePowerWatts
+            .removeDuplicates()
+            .sink { [weak self] watts in
+                guard let self else { return }
+                guard let watts, watts > 0 else { return }
+                self.startTrainerRecording(for: sessionID, reason: "Power meter detected")
             }
     }
 
@@ -1545,10 +1999,13 @@ final class AppStore: ObservableObject {
         trainerRecordingSessionByRider[sessionID] = TrainerRecordingSession(
             startedAt: now,
             lastSampleAt: now,
+            lastMotionAt: now,
+            lastCheckpointWriteAt: nil,
             samples: [],
             cumulativeDistanceMeters: 0,
             cumulativeElevationGainMeters: 0
         )
+        removeTrainerRecordingCheckpointFIT(for: sessionID)
 
         var status = trainerRecordingStatus(for: sessionID)
         status.isActive = true
@@ -1610,9 +2067,14 @@ final class AppStore: ObservableObject {
                 rightBalancePercent: nil
             )
         }
+        let sampledPower = rider.trainer.livePowerWatts ?? rider.powerMeter.livePowerWatts
+        let trainerFallbackPower = rider.trainer.ergTargetWatts
+        let effectivePower = [sampledPower, trainerFallbackPower]
+            .compactMap { $0 }
+            .first(where: { $0 > 0 })
         return LiveRideSample(
             timestamp: timestamp,
-            powerWatts: rider.trainer.livePowerWatts ?? rider.powerMeter.livePowerWatts,
+            powerWatts: effectivePower,
             heartRateBPM: rider.heartRateMonitor.liveHeartRateBPM,
             cadenceRPM: rider.trainer.liveCadenceRPM ?? rider.powerMeter.liveCadenceRPM,
             speedKPH: rider.trainer.liveSpeedKPH,
@@ -1630,10 +2092,100 @@ final class AppStore: ObservableObject {
         let delta = trainerDistanceDelta(for: sessionID, since: session.lastSampleAt, to: timestamp)
         session.cumulativeDistanceMeters += delta.distanceMeters
         session.cumulativeElevationGainMeters += delta.elevationGainMeters
-        session.samples.append(
-            makeLiveRideSample(for: sessionID, at: timestamp, distanceMeters: session.cumulativeDistanceMeters)
-        )
+        let sample = makeLiveRideSample(for: sessionID, at: timestamp, distanceMeters: session.cumulativeDistanceMeters)
+        session.samples.append(sample)
+        if isTrainerRideMotion(sample: sample) {
+            session.lastMotionAt = timestamp
+        }
         session.lastSampleAt = timestamp
+    }
+
+    private func isTrainerRideMotion(sample: LiveRideSample) -> Bool {
+        if let power = sample.powerWatts, power > 0 {
+            return true
+        }
+        if let speed = sample.speedKPH, speed > 0.2 {
+            return true
+        }
+        if let cadence = sample.cadenceRPM, cadence > 4 {
+            return true
+        }
+        return false
+    }
+
+    private func maybeFinalizeTrainerRecordingForInactivity(
+        sessionID: UUID,
+        session: TrainerRecordingSession,
+        now timestamp: Date
+    ) {
+        guard trainerRecordingStatus(for: sessionID).isActive else { return }
+        guard !isFinalizingTrainerRecordingBySession.contains(sessionID) else { return }
+        guard trainerRecordingFinalizationTaskBySession[sessionID] == nil else { return }
+        guard session.samples.count >= 5 else { return }
+        guard timestamp.timeIntervalSince(session.lastMotionAt) >= trainerRecordingAutoStopInactivitySec else { return }
+        trainerRecordingFinalizationTaskBySession[sessionID] = Task { [weak self] in
+            await self?.finalizeTrainerRecording(
+                for: sessionID,
+                reason: "Auto stop (\(Int(self?.trainerRecordingAutoStopInactivitySec ?? 0))s inactivity)"
+            )
+        }
+    }
+
+    private func trainerRecordingCheckpointURL(for sessionID: UUID) throws -> URL {
+        let dir = try resolveWritableTrainerRecordingDirectory()
+        return dir.appendingPathComponent("in-progress-\(sessionID.uuidString.lowercased()).fit")
+    }
+
+    private func removeTrainerRecordingCheckpointFIT(for sessionID: UUID) {
+        guard let url = try? trainerRecordingCheckpointURL(for: sessionID) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private func maybeWriteTrainerRecordingCheckpointFIT(
+        for sessionID: UUID,
+        session: inout TrainerRecordingSession,
+        at timestamp: Date
+    ) {
+        if let last = session.lastCheckpointWriteAt,
+           timestamp.timeIntervalSince(last) < trainerRecordingCheckpointWriteIntervalSec {
+            return
+        }
+        guard !session.samples.isEmpty else { return }
+
+        let samples = session.samples.sorted { $0.timestamp < $1.timestamp }
+        let powerValues = samples.compactMap { $0.powerWatts }.filter { $0 > 0 }
+        let hrValues = samples.compactMap { $0.heartRateBPM }.filter { $0 > 0 }
+        let avgPower = powerValues.isEmpty ? nil : Int((Double(powerValues.reduce(0, +)) / Double(powerValues.count)).rounded())
+        let maxPower = powerValues.max()
+        let normalizedPower = TSSEstimator.normalizedPower(from: powerValues.map(Double.init)) ?? avgPower
+        let avgHeartRate = hrValues.isEmpty ? nil : Int((Double(hrValues.reduce(0, +)) / Double(hrValues.count)).rounded())
+        let maxHeartRate = hrValues.max()
+        let elapsedSec = max(1, Int(timestamp.timeIntervalSince(session.startedAt).rounded()))
+        let summary = LiveRideSummary(
+            startDate: session.startedAt,
+            endDate: timestamp,
+            sport: .cycling,
+            totalElapsedSec: elapsedSec,
+            totalTimerSec: elapsedSec,
+            totalDistanceMeters: max(0, session.cumulativeDistanceMeters),
+            averageHeartRate: avgHeartRate,
+            maxHeartRate: maxHeartRate,
+            averagePower: avgPower,
+            maxPower: maxPower,
+            normalizedPower: normalizedPower
+        )
+
+        do {
+            let fitData = LiveRideFITWriter.export(samples: samples, summary: summary)
+            let target = try trainerRecordingCheckpointURL(for: sessionID)
+            try fitData.write(to: target, options: .atomic)
+            session.lastCheckpointWriteAt = timestamp
+        } catch {
+            appendClientLog(
+                level: "WARN",
+                message: "Failed to write trainer checkpoint FIT: \(detailedErrorDescription(error))"
+            )
+        }
     }
 
     private func captureTrainerRecordingSample(for sessionID: UUID, at timestamp: Date = Date()) {
@@ -1641,6 +2193,7 @@ final class AppStore: ObservableObject {
         guard var session = trainerRecordingSessionByRider[sessionID] else { return }
 
         appendTrainerRecordingSample(for: sessionID, to: &session, at: timestamp)
+        maybeWriteTrainerRecordingCheckpointFIT(for: sessionID, session: &session, at: timestamp)
         trainerRecordingSessionByRider[sessionID] = session
 
         var status = trainerRecordingStatus(for: sessionID)
@@ -1648,6 +2201,7 @@ final class AppStore: ObservableObject {
         status.sampleCount = session.samples.count
         status.elevationGainMeters = max(0, session.cumulativeElevationGainMeters)
         updateTrainerRecordingStatus(status, for: sessionID)
+        maybeFinalizeTrainerRecordingForInactivity(sessionID: sessionID, session: session, now: timestamp)
     }
 
     private func finalizeTrainerRecording(for sessionID: UUID, reason: String) async {
@@ -1672,6 +2226,7 @@ final class AppStore: ObservableObject {
         defer {
             trainerRecordingSessionByRider[sessionID] = nil
             isFinalizingTrainerRecordingBySession.remove(sessionID)
+            removeTrainerRecordingCheckpointFIT(for: sessionID)
             var status = trainerRecordingStatus(for: sessionID)
             status.isActive = false
             status.elapsedSec = 0
@@ -1697,12 +2252,12 @@ final class AppStore: ObservableObject {
 
         let powerValues = samples.compactMap { $0.powerWatts }.filter { $0 > 0 }
         let hrValues = samples.compactMap { $0.heartRateBPM }.filter { $0 > 0 }
-        let cadenceValues = samples.compactMap { $0.cadenceRPM }.filter { $0 > 0 }
         let avgPower = powerValues.isEmpty ? nil : Int((Double(powerValues.reduce(0, +)) / Double(powerValues.count)).rounded())
         let maxPower = powerValues.max()
         let normalizedPower = TSSEstimator.normalizedPower(from: powerValues.map(Double.init)) ?? avgPower
         let avgHeartRate = hrValues.isEmpty ? nil : Int((Double(hrValues.reduce(0, +)) / Double(hrValues.count)).rounded())
         let maxHeartRate = hrValues.max()
+        let missingPowerData = powerValues.isEmpty
 
         let summary = LiveRideSummary(
             startDate: session.startedAt,
@@ -1719,19 +2274,24 @@ final class AppStore: ObservableObject {
         )
 
         let riderName = trainerRiderSession(id: sessionID)?.name ?? "Rider"
+        var savedFitPath: String?
+        var savedFitName: String?
 
         do {
             let fitData = LiveRideFITWriter.export(samples: samples, summary: summary)
-            let fitURL = try saveTrainerFITToDist(fitData: fitData, startDate: session.startedAt)
-            let bikeComputerSnapshot = try captureTrainerBikeComputerSnapshot(
+            let fitURL = try saveTrainerFITToDist(
+                fitData: fitData,
+                startDate: session.startedAt,
+                sessionID: sessionID
+            )
+            savedFitPath = fitURL.path
+            savedFitName = fitURL.lastPathComponent
+            let bikeComputerSnapshot = try await captureTrainerBikeComputerSnapshot(
                 samples: samples,
                 riderName: riderName,
                 startDate: session.startedAt,
                 endDate: end,
-                elapsedSec: elapsedSec,
-                averagePower: avgPower,
-                averageHeartRate: avgHeartRate,
-                averageCadence: cadenceValues.isEmpty ? nil : Int((Double(cadenceValues.reduce(0, +)) / Double(cadenceValues.count)).rounded())
+                elapsedSec: elapsedSec
             )
             let fitUploadedToServer = uploadExportedFileToRepository(
                 category: "trainer_fit",
@@ -1754,6 +2314,11 @@ final class AppStore: ObservableObject {
                 )
             }
 
+            let baseNote = "\(riderName) · Trainer ride · \(IntervalsDateFormatter.dateTimeLocal.string(from: session.startedAt))"
+            let note = missingPowerData
+                ? baseNote + " · WARNING: missing power telemetry"
+                : baseNote
+
             var activity = Activity(
                 date: session.startedAt,
                 sport: .cycling,
@@ -1772,7 +2337,7 @@ final class AppStore: ObservableObject {
                 normalizedPower: normalizedPower,
                 avgHeartRate: avgHeartRate,
                 intervals: [],
-                notes: "\(riderName) · Trainer ride · \(IntervalsDateFormatter.dateTimeLocal.string(from: session.startedAt))",
+                notes: note,
                 externalID: "fricu:trainer:\(sessionID.uuidString):\(Int(session.startedAt.timeIntervalSince1970))",
                 sourceFileName: fitURL.lastPathComponent,
                 sourceFileType: "fit",
@@ -1782,11 +2347,11 @@ final class AppStore: ObservableObject {
                 bikeComputerScreenshotMimeType: bikeComputerSnapshot?.mimeType
             )
 
-            let merged = mergeActivities(imported: [activity])
-            try persistActivities(merged)
-            if let saved = activities.first(where: { $0.sourceFileName == fitURL.lastPathComponent }) {
-                activity = saved
-            }
+            let persistenceResult = try persistTrainerActivityWithServerFallback(
+                activity,
+                fitFileName: fitURL.lastPathComponent
+            )
+            activity = persistenceResult.activity
 
             let syncSummary = await pushTrainerRideToClouds(
                 activity: activity,
@@ -1802,7 +2367,16 @@ final class AppStore: ObservableObject {
                 }
                 return "导出上传：FIT \(fitState)"
             }()
-            let finalSummary = "\(riderName) · \(reason)。已保存 FIT：\(fitURL.lastPathComponent)。\(snapshotSummary)。\(uploadSummary)。\(syncSummary)"
+            let powerWarningSummary = missingPowerData
+                ? "警告：本次记录未采集到功率，已使用骑行台回退链路仍为空。请检查骑行台功率广播设置。"
+                : ""
+            if missingPowerData {
+                appendClientLog(
+                    level: "WARN",
+                    message: "Trainer recording finalized without power telemetry (\(riderName), file=\(fitURL.lastPathComponent))."
+                )
+            }
+            let finalSummary = "\(riderName) · \(reason)。已保存 FIT：\(fitURL.lastPathComponent)。\(persistenceResult.summary)。\(snapshotSummary)。\(uploadSummary)。\(syncSummary)\(powerWarningSummary.isEmpty ? "" : "。\(powerWarningSummary)")"
 
             var status = trainerRecordingStatus(for: sessionID)
             status.lastFitPath = fitURL.path
@@ -1812,8 +2386,17 @@ final class AppStore: ObservableObject {
             lastError = nil
         } catch {
             let message = "Trainer recording finalize failed (\(riderName)): \(error.localizedDescription)"
-            let failureSummary = "\(riderName) · \(reason)。保存失败：\(error.localizedDescription)"
+            let fitSavedSummary: String
+            if let savedFitName {
+                fitSavedSummary = "FIT 已保存：\(savedFitName)。"
+            } else {
+                fitSavedSummary = ""
+            }
+            let failureSummary = "\(riderName) · \(reason)。\(fitSavedSummary)保存失败：\(error.localizedDescription)"
             var status = trainerRecordingStatus(for: sessionID)
+            if let savedFitPath {
+                status.lastFitPath = savedFitPath
+            }
             status.lastSyncSummary = failureSummary
             updateTrainerRecordingStatus(status, for: sessionID)
             syncStatus = failureSummary
@@ -1821,7 +2404,51 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private func saveTrainerFITToDist(fitData: Data, startDate: Date) throws -> URL {
+    private func persistTrainerActivityWithServerFallback(
+        _ activity: Activity,
+        fitFileName: String
+    ) throws -> (activity: Activity, summary: String) {
+        let merged = mergeActivities(imported: [activity])
+        do {
+            try persistActivities(merged)
+            if let externalID = activity.externalID,
+               let saved = activities.first(where: { $0.externalID == externalID }) {
+                return (saved, "活动已保存")
+            }
+            if let saved = activities.first(where: { $0.sourceFileName == fitFileName }) {
+                return (saved, "活动已保存")
+            }
+            return (activity, "活动已保存")
+        } catch {
+            if repository is RemoteHTTPRepository, isRetryableRemoteWriteError(error) {
+                // RemoteHTTPRepository persists payload to durable pending queue before network PUT.
+                self.activities = deduplicateActivities(merged)
+                persistActivitiesToLocalCache(self.activities)
+                pruneActivityMetricInsights()
+                appendClientLog(
+                    level: "WARN",
+                    message: "Activity queued for later server sync: \(detailedErrorDescription(error))"
+                )
+                return (activity, "活动已写入本地待同步队列")
+            }
+            throw error
+        }
+    }
+
+    private func isRetryableRemoteWriteError(_ error: Error) -> Bool {
+        if let repoError = error as? RepositoryError {
+            switch repoError {
+            case .httpError, .noResponse:
+                return true
+            default:
+                return false
+            }
+        }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain
+    }
+
+    private func saveTrainerFITToDist(fitData: Data, startDate: Date, sessionID: UUID?) throws -> URL {
         let fm = FileManager.default
         let distDir = try resolveWritableTrainerRecordingDirectory()
 
@@ -1830,7 +2457,10 @@ final class AppStore: ObservableObject {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd-HHmmss"
 
-        let base = "trainer-\(formatter.string(from: startDate))"
+        var base = "trainer-\(formatter.string(from: startDate))"
+        if let sessionID {
+            base += "-s\(sessionID.uuidString.lowercased())"
+        }
         var candidate = distDir.appendingPathComponent("\(base).fit")
         var suffix = 1
         while fm.fileExists(atPath: candidate.path) {
@@ -1854,29 +2484,110 @@ final class AppStore: ObservableObject {
         riderName: String,
         startDate: Date,
         endDate: Date,
-        elapsedSec: Int,
-        averagePower: Int?,
-        averageHeartRate: Int?,
-        averageCadence: Int?
-    ) throws -> TrainerBikeComputerSnapshot? {
+        elapsedSec: Int
+    ) async throws -> TrainerBikeComputerSnapshot? {
         #if canImport(SwiftUI) && canImport(AppKit)
+        let sortedSamples = samples.sorted { $0.timestamp < $1.timestamp }
+        let powerValues = sortedSamples.compactMap(\.powerWatts).filter { $0 > 0 }
+        let heartRateValues = sortedSamples.compactMap(\.heartRateBPM).filter { $0 > 0 }
+        let cadenceValues = sortedSamples.compactMap(\.cadenceRPM).filter { $0 > 0 }
+        let speedValues = sortedSamples.compactMap(\.speedKPH).filter { $0 > 0 }
+        let distanceKm = max(0, (sortedSamples.last?.distanceMeters ?? 0) / 1000.0)
+        let elapsedHours = Double(max(1, elapsedSec)) / 3600.0
+        let averagePower = powerValues.isEmpty ? nil : Int((Double(powerValues.reduce(0, +)) / Double(powerValues.count)).rounded())
+        let maxPower = powerValues.max()
+        let normalizedPower = TSSEstimator.normalizedPower(from: powerValues.map(Double.init))
+        let averageHeartRate = heartRateValues.isEmpty ? nil : Int((Double(heartRateValues.reduce(0, +)) / Double(heartRateValues.count)).rounded())
+        let maxHeartRate = heartRateValues.max()
+        let averageCadence = cadenceValues.isEmpty ? nil : Int((cadenceValues.reduce(0, +) / Double(cadenceValues.count)).rounded())
+        let averageSpeedKPH = distanceKm > 0 ? distanceKm / elapsedHours : nil
+        let maxSpeedKPH = speedValues.max()
+
+        let averageBalance: (left: Double, right: Double)? = {
+            let pairs = sortedSamples.compactMap { sample -> (Double, Double)? in
+                guard let left = sample.leftBalancePercent, let right = sample.rightBalancePercent else {
+                    return nil
+                }
+                guard left.isFinite, right.isFinite, (0...100).contains(left), (0...100).contains(right) else {
+                    return nil
+                }
+                let total = left + right
+                guard total > 0 else { return nil }
+                return ((left / total) * 100.0, (right / total) * 100.0)
+            }
+            guard !pairs.isEmpty else { return nil }
+            let leftAvg = pairs.reduce(0.0) { $0 + $1.0 } / Double(pairs.count)
+            let rightAvg = pairs.reduce(0.0) { $0 + $1.1 } / Double(pairs.count)
+            return (leftAvg, rightAvg)
+        }()
+
+        var powerZoneSec = Array(repeating: 0, count: 7)
+        var heartRateZoneSec = Array(repeating: 0, count: 7)
+        var estimatedCaloriesKCal = 0.0
+        let ftp = max(profile.ftpWatts(for: .cycling), 1)
+        let maxHeartRateForZones = snapshotMaxHeartRateForZones(on: endDate)
+
+        for index in sortedSamples.indices {
+            guard index > 0 else { continue }
+            let previous = sortedSamples[index - 1]
+            let current = sortedSamples[index]
+            let deltaSec = max(0, current.timestamp.timeIntervalSince(previous.timestamp))
+            guard deltaSec > 0 else { continue }
+            let seconds = Int(max(1, deltaSec.rounded()))
+
+            if let power = current.powerWatts, power > 0 {
+                let zone = snapshotPowerZoneIndex(for: power, ftp: ftp)
+                powerZoneSec[zone] += seconds
+                let estimate = CyclingCalorieEstimator.estimateStep(
+                    powerWatts: Double(power),
+                    durationSec: deltaSec,
+                    ftpWatts: ftp
+                )
+                estimatedCaloriesKCal += estimate.metabolicKCal
+            }
+            if let hr = current.heartRateBPM, hr > 0 {
+                let zone = snapshotHeartRateZoneIndex(for: hr, maxHeartRate: maxHeartRateForZones)
+                heartRateZoneSec[zone] += seconds
+            }
+        }
+
         let payload = TrainerBikeComputerSnapshotPayload(
             riderName: riderName,
             startDate: startDate,
             endDate: endDate,
             elapsedSec: elapsedSec,
-            latestPower: samples.last?.powerWatts,
-            latestHeartRate: samples.last?.heartRateBPM,
-            latestCadence: samples.last?.cadenceRPM.map { Int($0.rounded()) },
+            latestPower: sortedSamples.last?.powerWatts,
+            maxPower: maxPower,
+            latestHeartRate: sortedSamples.last?.heartRateBPM,
+            maxHeartRate: maxHeartRate,
+            latestCadence: sortedSamples.last?.cadenceRPM.map { Int($0.rounded()) },
             averagePower: averagePower,
+            normalizedPower: normalizedPower,
+            power5s: snapshotBestRollingPower(window: 5, from: powerValues.map(Double.init)),
+            power30s: snapshotBestRollingPower(window: 30, from: powerValues.map(Double.init)),
+            power1m: snapshotBestRollingPower(window: 60, from: powerValues.map(Double.init)),
+            power20m: snapshotBestRollingPower(window: 1_200, from: powerValues.map(Double.init)),
+            power60m: snapshotBestRollingPower(window: 3_600, from: powerValues.map(Double.init)),
             averageHeartRate: averageHeartRate,
+            maxHeartRateForZones: maxHeartRateForZones,
             averageCadence: averageCadence,
-            powerTrace: Array(samples.suffix(120)).compactMap(\.powerWatts).map(Double.init),
-            heartRateTrace: Array(samples.suffix(120)).compactMap(\.heartRateBPM).map(Double.init),
-            cadenceTrace: Array(samples.suffix(120)).compactMap { $0.cadenceRPM }
+            latestSpeedKPH: sortedSamples.last?.speedKPH,
+            averageSpeedKPH: averageSpeedKPH,
+            maxSpeedKPH: maxSpeedKPH,
+            distanceKm: distanceKm,
+            estimatedCaloriesKCal: estimatedCaloriesKCal > 0 ? estimatedCaloriesKCal : nil,
+            balanceLeftPercent: averageBalance?.left,
+            balanceRightPercent: averageBalance?.right,
+            powerZoneSec: powerZoneSec,
+            heartRateZoneSec: heartRateZoneSec,
+            powerTrace: Array(sortedSamples.suffix(180)).compactMap(\.powerWatts).map(Double.init),
+            heartRateTrace: Array(sortedSamples.suffix(180)).compactMap(\.heartRateBPM).map(Double.init),
+            cadenceTrace: Array(sortedSamples.suffix(180)).compactMap { $0.cadenceRPM }
         )
 
-        guard let imageData = Self.renderTrainerBikeComputerSnapshot(payload: payload) else {
+        guard let imageData = await MainActor.run(body: {
+            Self.renderTrainerBikeComputerSnapshot(payload: payload)
+        }) else {
             return nil
         }
 
@@ -1903,6 +2614,57 @@ final class AppStore: ObservableObject {
         #else
         return nil
         #endif
+    }
+
+    private func snapshotPowerZoneIndex(for watts: Int, ftp: Int) -> Int {
+        guard ftp > 0 else { return 0 }
+        let ratio = Double(watts) / Double(ftp)
+        switch ratio {
+        case ..<0.56: return 0
+        case ..<0.76: return 1
+        case ..<0.91: return 2
+        case ..<1.06: return 3
+        case ..<1.21: return 4
+        case ..<1.51: return 5
+        default: return 6
+        }
+    }
+
+    private func snapshotHeartRateZoneIndex(for heartRate: Int, maxHeartRate: Int) -> Int {
+        guard maxHeartRate > 0 else { return 0 }
+        let ratio = Double(heartRate) / Double(maxHeartRate)
+        switch ratio {
+        case ..<0.60: return 0
+        case ..<0.70: return 1
+        case ..<0.80: return 2
+        case ..<0.87: return 3
+        case ..<0.93: return 4
+        case ..<1.00: return 5
+        default: return 6
+        }
+    }
+
+    private func snapshotBestRollingPower(window: Int, from powers: [Double]) -> Double? {
+        guard window > 0, powers.count >= window else { return nil }
+        var sum = powers.prefix(window).reduce(0, +)
+        var best = sum / Double(window)
+        if powers.count == window {
+            return best
+        }
+        for idx in window..<powers.count {
+            sum += powers[idx] - powers[idx - window]
+            best = max(best, sum / Double(window))
+        }
+        return best
+    }
+
+    private func snapshotMaxHeartRateForZones(on date: Date) -> Int {
+        if let configured = profile.maxHeartRate(for: .cycling, on: date), configured > 0 {
+            return configured
+        }
+        let age = max(1, profile.athleteAgeYears)
+        let estimate = 208.0 - 0.7 * Double(age)
+        return max(140, Int(estimate.rounded()))
     }
 
     private func saveTrainerSnapshotToDist(imageData: Data, preferredFileName: String) throws -> URL {
@@ -1952,6 +2714,13 @@ final class AppStore: ObservableObject {
             )
             return true
         } catch {
+            if repository is RemoteHTTPRepository, isRetryableRemoteWriteError(error) {
+                appendClientLog(
+                    level: "WARN",
+                    message: "Queued export for retry \(category) \(fileName): \(detailedErrorDescription(error))"
+                )
+                return true
+            }
             appendClientLog(
                 level: "ERROR",
                 message: "Failed to upload export \(category) \(fileName): \(error.localizedDescription)"
@@ -1959,6 +2728,519 @@ final class AppStore: ObservableObject {
             return false
         }
     }
+
+    private func recoverUnlinkedTrainerFITActivities(
+        includeInProgress: Bool,
+        trigger: String
+    ) -> TrainerFITRecoveryReport {
+        var report = TrainerFITRecoveryReport()
+        let exportedHintsByFileName = trainerFITExportHintsByFileName()
+        var linkedSourceFileNames = Set(
+            activities.compactMap { activity -> String? in
+                guard let name = normalizedNonEmptyString(activity.sourceFileName) else { return nil }
+                return name.lowercased()
+            }
+        )
+        linkedSourceFileNames.formUnion(exportedHintsByFileName.keys)
+
+        let candidates = discoverTrainerFITRecoveryCandidates(includeInProgress: includeInProgress)
+        report.scannedCount = candidates.count
+        if candidates.isEmpty {
+            return report
+        }
+
+        for fitURL in candidates {
+            let fitFileName = fitURL.lastPathComponent
+            let fitFileNameLower = fitFileName.lowercased()
+            if linkedSourceFileNames.contains(fitFileNameLower) {
+                report.alreadyLinkedCount += 1
+                continue
+            }
+
+            do {
+                let fileData = try Data(contentsOf: fitURL)
+                guard !fileData.isEmpty else {
+                    throw NSError(
+                        domain: "Fricu.TrainerRecovery",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "FIT file is empty"]
+                    )
+                }
+
+                let fallbackDate = fallbackDateForTrainerFITImport(at: fitURL)
+                let exportedHint = exportedHintsByFileName[fitFileNameLower]
+                var activity = try ActivityFileImporter.importFile(
+                    at: fitURL,
+                    profile: profile,
+                    fitFallbackDate: fallbackDate ?? exportedHint?.createdAt
+                )
+                let isInProgress = isInProgressTrainerFITFileName(fitFileNameLower)
+                let athlete = inferredAthleteNameForRecoveredTrainerFIT(
+                    fileName: fitFileName,
+                    inProgress: isInProgress,
+                    exportedHint: exportedHint
+                )
+                activity.athleteName = athlete
+                let unixDate = Int(activity.date.timeIntervalSince1970)
+                if let sessionID = trainerSessionIDFromInProgressFITFileName(fitFileName) {
+                    activity.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):recovered"
+                } else if let sessionID = trainerSessionIDFromFinalizedFITFileName(fitFileName) {
+                    activity.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):recovered"
+                } else {
+                    let token = fitFileNameLower.replacingOccurrences(of: " ", with: "_")
+                    let athleteToken = athletePanelID(forName: athlete)
+                    activity.externalID = "fricu:trainer-recovered:\(athleteToken):\(token):\(unixDate)"
+                }
+                let recoveryTag = isInProgress ? "Recovered in-progress trainer FIT" : "Recovered trainer FIT"
+                activity.notes = "\(athlete) · \(recoveryTag) · \(IntervalsDateFormatter.dateTimeLocal.string(from: activity.date))"
+                activity.sourceFileName = fitFileName
+                activity.sourceFileType = "fit"
+                activity.sourceFileBase64 = fileData.base64EncodedString()
+
+                let persisted = try persistTrainerActivityWithServerFallback(
+                    activity,
+                    fitFileName: fitFileName
+                )
+                let uploadedOrQueued = uploadExportedFileToRepository(
+                    category: "trainer_fit",
+                    athleteName: persisted.activity.athleteName ?? athlete,
+                    fileName: fitFileName,
+                    mimeType: "application/fit",
+                    sourcePath: fitURL.path,
+                    payload: fileData,
+                    createdAt: persisted.activity.date
+                )
+                if uploadedOrQueued {
+                    report.uploadedOrQueuedCount += 1
+                }
+                report.recoveredCount += 1
+                report.recoveredFiles.append(fitFileName)
+                linkedSourceFileNames.insert(fitFileNameLower)
+            } catch {
+                report.failedCount += 1
+                report.failedFiles.append(fitFileName)
+                appendClientLog(
+                    level: "WARN",
+                    message: "Trainer FIT self-heal (\(trigger)) failed for \(fitFileName): \(detailedErrorDescription(error))"
+                )
+            }
+        }
+
+        do {
+            try repository?.flushPendingWrites()
+        } catch {
+            appendClientLog(
+                level: "WARN",
+                message: "Trainer FIT self-heal (\(trigger)) flush pending writes failed: \(detailedErrorDescription(error))"
+            )
+        }
+
+        return report
+    }
+
+    private func discoverTrainerFITRecoveryCandidates(includeInProgress: Bool) -> [URL] {
+        let fm = FileManager.default
+        var firstSeenByLowerName: [String: URL] = [:]
+
+        for directory in trainerRecordingDirectoryCandidates() {
+            var isDirectory: ObjCBool = false
+            guard fm.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+                continue
+            }
+            guard let rows = try? fm.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+            for row in rows where row.pathExtension.lowercased() == "fit" {
+                let lower = row.lastPathComponent.lowercased()
+                guard isRecoverableTrainerFITFileName(lower, includeInProgress: includeInProgress) else { continue }
+                if firstSeenByLowerName[lower] == nil {
+                    firstSeenByLowerName[lower] = row
+                }
+            }
+        }
+
+        return firstSeenByLowerName.values.sorted { lhs, rhs in
+            let leftDate = ((try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate)
+                ?? Date.distantPast
+            let rightDate = ((try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate)
+                ?? Date.distantPast
+            if leftDate != rightDate {
+                return leftDate < rightDate
+            }
+            return lhs.lastPathComponent.localizedCaseInsensitiveCompare(rhs.lastPathComponent) == .orderedAscending
+        }
+    }
+
+    private func trainerRecordingDirectoryCandidates() -> [URL] {
+        let fm = FileManager.default
+        var roots: [URL] = []
+        roots.append(URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
+        if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            roots.append(documents.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            roots.append(appSupport.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        roots.append(fm.temporaryDirectory.appendingPathComponent("fricu", isDirectory: true))
+
+        var deduped: [URL] = []
+        var seen: Set<String> = []
+        for root in roots {
+            let path = root.standardizedFileURL.path
+            if seen.insert(path).inserted {
+                deduped.append(root.appendingPathComponent("dist/recordings", isDirectory: true))
+            }
+        }
+        return deduped
+    }
+
+    private func isRecoverableTrainerFITFileName(_ lowerFileName: String, includeInProgress: Bool) -> Bool {
+        guard lowerFileName.hasSuffix(".fit") else { return false }
+        if lowerFileName.hasPrefix("trainer-") {
+            return true
+        }
+        if includeInProgress && isInProgressTrainerFITFileName(lowerFileName) {
+            return true
+        }
+        return false
+    }
+
+    private func fallbackDateForTrainerFITImport(at url: URL) -> Date? {
+        if let fromName = trainerFITDateFromFileName(url.lastPathComponent) {
+            return fromName
+        }
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
+        guard let values = try? url.resourceValues(forKeys: keys) else {
+            return nil
+        }
+        if let modified = values.contentModificationDate {
+            return modified
+        }
+        return values.creationDate
+    }
+
+    private func trainerFITDateFromFileName(_ fileName: String) -> Date? {
+        let lower = fileName.lowercased()
+        guard lower.hasPrefix("trainer-"), lower.hasSuffix(".fit") else { return nil }
+        let stem = String(lower.dropLast(4))
+        let parts = stem.split(separator: "-")
+        // Accept `trainer-YYYYMMDD-HHMMSS.fit` and suffixed variants like `trainer-YYYYMMDD-HHMMSS-1.fit`.
+        guard parts.count >= 3, parts[0] == "trainer" else { return nil }
+        let token = String(parts[1]) + "-" + String(parts[2])
+        guard token.count == 15 else { return nil }
+        return Self.trainerFITRecoveryFileNameDateFormatter.date(from: token)
+    }
+
+    private func trainerFITDateTokenForMatching(lowerFileName: String) -> String? {
+        guard lowerFileName.hasPrefix("trainer-"), lowerFileName.hasSuffix(".fit") else { return nil }
+        let stem = String(lowerFileName.dropLast(4))
+        let parts = stem.split(separator: "-")
+        guard parts.count >= 3 else { return nil }
+        let dateToken = String(parts[1])
+        guard dateToken.count == 8 else { return nil }
+        return dateToken
+    }
+
+    private func normalizedTrainerFITDateToken(_ raw: String?) -> String? {
+        guard let raw = normalizedNonEmptyString(raw) else { return nil }
+        let normalized = raw.replacingOccurrences(of: "-", with: "")
+        guard normalized.count == 8, normalized.allSatisfy(\.isNumber) else { return nil }
+        return normalized
+    }
+
+    private func isInProgressTrainerFITFileName(_ lowerFileName: String) -> Bool {
+        lowerFileName.hasPrefix("in-progress-") && lowerFileName.hasSuffix(".fit")
+    }
+
+    private func trainerSessionIDFromInProgressFITFileName(_ fileName: String) -> UUID? {
+        let lower = fileName.lowercased()
+        guard lower.hasPrefix("in-progress-"), lower.hasSuffix(".fit") else { return nil }
+        let tokenStart = lower.index(lower.startIndex, offsetBy: "in-progress-".count)
+        let tokenEnd = lower.index(lower.endIndex, offsetBy: -4)
+        let token = String(lower[tokenStart..<tokenEnd])
+        return UUID(uuidString: token)
+    }
+
+    private func trainerSessionIDFromFinalizedFITFileName(_ fileName: String) -> UUID? {
+        let lower = fileName.lowercased()
+        guard lower.hasPrefix("trainer-"), lower.hasSuffix(".fit") else { return nil }
+        let stem = String(lower.dropLast(4))
+        let parts = stem.split(separator: "-")
+        guard parts.count >= 4 else { return nil }
+        for part in parts.dropFirst(3) {
+            let raw = String(part)
+            let token: String
+            if raw.hasPrefix("s"), raw.count > 1 {
+                token = String(raw.dropFirst())
+            } else {
+                token = raw
+            }
+            if let id = UUID(uuidString: token) {
+                return id
+            }
+        }
+        return nil
+    }
+
+    private func inferredAthleteNameForRecoveredTrainerFIT(
+        fileName: String,
+        inProgress: Bool,
+        exportedHint: TrainerFITExportHint?
+    ) -> String {
+        if let hinted = exportedHint?.athleteName,
+           let normalizedHint = normalizedNonEmptyString(hinted) {
+            return normalizedHint
+        }
+
+        if inProgress, let sessionID = trainerSessionIDFromInProgressFITFileName(fileName) {
+            if let session = trainerRiderSession(id: sessionID),
+               let sessionName = normalizedNonEmptyString(session.name) {
+                return sessionName
+            }
+            let sessionToken = sessionID.uuidString.uppercased()
+            if let matched = activities.first(where: { ($0.externalID ?? "").uppercased().contains(sessionToken) }),
+               let known = normalizedNonEmptyString(matched.athleteName) {
+                return known
+            }
+        }
+
+        if let sessionID = trainerSessionIDFromFinalizedFITFileName(fileName),
+           let session = trainerRiderSession(id: sessionID),
+           let sessionName = normalizedNonEmptyString(session.name) {
+            return sessionName
+        }
+
+        if let primaryName = primaryTrainerRiderName,
+           let normalizedPrimary = normalizedNonEmptyString(primaryName) {
+            return normalizedPrimary
+        }
+        return selectedAthleteNameForWrite
+    }
+
+    private func repairTrainerFITOwnershipFromExportedHints(trigger: String) -> TrainerFITOwnershipRepairReport {
+        let hintsByFileName = trainerFITExportHintsByFileName()
+        guard !hintsByFileName.isEmpty else { return TrainerFITOwnershipRepairReport() }
+
+        var report = TrainerFITOwnershipRepairReport()
+        var updated = activities
+        for index in updated.indices {
+            guard let fileName = normalizedNonEmptyString(updated[index].sourceFileName)?.lowercased() else { continue }
+            guard isRecoverableTrainerFITFileName(fileName, includeInProgress: true) else { continue }
+            guard let hint = hintsByFileName[fileName] else { continue }
+
+            report.scannedCount += 1
+
+            let currentAthletePanelID = athletePanelID(for: updated[index])
+            let hintedPanelID = athletePanelID(forName: hint.athleteName)
+            guard currentAthletePanelID != hintedPanelID else { continue }
+
+            updated[index].athleteName = hint.athleteName
+            if updated[index].notes.contains("Recovered trainer FIT") ||
+                updated[index].notes.contains("Recovered in-progress trainer FIT") {
+                let recoveryTag = isInProgressTrainerFITFileName(fileName)
+                    ? "Recovered in-progress trainer FIT"
+                    : "Recovered trainer FIT"
+                updated[index].notes = "\(hint.athleteName) · \(recoveryTag) · \(IntervalsDateFormatter.dateTimeLocal.string(from: updated[index].date))"
+            }
+            report.reassignedCount += 1
+        }
+
+        guard report.reassignedCount > 0 else { return report }
+
+        do {
+            try persistActivities(updated)
+            appendClientLog(
+                level: "INFO",
+                message: "Trainer FIT ownership repaired (\(trigger)): reassigned \(report.reassignedCount) activities by exported-file hints."
+            )
+        } catch {
+            report.failedPersist = true
+            appendClientLog(
+                level: "WARN",
+                message: "Trainer FIT ownership repair failed to persist (\(trigger)): \(detailedErrorDescription(error))"
+            )
+        }
+
+        return report
+    }
+
+    private struct TrainerExportedFileRow {
+        let category: String
+        let fileName: String
+        let athleteName: String
+        let createdAt: Date?
+    }
+
+    private func trainerFITExportHintsByFileName() -> [String: TrainerFITExportHint] {
+        let rows = loadTrainerExportedFileRowsFromLocalServerDB()
+        guard !rows.isEmpty else { return [:] }
+
+        var fitHintsByFileName: [String: TrainerFITExportHint] = [:]
+        var screenshotHintsByTimestamp: [String: TrainerFITExportHint] = [:]
+
+        for row in rows {
+            switch row.category {
+            case "trainer_fit":
+                let normalizedFileName = row.fileName.lowercased()
+                if fitHintsByFileName[normalizedFileName] == nil {
+                    fitHintsByFileName[normalizedFileName] = TrainerFITExportHint(
+                        athleteName: row.athleteName,
+                        createdAt: row.createdAt
+                    )
+                }
+            case "bike_computer_screenshot":
+                guard let token = bikeComputerScreenshotTimestampToken(from: row.fileName) else { continue }
+                if screenshotHintsByTimestamp[token] == nil {
+                    screenshotHintsByTimestamp[token] = TrainerFITExportHint(
+                        athleteName: row.athleteName,
+                        createdAt: row.createdAt
+                    )
+                }
+            default:
+                continue
+            }
+        }
+
+        for (fileName, hint) in fitHintsByFileName {
+            guard let token = trainerFITTimestampToken(from: fileName) else { continue }
+            if let screenshotHint = screenshotHintsByTimestamp[token] {
+                fitHintsByFileName[fileName] = TrainerFITExportHint(
+                    athleteName: screenshotHint.athleteName,
+                    createdAt: hint.createdAt ?? screenshotHint.createdAt
+                )
+            }
+        }
+
+        return fitHintsByFileName
+    }
+
+    private func trainerFITTimestampToken(from fileName: String) -> String? {
+        let lower = fileName.lowercased()
+        guard lower.hasPrefix("trainer-"), lower.hasSuffix(".fit") else { return nil }
+        let stem = String(lower.dropLast(4))
+        let parts = stem.split(separator: "-")
+        guard parts.count >= 3 else { return nil }
+        let token = String(parts[1]) + "-" + String(parts[2])
+        return token.count == 15 ? token : nil
+    }
+
+    private func bikeComputerScreenshotTimestampToken(from fileName: String) -> String? {
+        let lower = fileName.lowercased()
+        guard lower.hasPrefix("bike-computer-"), lower.hasSuffix(".png") else { return nil }
+        let stem = String(lower.dropLast(4))
+        let parts = stem.split(separator: "-")
+        guard parts.count >= 4 else { return nil }
+        let token = String(parts[2]) + "-" + String(parts[3])
+        return token.count == 15 ? token : nil
+    }
+
+    private func loadTrainerExportedFileRowsFromLocalServerDB() -> [TrainerExportedFileRow] {
+        #if canImport(SQLite3)
+        func candidates() -> [String] {
+            let fm = FileManager.default
+            var paths: [String] = []
+            if let envPath = ProcessInfo.processInfo.environment["FRICU_DB_PATH"],
+               !envPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                paths.append(envPath)
+            }
+            let cwd = fm.currentDirectoryPath
+            paths.append(URL(fileURLWithPath: cwd).appendingPathComponent("fricu_server.db").path)
+            paths.append(URL(fileURLWithPath: cwd).appendingPathComponent("server/data/fricu.db").path)
+            var deduped: [String] = []
+            var seen: Set<String> = []
+            for path in paths {
+                let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
+                guard seen.insert(normalized).inserted else { continue }
+                guard fm.fileExists(atPath: normalized) else { continue }
+                deduped.append(normalized)
+            }
+            return deduped
+        }
+
+        for dbPath in candidates() {
+            if let rows = loadTrainerExportedFileRowsFromSQLite(dbPath: dbPath), !rows.isEmpty {
+                return rows
+            }
+        }
+        #endif
+        return []
+    }
+
+    #if canImport(SQLite3)
+    private func loadTrainerExportedFileRowsFromSQLite(dbPath: String) -> [TrainerExportedFileRow]? {
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
+            if let db {
+                sqlite3_close(db)
+            }
+            return nil
+        }
+        defer { sqlite3_close(db) }
+
+        let sql = """
+        SELECT
+            json_extract(data_value, '$.category') AS category,
+            json_extract(data_value, '$.fileName') AS file_name,
+            json_extract(data_value, '$.athleteName') AS athlete_name,
+            json_extract(data_value, '$.createdAt') AS created_at
+        FROM kv_store
+        WHERE data_key LIKE 'exported_file_%'
+          AND json_extract(data_value, '$.category') IN ('trainer_fit', 'bike_computer_screenshot')
+        ORDER BY COALESCE(json_extract(data_value, '$.createdAt'), ''), data_key;
+        """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+            return nil
+        }
+        defer { sqlite3_finalize(statement) }
+
+        var rows: [TrainerExportedFileRow] = []
+        rows.reserveCapacity(64)
+
+        while true {
+            let rc = sqlite3_step(statement)
+            if rc == SQLITE_ROW {
+                guard
+                    let categoryCString = sqlite3_column_text(statement, 0),
+                    let fileNameCString = sqlite3_column_text(statement, 1),
+                    let athleteCString = sqlite3_column_text(statement, 2)
+                else {
+                    continue
+                }
+                let category = String(cString: categoryCString)
+                let fileName = String(cString: fileNameCString).trimmingCharacters(in: .whitespacesAndNewlines)
+                let athleteName = String(cString: athleteCString).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !fileName.isEmpty, !athleteName.isEmpty else { continue }
+                let createdAt: Date?
+                if let createdAtCString = sqlite3_column_text(statement, 3) {
+                    createdAt = DateParsers.parseISO8601(String(cString: createdAtCString))
+                } else {
+                    createdAt = nil
+                }
+                rows.append(
+                    TrainerExportedFileRow(
+                        category: category,
+                        fileName: fileName,
+                        athleteName: athleteName,
+                        createdAt: createdAt
+                    )
+                )
+                continue
+            }
+            if rc == SQLITE_DONE {
+                break
+            }
+            return nil
+        }
+
+        return rows
+    }
+    #endif
 
     private func resolveWritableTrainerRecordingDirectory() throws -> URL {
         let fm = FileManager.default
@@ -1988,6 +3270,20 @@ final class AppStore: ObservableObject {
                 attemptNotes.append("\(dir.path): \(error.localizedDescription)")
                 continue
             }
+        }
+
+        // Last-resort fallback: keep FIT export available even in restrictive sandboxes.
+        let fallback = fm.temporaryDirectory.appendingPathComponent("fricu/dist/recordings", isDirectory: true)
+        do {
+            if !fm.fileExists(atPath: fallback.path) {
+                try fm.createDirectory(at: fallback, withIntermediateDirectories: true)
+            }
+            if isDirectoryWritable(fallback) {
+                return fallback
+            }
+            attemptNotes.append("\(fallback.path): not writable")
+        } catch {
+            attemptNotes.append("\(fallback.path): \(error.localizedDescription)")
         }
 
         throw NSError(
@@ -3277,9 +4573,11 @@ final class AppStore: ObservableObject {
                 var replacement = remote
                 replacement.id = existing.id
                 replacement.athleteName = self.firstNonEmpty(replacement.athleteName, existing.athleteName)
-                replacement.sourceFileName = existing.sourceFileName
-                replacement.sourceFileType = existing.sourceFileType
-                replacement.sourceFileBase64 = existing.sourceFileBase64
+                replacement.sourceFileName = self.firstNonEmpty(replacement.sourceFileName, existing.sourceFileName)
+                replacement.sourceFileType = self.firstNonEmpty(replacement.sourceFileType, existing.sourceFileType)
+                if replacement.sourceFileBase64 == nil {
+                    replacement.sourceFileBase64 = existing.sourceFileBase64
+                }
                 if replacement.platformPayloadJSON == nil || replacement.platformPayloadJSON?.isEmpty == true {
                     replacement.platformPayloadJSON = existing.platformPayloadJSON
                 }
@@ -3291,11 +4589,58 @@ final class AppStore: ObservableObject {
 
     private func persistActivities(_ rows: [Activity]) throws {
         let deduped = deduplicateActivities(rows)
+        let previousByID = Dictionary(uniqueKeysWithValues: activities.map { ($0.id, $0) })
         if let repository = self.repository {
             try repository.saveActivities(deduped)
         }
         self.activities = deduped
+        invalidateActivitySensorSampleCache(previousByID: previousByID, updated: deduped)
+        persistActivitiesToLocalCache(deduped)
         pruneActivityMetricInsights()
+    }
+
+    private func invalidateActivitySensorSampleCache(
+        previousByID: [UUID: Activity],
+        updated: [Activity]
+    ) {
+        for activity in updated {
+            guard let previous = previousByID[activity.id] else {
+                ActivitySourceDataDecoder.invalidateCache(for: activity.id)
+                continue
+            }
+            if previous.sourceFileBase64 != activity.sourceFileBase64 ||
+                previous.sourceFileType != activity.sourceFileType ||
+                previous.sourceFileName != activity.sourceFileName
+            {
+                ActivitySourceDataDecoder.invalidateCache(for: activity.id)
+            }
+        }
+    }
+
+    private func loadActivitiesFromLocalCache() -> [Activity]? {
+        guard let url = try? Self.activitiesCacheFileURL(),
+              FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let rows = try? decoder.decode([Activity].self, from: data) else {
+            return nil
+        }
+        return rows.sorted { $0.date > $1.date }
+    }
+
+    private func persistActivitiesToLocalCache(_ rows: [Activity]) {
+        do {
+            let local = try LocalJSONRepository()
+            try local.saveActivities(rows)
+        } catch {
+            appendClientLog(
+                level: "WARN",
+                message: "Failed to persist local activity cache: \(detailedErrorDescription(error))"
+            )
+        }
     }
 
     private func deduplicateActivities(_ rows: [Activity]) -> [Activity] {
@@ -3387,40 +4732,19 @@ final class AppStore: ObservableObject {
     }
 
     private func parseAthleteNameFromLegacyNotes(_ notes: String) -> String? {
-        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let separators = [
-            "---来自 Fricu",
-            "---from Fricu",
-            " · Trainer ride",
-            " · 训练骑行",
-            "• Trainer ride",
-            "• 训练骑行"
-        ]
-        for separator in separators {
-            if let range = trimmed.range(of: separator, options: [.caseInsensitive]) {
-                let candidate = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !candidate.isEmpty {
-                    return candidate
-                }
-            }
-        }
-        return nil
+        AthleteIdentityNormalizer.extractName(fromLegacyText: notes)
     }
 
     private func athleteDisplayName(for activity: Activity) -> String {
-        if let name = normalizedNonEmptyString(activity.athleteName) {
-            return name
-        }
-        if let legacy = parseAthleteNameFromLegacyNotes(activity.notes) {
-            return legacy
-        }
-        return L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
+        AthleteIdentityNormalizer.displayName(
+            rawName: activity.athleteName,
+            notes: activity.notes,
+            fallback: L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
+        )
     }
 
     private func athletePanelID(forName name: String?) -> String {
-        normalizedNonEmptyString(name)?.lowercased() ?? AthletePanel.unknownAthleteToken
+        AthleteIdentityNormalizer.panelID(from: name)
     }
 
     private func athletePanelID(for activity: Activity) -> String {
@@ -4377,30 +5701,11 @@ final class AppStore: ObservableObject {
     }
 
     nonisolated private static func parseAthleteNameFromLegacyNotesForCompute(_ notes: String) -> String? {
-        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let separators = [
-            "---来自 Fricu",
-            "---from Fricu",
-            " · Trainer ride",
-            " · 训练骑行",
-            "• Trainer ride",
-            "• 训练骑行"
-        ]
-        for separator in separators {
-            if let range = trimmed.range(of: separator, options: [.caseInsensitive]) {
-                let candidate = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !candidate.isEmpty {
-                    return candidate
-                }
-            }
-        }
-        return nil
+        AthleteIdentityNormalizer.extractName(fromLegacyText: notes)
     }
 
     nonisolated private static func athletePanelIDForCompute(name: String?) -> String {
-        normalizedNonEmptyStringForCompute(name)?.lowercased() ?? AthletePanel.unknownAthleteToken
+        AthleteIdentityNormalizer.panelID(from: name)
     }
 
     nonisolated private static func athletePanelIDForCompute(activity: Activity) -> String {
@@ -4591,17 +5896,35 @@ final class AppStore: ObservableObject {
 }
 
 #if canImport(SwiftUI) && canImport(AppKit)
-private struct TrainerBikeComputerSnapshotPayload {
+struct TrainerBikeComputerSnapshotPayload {
     let riderName: String
     let startDate: Date
     let endDate: Date
     let elapsedSec: Int
     let latestPower: Int?
+    let maxPower: Int?
     let latestHeartRate: Int?
+    let maxHeartRate: Int?
     let latestCadence: Int?
     let averagePower: Int?
+    let normalizedPower: Int?
+    let power5s: Double?
+    let power30s: Double?
+    let power1m: Double?
+    let power20m: Double?
+    let power60m: Double?
     let averageHeartRate: Int?
+    let maxHeartRateForZones: Int
     let averageCadence: Int?
+    let latestSpeedKPH: Double?
+    let averageSpeedKPH: Double?
+    let maxSpeedKPH: Double?
+    let distanceKm: Double
+    let estimatedCaloriesKCal: Double?
+    let balanceLeftPercent: Double?
+    let balanceRightPercent: Double?
+    let powerZoneSec: [Int]
+    let heartRateZoneSec: [Int]
     let powerTrace: [Double]
     let heartRateTrace: [Double]
     let cadenceTrace: [Double]
@@ -4621,27 +5944,86 @@ private struct TrainerBikeComputerSnapshotView: View {
         return String(format: "%02d:%02d", m, s)
     }
 
+    private func powerText(_ value: Double?) -> String {
+        value.map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
+    private func speedText(_ value: Double?) -> String {
+        value.map { String(format: "%.1f km/h", $0) } ?? "--"
+    }
+
+    private var balanceText: String {
+        guard let left = payload.balanceLeftPercent, let right = payload.balanceRightPercent else { return "--" }
+        return String(format: "L%.1f%% / R%.1f%%", left, right)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Fricu 实时码表截图")
-                        .font(.system(size: 30, weight: .bold))
+                        .font(.system(size: 28, weight: .bold))
                         .foregroundStyle(.white)
                     Text("\(payload.riderName) · \(IntervalsDateFormatter.dateTimeLocal.string(from: payload.startDate))")
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white.opacity(0.8))
                 }
                 Spacer()
-                Text("时长 \(durationText)")
-                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text("时长 \(durationText)")
+                        .font(.system(size: 19, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white)
+                    Text("距离 \(String(format: "%.2f km", payload.distanceKm))")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                    Text("热量 \(payload.estimatedCaloriesKCal.map { String(format: "%.0f kcal", $0) } ?? "--")")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.82))
+                }
             }
 
             HStack(spacing: 10) {
-                snapshotMetricCard(title: "功率", latest: payload.latestPower.map { "\($0) W" } ?? "--", avg: payload.averagePower.map { "\($0) W" } ?? "--", color: .orange)
-                snapshotMetricCard(title: "心率", latest: payload.latestHeartRate.map { "\($0) bpm" } ?? "--", avg: payload.averageHeartRate.map { "\($0) bpm" } ?? "--", color: .red)
-                snapshotMetricCard(title: "踏频", latest: payload.latestCadence.map { "\($0) rpm" } ?? "--", avg: payload.averageCadence.map { "\($0) rpm" } ?? "--", color: .green)
+                snapshotMetricCard(
+                    title: "功率",
+                    latest: payload.latestPower.map { "\($0) W" } ?? "--",
+                    avg: payload.averagePower.map { "\($0) W" } ?? "--",
+                    extra: "Max \(payload.maxPower.map { "\($0) W" } ?? "--") · NP \(payload.normalizedPower.map { "\($0) W" } ?? "--")",
+                    color: .orange
+                )
+                snapshotMetricCard(
+                    title: "心率",
+                    latest: payload.latestHeartRate.map { "\($0) bpm" } ?? "--",
+                    avg: payload.averageHeartRate.map { "\($0) bpm" } ?? "--",
+                    extra: "Max \(payload.maxHeartRate.map { "\($0) bpm" } ?? "--") · MaxHR区间 \(payload.maxHeartRateForZones) bpm",
+                    color: .red
+                )
+                snapshotMetricCard(
+                    title: "踏频/速度/平衡",
+                    latest: payload.latestCadence.map { "\($0) rpm" } ?? "--",
+                    avg: payload.averageCadence.map { "\($0) rpm" } ?? "--",
+                    extra: "Speed \(speedText(payload.latestSpeedKPH)) / \(speedText(payload.averageSpeedKPH)) · \(balanceText)",
+                    color: .green
+                )
+            }
+
+            HStack(spacing: 10) {
+                snapshotMetricCard(
+                    title: "功率窗口",
+                    latest: "5s \(powerText(payload.power5s))",
+                    avg: "30s \(powerText(payload.power30s))",
+                    extra: "1m \(powerText(payload.power1m)) · 20m \(powerText(payload.power20m)) · 60m \(powerText(payload.power60m))",
+                    color: .pink
+                )
+                snapshotZoneCard(
+                    title: "功率分区",
+                    rows: payload.powerZoneSec,
+                    tint: .orange
+                )
+                snapshotZoneCard(
+                    title: "心率分区",
+                    rows: payload.heartRateZoneSec,
+                    tint: .red
+                )
             }
 
             HStack(spacing: 10) {
@@ -4658,22 +6040,64 @@ private struct TrainerBikeComputerSnapshotView: View {
     }
 
     @ViewBuilder
-    private func snapshotMetricCard(title: String, latest: String, avg: String, color: Color) -> some View {
+    private func snapshotMetricCard(title: String, latest: String, avg: String, extra: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.9))
             Text(latest)
-                .font(.system(size: 34, weight: .heavy, design: .rounded))
+                .font(.system(size: 28, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
             Text("均值 \(avg)")
                 .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(.white.opacity(0.75))
+            Text(extra)
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.55), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func snapshotZoneCard(title: String, rows: [Int], tint: Color) -> some View {
+        let total = max(1, rows.reduce(0, +))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, sec in
+                let ratio = Double(sec) / Double(total)
+                HStack(spacing: 6) {
+                    Text("Z\(index + 1)")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 26, alignment: .leading)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.white.opacity(0.08))
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(tint.opacity(0.75))
+                                .frame(width: geo.size.width * ratio)
+                        }
+                    }
+                    .frame(height: 8)
+                    Text("\(sec.asDuration)")
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .frame(width: 48, alignment: .trailing)
+                }
+                .frame(height: 16)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.50), lineWidth: 1))
     }
 
     @ViewBuilder
@@ -4714,18 +6138,24 @@ private struct SnapshotSparkline: Shape {
     }
 }
 
-private extension AppStore {
+extension AppStore {
     static func renderTrainerBikeComputerSnapshot(payload: TrainerBikeComputerSnapshotPayload) -> Data? {
         let renderer = ImageRenderer(content: TrainerBikeComputerSnapshotView(payload: payload))
         renderer.proposedSize = ProposedViewSize(width: 1280, height: 720)
-        renderer.scale = 1
-        guard let nsImage = renderer.nsImage else { return nil }
-        guard let tiff = nsImage.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:]) else {
-            return nil
+        renderer.scale = 2
+
+        if let cgImage = renderer.cgImage {
+            let bitmap = NSBitmapImageRep(cgImage: cgImage)
+            return bitmap.representation(using: .png, properties: [:])
         }
-        return png
+
+        if let nsImage = renderer.nsImage,
+           let tiff = nsImage.tiffRepresentation,
+           let bitmap = NSBitmapImageRep(data: tiff),
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            return png
+        }
+        return nil
     }
 }
 #endif

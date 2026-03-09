@@ -4,6 +4,7 @@ import Charts
 struct LactateLabView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "lactate")
 
     private enum LabTab: String, CaseIterable, Identifiable {
         case latest
@@ -1314,16 +1315,23 @@ struct LactateLabView: View {
                     )
                 } else {
                     ForEach(store.lactateHistoryRecords) { record in
+                        let chartID = "history_\(record.id.uuidString)"
+                        let historyChartMode = chartModeStore.mode(for: chartID, fallback: chartDisplayMode)
                         sectionCard(
                             title: "\(record.type.title) · \(record.tester)",
                             icon: "chart.xyaxis.line",
                             trailing: {
-                                Button(role: .destructive) {
-                                    deleteHistoryRecord(recordID: record.id)
-                                } label: {
-                                    Label(L10n.t("删除记录", "Delete Record"), systemImage: "trash")
+                                HStack(spacing: 8) {
+                                    AppChartModeMenuButton(
+                                        selection: chartModeStore.binding(for: chartID, fallback: chartDisplayMode)
+                                    )
+                                    Button(role: .destructive) {
+                                        deleteHistoryRecord(recordID: record.id)
+                                    } label: {
+                                        Label(L10n.t("删除记录", "Delete Record"), systemImage: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
                                 }
-                                .buttonStyle(.borderless)
                             }
                         ) {
                             Text("\(L10n.t("测试人", "Tester")): \(record.tester)    \(L10n.t("测试类型", "Type")): \(record.type.title)")
@@ -1331,7 +1339,7 @@ struct LactateLabView: View {
                                 .foregroundStyle(.secondary)
 
                             Chart(record.points) { point in
-                                switch chartDisplayMode {
+                                switch historyChartMode {
                                 case .line:
                                     LineMark(
                                         x: .value("Power", point.power),

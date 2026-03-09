@@ -4,6 +4,7 @@ import Charts
 struct InsightsView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "insights")
 
     struct InsightStatItem: Identifiable {
         let id: String
@@ -481,11 +482,22 @@ struct InsightsView: View {
                 }
 
                 GroupBox(L10n.choose(simplifiedChinese: "新鲜度趋势（21天）", english: "Freshness Trend (21d)")) {
+                    let freshnessChartMode = chartModeStore.mode(for: "freshness_trend", fallback: chartDisplayMode)
                     if freshnessSeries.isEmpty {
                         Text(L10n.choose(simplifiedChinese: "暂无负荷数据。", english: "No load data yet."))
                             .foregroundStyle(.secondary)
                     } else {
-                        if chartDisplayMode == .pie {
+                        HStack {
+                            Spacer()
+                            AppChartModeMenuButton(
+                                selection: chartModeStore.binding(
+                                    for: "freshness_trend",
+                                    fallback: chartDisplayMode
+                                )
+                            )
+                        }
+
+                        if freshnessChartMode == .pie {
                             Chart(freshnessSeries) { point in
                                 SectorMark(
                                     angle: .value("TSB", max(0, abs(point.tsb))),
@@ -537,7 +549,7 @@ struct InsightsView: View {
                                     .lineStyle(.init(lineWidth: 1, dash: [4, 4]))
 
                                 ForEach(freshnessSeries) { point in
-                                    switch chartDisplayMode {
+                                    switch freshnessChartMode {
                                     case .line:
                                         LineMark(
                                             x: .value("Date", point.date, unit: .day),
@@ -599,12 +611,22 @@ struct InsightsView: View {
                 }
 
                 GroupBox(L10n.choose(simplifiedChinese: "30天运动负荷分布（按 TSS）", english: "30-Day Sport Mix by TSS")) {
+                    let sportMixChartMode = chartModeStore.mode(for: "sport_mix_tss", fallback: chartDisplayMode)
                     if sportMix.isEmpty {
                         Text(L10n.choose(simplifiedChinese: "数据不足。", english: "Not enough data."))
                             .foregroundStyle(.secondary)
                     } else {
+                        HStack {
+                            Spacer()
+                            AppChartModeMenuButton(
+                                selection: chartModeStore.binding(
+                                    for: "sport_mix_tss",
+                                    fallback: chartDisplayMode
+                                )
+                            )
+                        }
                         Chart(sportMix) { point in
-                            switch chartDisplayMode {
+                            switch sportMixChartMode {
                             case .line:
                                 LineMark(
                                     x: .value("Sport", point.sport.label),
@@ -644,8 +666,15 @@ struct InsightsView: View {
                 }
 
                 GroupBox(L10n.choose(simplifiedChinese: "计划负荷（未来21天）", english: "Planned Load (Next 21d)")) {
+                    let plannedLoadChartMode = chartModeStore.mode(for: "planned_load", fallback: chartDisplayMode)
+                    HStack {
+                        Spacer()
+                        AppChartModeMenuButton(
+                            selection: chartModeStore.binding(for: "planned_load", fallback: chartDisplayMode)
+                        )
+                    }
                     Chart(plannedLoad) { point in
-                        switch chartDisplayMode {
+                        switch plannedLoadChartMode {
                         case .line:
                             LineMark(
                                 x: .value("Date", point.date, unit: .day),

@@ -3,6 +3,7 @@ import Charts
 
 struct DashboardView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "dashboard")
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -893,10 +894,18 @@ struct DashboardView: View {
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
 
                 VStack(alignment: .leading, spacing: 10) {
+                    let fitnessLoadMode = chartModeStore.mode(for: "fitness_fatigue_load", fallback: chartDisplayMode)
+                    let fitnessStatusMode = chartModeStore.mode(for: "fitness_fatigue_status", fallback: chartDisplayMode)
                     HStack {
                         Text("Fitness / Fatigue / Status")
                             .font(.title3.bold())
                         Spacer()
+                        AppChartModeMenuButton(
+                            selection: chartModeStore.binding(
+                                for: "fitness_fatigue_load",
+                                fallback: chartDisplayMode
+                            )
+                        )
                         Picker("显示", selection: $loadDisplayMode) {
                             ForEach(LoadDisplayMode.allCases) { mode in
                                 Text(mode.label).tag(mode)
@@ -917,7 +926,7 @@ struct DashboardView: View {
                     }
                     .padding(.bottom, 2)
 
-                    if chartDisplayMode == .pie {
+                    if fitnessLoadMode == .pie {
                         Chart {
                             if let latest = displayedFitnessLoad.last {
                                 SectorMark(
@@ -938,7 +947,7 @@ struct DashboardView: View {
                         .frame(height: 220)
                     } else {
                         Chart(displayedFitnessLoad) { point in
-                            switch chartDisplayMode {
+                            switch fitnessLoadMode {
                             case .line:
                                 // GC 风格上半图：以 Fatigue(ATL) 为主曲线，Fitness(CTL) 作为参考线。
                                 AreaMark(
@@ -1015,7 +1024,20 @@ struct DashboardView: View {
                         )
                     }
 
-                    if chartDisplayMode == .pie {
+                    HStack {
+                        Text("TSB")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        AppChartModeMenuButton(
+                            selection: chartModeStore.binding(
+                                for: "fitness_fatigue_status",
+                                fallback: chartDisplayMode
+                            )
+                        )
+                    }
+
+                    if fitnessStatusMode == .pie {
                         Chart(displayedFitnessLoad.suffix(30)) { point in
                             SectorMark(
                                 angle: .value("TSB", max(0, abs(point.tsb))),
@@ -1066,7 +1088,7 @@ struct DashboardView: View {
                                 .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
 
                             ForEach(displayedFitnessLoad) { point in
-                                switch chartDisplayMode {
+                                switch fitnessStatusMode {
                                 case .line:
                                     LineMark(
                                         x: .value("Date", point.date, unit: .day),
@@ -1159,10 +1181,17 @@ struct DashboardView: View {
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
 
                 VStack(alignment: .leading) {
-                    Text("Daily TSS")
-                        .font(.title3.bold())
+                    let dailyTSSChartMode = chartModeStore.mode(for: "daily_tss", fallback: chartDisplayMode)
+                    HStack {
+                        Text("Daily TSS")
+                            .font(.title3.bold())
+                        Spacer()
+                        AppChartModeMenuButton(
+                            selection: chartModeStore.binding(for: "daily_tss", fallback: chartDisplayMode)
+                        )
+                    }
 
-                    if chartDisplayMode == .pie {
+                    if dailyTSSChartMode == .pie {
                         Chart(recentLoad.suffix(30)) { point in
                             SectorMark(
                                 angle: .value("TSS", max(0, point.tss)),
@@ -1174,7 +1203,7 @@ struct DashboardView: View {
                         .frame(height: 180)
                     } else {
                         Chart(recentLoad) { point in
-                            switch chartDisplayMode {
+                            switch dailyTSSChartMode {
                             case .line:
                                 LineMark(
                                     x: .value("Date", point.date, unit: .day),
@@ -1297,6 +1326,7 @@ private enum MetricTrendRenderStyle {
 
 private struct MetricTrendCard: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "dashboard.metric_trend")
     let series: MetricTrendSeries
 
     private var orderedPoints: [MetricTrendPoint] {
@@ -1357,11 +1387,15 @@ private struct MetricTrendCard: View {
     }
 
     var body: some View {
+        let localChartMode = chartModeStore.mode(for: series.id, fallback: chartDisplayMode)
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 Text(series.title)
                     .font(.headline)
                 Spacer()
+                AppChartModeMenuButton(
+                    selection: chartModeStore.binding(for: series.id, fallback: chartDisplayMode)
+                )
                 Text(valueText)
                     .font(.title3.bold().monospacedDigit())
                     .foregroundStyle(series.tint)
@@ -1373,7 +1407,7 @@ private struct MetricTrendCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            if chartDisplayMode == .pie {
+            if localChartMode == .pie {
                 Chart(orderedPoints.suffix(24)) { point in
                     SectorMark(
                         angle: .value(series.title, max(0, abs(point.value))),
@@ -1426,7 +1460,7 @@ private struct MetricTrendCard: View {
                     }
 
                     ForEach(orderedPoints) { point in
-                        switch chartDisplayMode {
+                        switch localChartMode {
                         case .line:
                             LineMark(
                                 x: .value("Date", point.date, unit: .day),

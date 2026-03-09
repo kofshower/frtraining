@@ -166,18 +166,21 @@ private struct HRMetricChip: View {
 
 private struct HeartRateSparklineCard: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "heart_rate.sparkline")
     let label: String
     let value: String
     let points: [HeartRateTrendPoint]
     let tint: Color
 
     var body: some View {
+        let mode = chartModeStore.mode(for: label, fallback: chartDisplayMode)
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline) {
                 Text(label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
+                AppChartModeMenuButton(selection: chartModeStore.binding(for: label, fallback: chartDisplayMode))
                 Text(value)
                     .font(.subheadline.monospacedDigit().bold())
             }
@@ -185,8 +188,8 @@ private struct HeartRateSparklineCard: View {
             if points.count >= 2 {
                 let renderPoints = Array(points.suffix(60))
                 let piePoints = Array(renderPoints.suffix(24))
-                Chart(chartDisplayMode == .pie ? piePoints : renderPoints) { point in
-                    switch chartDisplayMode {
+                Chart(mode == .pie ? piePoints : renderPoints) { point in
+                    switch mode {
                     case .line:
                         LineMark(
                             x: .value("Time", point.timestamp),

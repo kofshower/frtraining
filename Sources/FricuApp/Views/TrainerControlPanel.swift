@@ -1,6 +1,9 @@
 import SwiftUI
 import Charts
 import MapKit
+#if canImport(AppKit)
+import AppKit
+#endif
 
 private struct WhooshRouteSegment: Identifiable {
     let id = UUID()
@@ -242,6 +245,8 @@ struct TrainerControlPanel: View {
     @State private var bikeComputerCumulativeLeftPercentSum: Double = 0
     @State private var bikeComputerCumulativeRightPercentSum: Double = 0
     @State private var bikeComputerCumulativeBalanceSamples: Int = 0
+    @State private var bikeComputerCumulativeDistanceKm: Double = 0
+    @State private var bikeComputerLapStartDistanceKm: Double = 0
     @State private var bikeComputerAllPowerSamples: [Double] = []
     @State private var bikeComputerLapPowerSamples: [Double] = []
     @State private var bikeComputerLapStartedAtSec: Int = 0
@@ -249,6 +254,10 @@ struct TrainerControlPanel: View {
     @State private var bikeComputerLapPowerCount: Int = 0
     @State private var bikeComputerLapHeartRateSum: Double = 0
     @State private var bikeComputerLapHeartRateCount: Int = 0
+    @State private var bikeComputerCumulativeCadenceSum: Double = 0
+    @State private var bikeComputerCumulativeCadenceCount: Int = 0
+    @State private var bikeComputerCumulativeHeartRateSum: Double = 0
+    @State private var bikeComputerCumulativeHeartRateCount: Int = 0
     @State private var bikeComputerPowerZoneSec: [Int] = Array(repeating: 0, count: 7)
     @State private var bikeComputerHeartRateZoneSec: [Int] = Array(repeating: 0, count: 7)
     @State private var bikeComputerTargetDeviationSec: TimeInterval = 0
@@ -261,6 +270,8 @@ struct TrainerControlPanel: View {
     @State private var bikeComputerNextCarbMarkSec: Int = 30 * 60
     @State private var bikeComputerAutoLapEnabled = true
     @State private var bikeComputerAutoLapEverySec: Int = 10 * 60
+    @State private var bikeComputerLiveSnapshotData: Data?
+    @State private var bikeComputerLastSnapshotRefreshAt: Date?
     @State private var isTrainerFTMSFieldsExpanded = false
     @State private var isTrainerCPSFieldsExpanded = false
     @State private var isPowerMeterCPSFieldsExpanded = false
@@ -306,6 +317,7 @@ struct TrainerControlPanel: View {
 
     private let bikeComputerTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     private let bikeComputerWindowSeconds: TimeInterval = 10 * 60
+    private let bikeComputerSnapshotRefreshInterval: TimeInterval = 8
     private let realMapWindowSeconds: TimeInterval = 10 * 60
     private let whooshWindowSeconds: TimeInterval = 10 * 60
     private var riderProfile: AthleteProfile { store.profileForAthlete(named: session.name) }
@@ -407,8 +419,30 @@ struct TrainerControlPanel: View {
         trainer.liveSpeedKPH.map { String(format: "%.1f km/h", $0) } ?? "--"
     }
 
+    private var bikeComputerDistanceText: String {
+        String(format: "%.2f km", max(0, bikeComputerCumulativeDistanceKm))
+    }
+
+    private var bikeComputerAverageSpeedText: String {
+        let elapsedHours = Double(max(1, bikeComputerElapsedSec)) / 3600.0
+        guard bikeComputerCumulativeDistanceKm > 0 else { return "--" }
+        return String(format: "%.1f km/h", bikeComputerCumulativeDistanceKm / elapsedHours)
+    }
+
     private var bikeComputerCadenceText: String {
         bikeComputerCadenceRPM.map { String(format: "%.0f rpm", $0) } ?? "--"
+    }
+
+    private var bikeComputerAverageCadenceText: String {
+        guard bikeComputerCumulativeCadenceCount > 0 else { return "--" }
+        let avg = bikeComputerCumulativeCadenceSum / Double(bikeComputerCumulativeCadenceCount)
+        return String(format: "%.0f rpm", avg)
+    }
+
+    private var bikeComputerAverageHeartRateText: String {
+        guard bikeComputerCumulativeHeartRateCount > 0 else { return "--" }
+        let avg = bikeComputerCumulativeHeartRateSum / Double(bikeComputerCumulativeHeartRateCount)
+        return String(format: "%.0f bpm", avg)
     }
 
     private var bikeComputerRolling3sPowerText: String {
@@ -419,12 +453,58 @@ struct TrainerControlPanel: View {
         rollingPowerText(windowSec: 10)
     }
 
+    private var bikeComputerRolling5sPowerText: String {
+        rollingPowerText(windowSec: 5)
+    }
+
+    private var bikeComputerRolling30sPowerText: String {
+        rollingPowerText(windowSec: 30)
+    }
+
+    private var bikeComputerRolling1mPowerText: String {
+        rollingPowerText(windowSec: 60)
+    }
+
+    private var bikeComputerBest5sPower: Double? {
+        bestRollingPower(window: 5, from: bikeComputerAllPowerSamples)
+    }
+
+    private var bikeComputerBest30sPower: Double? {
+        bestRollingPower(window: 30, from: bikeComputerAllPowerSamples)
+    }
+
+    private var bikeComputerBest1mPower: Double? {
+        bestRollingPower(window: 60, from: bikeComputerAllPowerSamples)
+    }
+
+    private var bikeComputerBest20mPower: Double? {
+        bestRollingPower(window: 1_200, from: bikeComputerAllPowerSamples)
+    }
+
+    private var bikeComputerBest60mPower: Double? {
+        bestRollingPower(window: 3_600, from: bikeComputerAllPowerSamples)
+    }
+
     private var bikeComputerLapElapsedSec: Int {
         max(0, bikeComputerElapsedSec - bikeComputerLapStartedAtSec)
     }
 
     private var bikeComputerLapElapsedText: String {
         bikeComputerLapElapsedSec.asDuration
+    }
+
+    private var bikeComputerLapDistanceKm: Double {
+        max(0, bikeComputerCumulativeDistanceKm - bikeComputerLapStartDistanceKm)
+    }
+
+    private var bikeComputerLapDistanceText: String {
+        String(format: "%.2f km", bikeComputerLapDistanceKm)
+    }
+
+    private var bikeComputerLapAverageSpeedText: String {
+        let hours = Double(max(1, bikeComputerLapElapsedSec)) / 3600.0
+        guard bikeComputerLapDistanceKm > 0 else { return "--" }
+        return String(format: "%.1f km/h", bikeComputerLapDistanceKm / hours)
     }
 
     private var bikeComputerLapPowerText: String {
@@ -468,6 +548,16 @@ struct TrainerControlPanel: View {
         bikeComputerLiveNP.map { "\($0) W" } ?? "--"
     }
 
+    private var bikeComputerAveragePowerText: String {
+        guard !bikeComputerAllPowerSamples.isEmpty else { return "--" }
+        let avg = bikeComputerAllPowerSamples.reduce(0, +) / Double(bikeComputerAllPowerSamples.count)
+        return String(format: "%.0f W", avg)
+    }
+
+    private var bikeComputerMaxPowerText: String {
+        bikeComputerAllPowerSamples.max().map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
     private var bikeComputerLapNPText: String {
         bikeComputerLapNP.map { "\($0) W" } ?? "--"
     }
@@ -501,18 +591,37 @@ struct TrainerControlPanel: View {
     }
 
     private var bikeComputerBest5sPowerText: String {
-        bestRollingPower(window: 5, from: bikeComputerAllPowerSamples)
+        bikeComputerBest5sPower
             .map { String(format: "%.0f W", $0) } ?? "--"
     }
 
     private var bikeComputerBest1mPowerText: String {
-        bestRollingPower(window: 60, from: bikeComputerAllPowerSamples)
+        bikeComputerBest1mPower
             .map { String(format: "%.0f W", $0) } ?? "--"
     }
 
     private var bikeComputerBest5mPowerText: String {
         bestRollingPower(window: 300, from: bikeComputerAllPowerSamples)
             .map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
+    private var bikeComputerBest20mPowerText: String {
+        bikeComputerBest20mPower
+            .map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
+    private var bikeComputerBest60mPowerText: String {
+        bikeComputerBest60mPower
+            .map { String(format: "%.0f W", $0) } ?? "--"
+    }
+
+    private var bikeComputerMaxHeartRateForZones: Int {
+        if let configured = riderProfile.maxHeartRate(for: .cycling, on: Date()), configured > 0 {
+            return configured
+        }
+        let age = max(1, riderProfile.athleteAgeYears)
+        let estimate = 208.0 - 0.7 * Double(age)
+        return max(140, Int(estimate.rounded()))
     }
 
     private var bikeComputerTargetPower: Int? {
@@ -903,6 +1012,7 @@ struct TrainerControlPanel: View {
 
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     BikeComputerSparklineCard(
+                        chartModeStorageKey: "fricu.chart.real_map.speed",
                         label: L10n.choose(simplifiedChinese: "速度", english: "Speed"),
                         value: String(format: "%.1f km/h", realMapCurrentSpeedKPH),
                         averageText: oneMinuteAverage(from: realMapSpeedSparkline).map {
@@ -912,6 +1022,7 @@ struct TrainerControlPanel: View {
                         points: realMapSpeedSparkline
                     )
                     BikeComputerSparklineCard(
+                        chartModeStorageKey: "fricu.chart.real_map.power",
                         label: L10n.choose(simplifiedChinese: "功率", english: "Power"),
                         value: String(format: "%.0f W", realMapCurrentPowerW),
                         averageText: oneMinuteAverage(from: realMapPowerSparkline).map {
@@ -921,6 +1032,7 @@ struct TrainerControlPanel: View {
                         points: realMapPowerSparkline
                     )
                     BikeComputerSparklineCard(
+                        chartModeStorageKey: "fricu.chart.real_map.grade",
                         label: L10n.choose(simplifiedChinese: "坡度", english: "Grade"),
                         value: String(format: "%.1f%%", realMapCurrentGradePercent),
                         averageText: oneMinuteAverage(from: realMapGradeSparkline).map {
@@ -930,6 +1042,7 @@ struct TrainerControlPanel: View {
                         points: realMapGradeSparkline
                     )
                     BikeComputerSparklineCard(
+                        chartModeStorageKey: "fricu.chart.real_map.elevation",
                         label: L10n.choose(simplifiedChinese: "海拔", english: "Elevation"),
                         value: String(format: "%.0f m", route.elevation(at: realMapDistanceKm) ?? 0),
                         averageText: oneMinuteAverage(from: realMapAltitudeSparkline).map {
@@ -1193,22 +1306,23 @@ struct TrainerControlPanel: View {
         }
     }
 
-    private func heartRateZoneIndex(for heartRate: Int, threshold: Int) -> Int {
-        guard threshold > 0 else { return 0 }
-        let ratio = Double(heartRate) / Double(threshold)
+    private func heartRateZoneIndex(for heartRate: Int, maxHeartRate: Int) -> Int {
+        guard maxHeartRate > 0 else { return 0 }
+        let ratio = Double(heartRate) / Double(maxHeartRate)
         switch ratio {
-        case ..<0.68: return 0
-        case ..<0.78: return 1
-        case ..<0.87: return 2
-        case ..<0.95: return 3
-        case ..<1.03: return 4
-        case ..<1.10: return 5
+        case ..<0.60: return 0
+        case ..<0.70: return 1
+        case ..<0.80: return 2
+        case ..<0.87: return 3
+        case ..<0.93: return 4
+        case ..<1.00: return 5
         default: return 6
         }
     }
 
     private func markBikeComputerLap() {
         bikeComputerLapStartedAtSec = bikeComputerElapsedSec
+        bikeComputerLapStartDistanceKm = bikeComputerCumulativeDistanceKm
         bikeComputerLapPowerSamples = []
         bikeComputerLapPowerSum = 0
         bikeComputerLapPowerCount = 0
@@ -1260,9 +1374,11 @@ struct TrainerControlPanel: View {
         if let previous = bikeComputerLastIntegrationAt {
             let deltaSec = max(0, timestamp.timeIntervalSince(previous))
             let delta = Int(max(1, deltaSec.rounded()))
+            if deltaSec > 0, let speedKPH = trainer.liveSpeedKPH, speedKPH.isFinite, speedKPH > 0 {
+                bikeComputerCumulativeDistanceKm += speedKPH * deltaSec / 3600.0
+            }
             if deltaSec > 0, let hr = bikeComputerHeartRateBPM {
-                let threshold = riderProfile.thresholdHeartRate(for: .cycling, on: Date())
-                let zone = heartRateZoneIndex(for: hr, threshold: threshold)
+                let zone = heartRateZoneIndex(for: hr, maxHeartRate: bikeComputerMaxHeartRateForZones)
                 bikeComputerHeartRateZoneSec[zone] += delta
             }
             if deltaSec > 0, let watts = bikeComputerPowerWatts, watts > 0 {
@@ -1357,6 +1473,8 @@ struct TrainerControlPanel: View {
         )
 
         if let hr = sample.heartRateBPM {
+            bikeComputerCumulativeHeartRateSum += hr
+            bikeComputerCumulativeHeartRateCount += 1
             bikeComputerLapHeartRateSum += hr
             bikeComputerLapHeartRateCount += 1
 
@@ -1376,6 +1494,11 @@ struct TrainerControlPanel: View {
             bikeComputerHRAboveThresholdSec = 0
         }
 
+        if let cadence = sample.cadenceRPM, cadence.isFinite, cadence > 0 {
+            bikeComputerCumulativeCadenceSum += cadence
+            bikeComputerCumulativeCadenceCount += 1
+        }
+
         bikeComputerTrace.append(sample)
 
         let cutoff = timestamp.addingTimeInterval(-bikeComputerWindowSeconds)
@@ -1393,6 +1516,8 @@ struct TrainerControlPanel: View {
         bikeComputerCumulativeLeftPercentSum = 0
         bikeComputerCumulativeRightPercentSum = 0
         bikeComputerCumulativeBalanceSamples = 0
+        bikeComputerCumulativeDistanceKm = 0
+        bikeComputerLapStartDistanceKm = 0
         bikeComputerAllPowerSamples = []
         bikeComputerLapPowerSamples = []
         bikeComputerLapStartedAtSec = 0
@@ -1400,6 +1525,10 @@ struct TrainerControlPanel: View {
         bikeComputerLapPowerCount = 0
         bikeComputerLapHeartRateSum = 0
         bikeComputerLapHeartRateCount = 0
+        bikeComputerCumulativeCadenceSum = 0
+        bikeComputerCumulativeCadenceCount = 0
+        bikeComputerCumulativeHeartRateSum = 0
+        bikeComputerCumulativeHeartRateCount = 0
         bikeComputerPowerZoneSec = Array(repeating: 0, count: 7)
         bikeComputerHeartRateZoneSec = Array(repeating: 0, count: 7)
         bikeComputerTargetDeviationSec = 0
@@ -1410,6 +1539,79 @@ struct TrainerControlPanel: View {
         bikeComputerHRAboveThresholdSec = 0
         bikeComputerNextHydrationMarkSec = 15 * 60
         bikeComputerNextCarbMarkSec = 30 * 60
+        bikeComputerLiveSnapshotData = nil
+        bikeComputerLastSnapshotRefreshAt = nil
+    }
+
+    private func bikeComputerSnapshotPayload(at timestamp: Date) -> TrainerBikeComputerSnapshotPayload? {
+        let startDate = bikeComputerSessionStartedAt ?? timestamp
+        let elapsed = max(0, bikeComputerElapsedSec)
+        guard elapsed > 0 else { return nil }
+
+        let maxHeartRate = bikeComputerTrace.compactMap(\.heartRateBPM).max().map { Int($0.rounded()) }
+        let maxSpeedKPH = bikeComputerTrace.compactMap(\.speedKPH).max()
+        let latestSpeed = trainer.liveSpeedKPH ?? bikeComputerTrace.last?.speedKPH
+
+        return TrainerBikeComputerSnapshotPayload(
+            riderName: session.name,
+            startDate: startDate,
+            endDate: timestamp,
+            elapsedSec: elapsed,
+            latestPower: bikeComputerPowerWatts,
+            maxPower: bikeComputerAllPowerSamples.max().map { Int($0.rounded()) },
+            latestHeartRate: bikeComputerHeartRateBPM,
+            maxHeartRate: maxHeartRate,
+            latestCadence: bikeComputerCadenceRPM.map { Int($0.rounded()) },
+            averagePower: {
+                guard !bikeComputerAllPowerSamples.isEmpty else { return nil }
+                return Int((bikeComputerAllPowerSamples.reduce(0, +) / Double(bikeComputerAllPowerSamples.count)).rounded())
+            }(),
+            normalizedPower: bikeComputerLiveNP,
+            power5s: bikeComputerBest5sPower,
+            power30s: bikeComputerBest30sPower,
+            power1m: bikeComputerBest1mPower,
+            power20m: bikeComputerBest20mPower,
+            power60m: bikeComputerBest60mPower,
+            averageHeartRate: {
+                guard bikeComputerCumulativeHeartRateCount > 0 else { return nil }
+                return Int((bikeComputerCumulativeHeartRateSum / Double(bikeComputerCumulativeHeartRateCount)).rounded())
+            }(),
+            maxHeartRateForZones: bikeComputerMaxHeartRateForZones,
+            averageCadence: {
+                guard bikeComputerCumulativeCadenceCount > 0 else { return nil }
+                return Int((bikeComputerCumulativeCadenceSum / Double(bikeComputerCumulativeCadenceCount)).rounded())
+            }(),
+            latestSpeedKPH: latestSpeed,
+            averageSpeedKPH: {
+                let elapsedHours = Double(max(1, elapsed)) / 3600.0
+                guard bikeComputerCumulativeDistanceKm > 0 else { return nil }
+                return bikeComputerCumulativeDistanceKm / elapsedHours
+            }(),
+            maxSpeedKPH: maxSpeedKPH,
+            distanceKm: max(0, bikeComputerCumulativeDistanceKm),
+            estimatedCaloriesKCal: bikeComputerCumulativeCaloriesKCal > 0 ? bikeComputerCumulativeCaloriesKCal : nil,
+            balanceLeftPercent: bikeComputerCumulativeBalanceLeftPercent,
+            balanceRightPercent: bikeComputerCumulativeBalanceRightPercent,
+            powerZoneSec: bikeComputerPowerZoneSec,
+            heartRateZoneSec: bikeComputerHeartRateZoneSec,
+            powerTrace: Array(bikeComputerTrace.suffix(180)).compactMap(\.powerWatts),
+            heartRateTrace: Array(bikeComputerTrace.suffix(180)).compactMap(\.heartRateBPM),
+            cadenceTrace: Array(bikeComputerTrace.suffix(180)).compactMap(\.cadenceRPM)
+        )
+    }
+
+    private func refreshBikeComputerSnapshotPreviewIfNeeded(at timestamp: Date) {
+        guard recordingActive || bikeComputerElapsedSec > 0 else {
+            bikeComputerLiveSnapshotData = nil
+            return
+        }
+        if let previous = bikeComputerLastSnapshotRefreshAt,
+           timestamp.timeIntervalSince(previous) < bikeComputerSnapshotRefreshInterval {
+            return
+        }
+        guard let payload = bikeComputerSnapshotPayload(at: timestamp) else { return }
+        bikeComputerLastSnapshotRefreshAt = timestamp
+        bikeComputerLiveSnapshotData = AppStore.renderTrainerBikeComputerSnapshot(payload: payload)
     }
 
     private func configureRealMapCamera(followRider: Bool = false) {
@@ -2237,6 +2439,7 @@ struct TrainerControlPanel: View {
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                 BikeComputerSparklineCard(
+                    chartModeStorageKey: "fricu.chart.whoosh.speed",
                     label: L10n.choose(simplifiedChinese: "速度", english: "Speed"),
                     value: String(format: "%.1f km/h", whooshCurrentSpeedKPH),
                     averageText: oneMinuteAverage(from: whooshSpeedSparkline).map {
@@ -2246,6 +2449,7 @@ struct TrainerControlPanel: View {
                     points: whooshSpeedSparkline
                 )
                 BikeComputerSparklineCard(
+                    chartModeStorageKey: "fricu.chart.whoosh.power",
                     label: L10n.choose(simplifiedChinese: "功率", english: "Power"),
                     value: String(format: "%.0f W", whooshCurrentPowerW),
                     averageText: oneMinuteAverage(from: whooshPowerSparkline).map {
@@ -2255,6 +2459,7 @@ struct TrainerControlPanel: View {
                     points: whooshPowerSparkline
                 )
                 BikeComputerSparklineCard(
+                    chartModeStorageKey: "fricu.chart.whoosh.grade",
                     label: L10n.choose(simplifiedChinese: "坡度", english: "Grade"),
                     value: String(format: "%.1f%%", whooshCurrentGradePercent),
                     averageText: oneMinuteAverage(from: whooshGradeSparkline).map {
@@ -2434,13 +2639,28 @@ struct TrainerControlPanel: View {
                             .foregroundStyle(trainer.ergAvailable ? .green : .orange)
                     }
 
-                    HStack(spacing: 14) {
+                    HStack(spacing: 10) {
                         LiveMetricChip(title: "Power", value: bikeComputerPowerWatts.map { "\($0) W" } ?? "--")
-                        LiveMetricChip(title: "3s Power", value: bikeComputerRolling3sPowerText)
-                        LiveMetricChip(title: "10s Power", value: bikeComputerRolling10sPowerText)
-                        LiveMetricChip(title: "Speed", value: bikeComputerSpeedText)
-                        LiveMetricChip(title: "Cadence", value: bikeComputerCadenceRPM.map { String(format: "%.0f rpm", $0) } ?? "--")
+                        LiveMetricChip(title: "Avg Power", value: bikeComputerAveragePowerText)
+                        LiveMetricChip(title: "Max Power", value: bikeComputerMaxPowerText)
+                        LiveMetricChip(title: "NP", value: bikeComputerLiveNPText)
+                        LiveMetricChip(title: "5s", value: bikeComputerRolling5sPowerText)
+                        LiveMetricChip(title: "30s", value: bikeComputerRolling30sPowerText)
+                        LiveMetricChip(title: "1min", value: bikeComputerRolling1mPowerText)
+                        LiveMetricChip(title: "20min", value: bikeComputerBest20mPowerText)
+                        LiveMetricChip(title: "60min", value: bikeComputerBest60mPowerText)
+                    }
+
+                    HStack(spacing: 10) {
+                        LiveMetricChip(title: "Cadence", value: bikeComputerCadenceText)
+                        LiveMetricChip(title: "Avg Cadence", value: bikeComputerAverageCadenceText)
                         LiveMetricChip(title: "Heart Rate", value: bikeComputerHeartRateBPM.map { "\($0) bpm" } ?? "--")
+                        LiveMetricChip(title: "Avg HR", value: bikeComputerAverageHeartRateText)
+                        LiveMetricChip(title: "Speed", value: bikeComputerSpeedText)
+                        LiveMetricChip(title: "Avg Speed", value: bikeComputerAverageSpeedText)
+                        LiveMetricChip(title: "Distance", value: bikeComputerDistanceText)
+                        LiveMetricChip(title: "Calories", value: bikeComputerCaloriesText)
+                        LiveMetricChip(title: "L/R", value: bikeComputerBalanceText)
                     }
 
                     DisclosureGroup(
@@ -2510,8 +2730,24 @@ struct TrainerControlPanel: View {
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
                         }
+                        #if canImport(AppKit)
+                        GroupBox("自动截图预览（活动中自动刷新）") {
+                            if let data = bikeComputerLiveSnapshotData, let image = NSImage(data: data) {
+                                Image(nsImage: image)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            } else {
+                                Text("骑行开始后会自动生成并显示码表截图预览。")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        #endif
                         HStack(spacing: 8) {
                             LiveMetricChip(title: "Lap Time", value: bikeComputerLapElapsedText)
+                            LiveMetricChip(title: "Lap Dist", value: bikeComputerLapDistanceText)
+                            LiveMetricChip(title: "Lap Speed", value: bikeComputerLapAverageSpeedText)
                             LiveMetricChip(title: "Lap Power", value: bikeComputerLapPowerText)
                             LiveMetricChip(title: "Lap HR", value: bikeComputerLapHeartRateText)
                             LiveMetricChip(title: "Lap NP", value: bikeComputerLapNPText)
@@ -2526,11 +2762,16 @@ struct TrainerControlPanel: View {
                             LiveMetricChip(title: "NP", value: bikeComputerLiveNPText)
                             LiveMetricChip(title: "IF", value: bikeComputerIFText)
                             LiveMetricChip(title: "Est. TSS", value: bikeComputerEstimatedTSSText)
+                            LiveMetricChip(title: "Duration", value: bikeComputerElapsedText)
+                            LiveMetricChip(title: "Distance", value: bikeComputerDistanceText)
+                            LiveMetricChip(title: "Calories", value: bikeComputerCaloriesText)
                         }
                         HStack(spacing: 8) {
                             LiveMetricChip(title: "Best 5s", value: bikeComputerBest5sPowerText)
+                            LiveMetricChip(title: "Best 30s", value: bikeComputerRolling30sPowerText)
                             LiveMetricChip(title: "Best 1m", value: bikeComputerBest1mPowerText)
-                            LiveMetricChip(title: "Best 5m", value: bikeComputerBest5mPowerText)
+                            LiveMetricChip(title: "Best 20m", value: bikeComputerBest20mPowerText)
+                            LiveMetricChip(title: "Best 60m", value: bikeComputerBest60mPowerText)
                         }
                         HStack(spacing: 12) {
                             Toggle("Auto Lap", isOn: $bikeComputerAutoLapEnabled)
@@ -2569,7 +2810,7 @@ struct TrainerControlPanel: View {
                             )
                             BikeComputerZoneBreakdownView(
                                 title: "心率分区",
-                                summaryText: bikeComputerHeartRateZoneSummaryText,
+                                summaryText: "MaxHR \(bikeComputerMaxHeartRateForZones) bpm · \(bikeComputerHeartRateZoneSummaryText)",
                                 rows: bikeComputerHeartRateZoneRows,
                                 tint: .red
                             )
@@ -2579,6 +2820,7 @@ struct TrainerControlPanel: View {
                             .foregroundStyle(.secondary)
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                             BikeComputerSparklineCard(
+                                chartModeStorageKey: "fricu.chart.bike.power",
                                 label: "功率",
                                 value: bikeComputerPowerWatts.map { "\($0) W" } ?? "--",
                                 averageText: series.power.oneMinuteAverage.map { String(format: "均值 %.0f W", $0) } ?? "均值 --",
@@ -2586,6 +2828,7 @@ struct TrainerControlPanel: View {
                                 points: series.power.points
                             )
                             BikeComputerSparklineCard(
+                                chartModeStorageKey: "fricu.chart.bike.heart_rate",
                                 label: "心率",
                                 value: bikeComputerHeartRateBPM.map { "\($0) bpm" } ?? "--",
                                 averageText: series.heartRate.oneMinuteAverage.map { String(format: "均值 %.0f bpm", $0) } ?? "均值 --",
@@ -2593,6 +2836,7 @@ struct TrainerControlPanel: View {
                                 points: series.heartRate.points
                             )
                             BikeComputerSparklineCard(
+                                chartModeStorageKey: "fricu.chart.bike.cadence",
                                 label: "踏频",
                                 value: bikeComputerCadenceText,
                                 averageText: series.cadence.oneMinuteAverage.map { String(format: "均值 %.0f rpm", $0) } ?? "均值 --",
@@ -2600,6 +2844,7 @@ struct TrainerControlPanel: View {
                                 points: series.cadence.points
                             )
                             BikeComputerBalanceCompositeCard(
+                                chartModeStorageKey: "fricu.chart.bike.balance",
                                 label: "左右平衡",
                                 value: bikeComputerBalanceText,
                                 detailText: bikeComputerBalanceContextText(from: series),
@@ -2610,6 +2855,7 @@ struct TrainerControlPanel: View {
                             )
                             .gridCellColumns(2)
                             BikeComputerSparklineCard(
+                                chartModeStorageKey: "fricu.chart.bike.rr_interval",
                                 label: "RR 间期",
                                 value: heartRateMonitor.liveRRIntervalMS.map { String(format: "%.0f ms", $0) } ?? "--",
                                 averageText: series.rr.oneMinuteAverage.map { String(format: "均值 %.0f ms", $0) } ?? "均值 --",
@@ -2617,6 +2863,7 @@ struct TrainerControlPanel: View {
                                 points: series.rr.points
                             )
                             BikeComputerSparklineCard(
+                                chartModeStorageKey: "fricu.chart.bike.hrv_rmssd",
                                 label: "HRV RMSSD",
                                 value: heartRateMonitor.liveHRVRMSSDMS.map { String(format: "%.1f ms", $0) } ?? "--",
                                 averageText: series.hrv.oneMinuteAverage.map { String(format: "均值 %.1f ms", $0) } ?? "均值 --",
@@ -2624,6 +2871,7 @@ struct TrainerControlPanel: View {
                                 points: series.hrv.points
                             )
                             BikeComputerSparklineCard(
+                                chartModeStorageKey: "fricu.chart.bike.calories",
                                 label: "累计消耗",
                                 value: bikeComputerCaloriesText,
                                 averageText: bikeComputerCaloriesContextText,
@@ -2753,6 +3001,7 @@ struct TrainerControlPanel: View {
         }
         .onReceive(bikeComputerTimer) { timestamp in
             appendBikeComputerTraceSample(at: timestamp)
+            refreshBikeComputerSnapshotPreviewIfNeeded(at: timestamp)
             tickRealMap(at: timestamp)
             if Self.whooshMiniGameEnabled {
                 tickWhoosh(at: timestamp)
@@ -2814,12 +3063,81 @@ private struct BikeComputerSparklineSeries {
     var calories = MetricSeries()
 }
 
+private enum BikeComputerChartDisplayMode: String, CaseIterable, Identifiable {
+    case line
+    case area
+    case bar
+    case stackedBar
+    case scatter
+    case step
+    case lollipop
+    case pie
+    case donut
+    case flame
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .line:
+            return L10n.choose(simplifiedChinese: "折线", english: "Line")
+        case .area:
+            return L10n.choose(simplifiedChinese: "面积", english: "Area")
+        case .bar:
+            return L10n.choose(simplifiedChinese: "柱状", english: "Bar")
+        case .stackedBar:
+            return L10n.choose(simplifiedChinese: "堆叠柱", english: "Stacked")
+        case .scatter:
+            return L10n.choose(simplifiedChinese: "散点", english: "Scatter")
+        case .step:
+            return L10n.choose(simplifiedChinese: "阶梯", english: "Step")
+        case .lollipop:
+            return L10n.choose(simplifiedChinese: "棒棒糖", english: "Lollipop")
+        case .pie:
+            return L10n.choose(simplifiedChinese: "饼图", english: "Pie")
+        case .donut:
+            return L10n.choose(simplifiedChinese: "环图", english: "Donut")
+        case .flame:
+            return L10n.choose(simplifiedChinese: "火焰", english: "Flame")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .line:
+            return "chart.line.uptrend.xyaxis"
+        case .area:
+            return "chart.xyaxis.line"
+        case .bar:
+            return "chart.bar.xaxis"
+        case .stackedBar:
+            return "square.stack.3d.up.fill"
+        case .scatter:
+            return "circle.grid.cross"
+        case .step:
+            return "stairs"
+        case .lollipop:
+            return "chart.bar.doc.horizontal"
+        case .pie:
+            return "chart.pie"
+        case .donut:
+            return "smallcircle.filled.circle"
+        case .flame:
+            return "flame"
+        }
+    }
+
+    var isCircular: Bool {
+        self == .pie || self == .donut
+    }
+}
+
 private struct ChartModeMenuButton: View {
-    @Binding var selection: AppChartDisplayMode
+    @Binding var selection: BikeComputerChartDisplayMode
 
     var body: some View {
         Menu {
-            ForEach(AppChartDisplayMode.allCases) { mode in
+            ForEach(BikeComputerChartDisplayMode.allCases) { mode in
                 Button {
                     selection = mode
                 } label: {
@@ -2827,20 +3145,7 @@ private struct ChartModeMenuButton: View {
                 }
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: selection.symbol)
-                    .font(.caption.weight(.semibold))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2.weight(.semibold))
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(
-                Capsule()
-                    .strokeBorder(.secondary.opacity(0.22), lineWidth: 1)
-            )
+            AppChartModeMenuLabel(symbol: selection.symbol)
         }
         .buttonStyle(.plain)
     }
@@ -2883,12 +3188,31 @@ private struct BikeComputerZoneBreakdownView: View {
 }
 
 private struct BikeComputerSparklineCard: View {
-    @State private var chartDisplayMode: AppChartDisplayMode = .line
+    @State private var chartDisplayMode: BikeComputerChartDisplayMode
+    let chartModeStorageKey: String
     let label: String
     let value: String
     let averageText: String
     let tint: Color
     let points: [SparklinePoint]
+
+    init(
+        chartModeStorageKey: String,
+        label: String,
+        value: String,
+        averageText: String,
+        tint: Color,
+        points: [SparklinePoint]
+    ) {
+        self.chartModeStorageKey = chartModeStorageKey
+        self.label = label
+        self.value = value
+        self.averageText = averageText
+        self.tint = tint
+        self.points = points
+        let stored = UserDefaults.standard.string(forKey: chartModeStorageKey)
+        _chartDisplayMode = State(initialValue: BikeComputerChartDisplayMode(rawValue: stored ?? "") ?? .line)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -2910,9 +3234,18 @@ private struct BikeComputerSparklineCard: View {
 
             if points.count >= 1 {
                 let renderPoints = Array(points.suffix(60))
-                let chartPoints = chartDisplayMode == .pie ? Array(renderPoints.suffix(24)) : renderPoints
-                let lineDomain = chartDisplayMode == .line ? lineYDomain(points: renderPoints) : nil
+                let chartPoints = chartDisplayMode.isCircular ? Array(renderPoints.suffix(24)) : renderPoints
+                let lineDomain: ClosedRange<Double>? = {
+                    switch chartDisplayMode {
+                    case .line, .area, .scatter, .step, .lollipop:
+                        return lineYDomain(points: renderPoints)
+                    default:
+                        return nil
+                    }
+                }()
                 let chart = Chart(chartPoints) { point in
+                    let positiveValue = max(0, point.value)
+                    let magnitudeValue = max(0, abs(point.value))
                     switch chartDisplayMode {
                     case .line:
                         LineMark(
@@ -2930,15 +3263,77 @@ private struct BikeComputerSparklineCard: View {
                             .foregroundStyle(tint)
                             .symbolSize(26)
                         }
+                    case .area:
+                        AreaMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", point.value)
+                        )
+                        .interpolationMethod(.linear)
+                        .foregroundStyle(tint.opacity(0.25))
+                        LineMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(tint)
+                        .interpolationMethod(.linear)
+                        .lineStyle(StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                     case .bar:
                         BarMark(
                             x: .value("Time", point.timestamp),
-                            y: .value("Value", max(0, point.value))
+                            y: .value("Value", positiveValue)
                         )
                         .foregroundStyle(tint.opacity(0.85))
+                    case .stackedBar:
+                        let lowerSegment = positiveValue * 0.65
+                        BarMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Base", lowerSegment)
+                        )
+                        .foregroundStyle(tint.opacity(0.9))
+                        BarMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Top", max(0, positiveValue - lowerSegment))
+                        )
+                        .foregroundStyle(tint.opacity(0.42))
+                    case .scatter:
+                        PointMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(tint)
+                        .symbolSize(22)
+                    case .step:
+                        LineMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(tint)
+                        .interpolationMethod(.stepCenter)
+                        .lineStyle(StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                    case .lollipop:
+                        RuleMark(
+                            x: .value("Time", point.timestamp),
+                            yStart: .value("Base", 0),
+                            yEnd: .value("Value", point.value)
+                        )
+                        .foregroundStyle(tint.opacity(0.7))
+                        .lineStyle(StrokeStyle(lineWidth: 1.1))
+                        PointMark(
+                            x: .value("Time", point.timestamp),
+                            y: .value("Value", point.value)
+                        )
+                        .foregroundStyle(tint)
+                        .symbolSize(24)
                     case .pie:
                         SectorMark(
-                            angle: .value("Value", max(0, point.value)),
+                            angle: .value("Value", magnitudeValue),
+                            innerRadius: .ratio(0.0),
+                            angularInset: 1.0
+                        )
+                        .foregroundStyle(tint.opacity(0.75))
+                    case .donut:
+                        SectorMark(
+                            angle: .value("Value", magnitudeValue),
                             innerRadius: .ratio(0.56),
                             angularInset: 1.0
                         )
@@ -2946,7 +3341,7 @@ private struct BikeComputerSparklineCard: View {
                     case .flame:
                         BarMark(
                             x: .value("Time", point.timestamp),
-                            y: .value("Value", max(0, point.value))
+                            y: .value("Value", positiveValue)
                         )
                         .foregroundStyle(
                             LinearGradient(
@@ -2958,7 +3353,7 @@ private struct BikeComputerSparklineCard: View {
                     }
                 }
                 Group {
-                    if chartDisplayMode == .line, let domain = lineDomain {
+                    if let domain = lineDomain {
                         chart.chartYScale(domain: domain)
                     } else {
                         chart
@@ -2971,9 +3366,11 @@ private struct BikeComputerSparklineCard: View {
                         .background(tint.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .cartesianHoverTip(
-                    xTitle: L10n.choose(simplifiedChinese: "时间", english: "Time"),
-                    yTitle: label
+                .modifier(
+                    SparklineChartModeModifier(
+                        isCircular: chartDisplayMode.isCircular,
+                        label: label
+                    )
                 )
                 .frame(height: 48)
             } else {
@@ -2989,6 +3386,9 @@ private struct BikeComputerSparklineCard: View {
         }
         .padding(8)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .onChange(of: chartDisplayMode) { _, mode in
+            UserDefaults.standard.set(mode.rawValue, forKey: chartModeStorageKey)
+        }
     }
 
     private func lineYDomain(points: [SparklinePoint]) -> ClosedRange<Double>? {
@@ -3015,8 +3415,26 @@ private struct BalancePieSlice: Identifiable {
     var id: String { label }
 }
 
+private struct SparklineChartModeModifier: ViewModifier {
+    let isCircular: Bool
+    let label: String
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isCircular {
+            content
+        } else {
+            content.cartesianHoverTip(
+                xTitle: L10n.choose(simplifiedChinese: "时间", english: "Time"),
+                yTitle: label
+            )
+        }
+    }
+}
+
 private struct BikeComputerBalanceCompositeCard: View {
-    @State private var chartDisplayMode: AppChartDisplayMode = .line
+    @State private var chartDisplayMode: BikeComputerChartDisplayMode
+    let chartModeStorageKey: String
     let label: String
     let value: String
     let detailText: String
@@ -3024,6 +3442,28 @@ private struct BikeComputerBalanceCompositeCard: View {
     let rightPoints: [SparklinePoint]
     let cumulativeLeftPercent: Double?
     let cumulativeRightPercent: Double?
+
+    init(
+        chartModeStorageKey: String,
+        label: String,
+        value: String,
+        detailText: String,
+        leftPoints: [SparklinePoint],
+        rightPoints: [SparklinePoint],
+        cumulativeLeftPercent: Double?,
+        cumulativeRightPercent: Double?
+    ) {
+        self.chartModeStorageKey = chartModeStorageKey
+        self.label = label
+        self.value = value
+        self.detailText = detailText
+        self.leftPoints = leftPoints
+        self.rightPoints = rightPoints
+        self.cumulativeLeftPercent = cumulativeLeftPercent
+        self.cumulativeRightPercent = cumulativeRightPercent
+        let stored = UserDefaults.standard.string(forKey: chartModeStorageKey)
+        _chartDisplayMode = State(initialValue: BikeComputerChartDisplayMode(rawValue: stored ?? "") ?? .line)
+    }
 
     private var pieSlices: [BalancePieSlice] {
         guard let left = cumulativeLeftPercent,
@@ -3102,6 +3542,35 @@ private struct BikeComputerBalanceCompositeCard: View {
                                 .foregroundStyle(.indigo)
                                 .symbolSize(22)
                             }
+                        case .area:
+                            ForEach(leftRender) { point in
+                                AreaMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", point.value)
+                                )
+                                .interpolationMethod(.linear)
+                                .foregroundStyle(.purple.opacity(0.22))
+                                LineMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", point.value)
+                                )
+                                .foregroundStyle(.purple)
+                                .lineStyle(StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+                            }
+                            ForEach(rightRender) { point in
+                                AreaMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", point.value)
+                                )
+                                .interpolationMethod(.linear)
+                                .foregroundStyle(.indigo.opacity(0.18))
+                                LineMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", point.value)
+                                )
+                                .foregroundStyle(.indigo)
+                                .lineStyle(StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
+                            }
                         case .bar:
                             ForEach(leftRender) { point in
                                 BarMark(
@@ -3117,17 +3586,113 @@ private struct BikeComputerBalanceCompositeCard: View {
                                 )
                                 .foregroundStyle(.indigo.opacity(0.65))
                             }
+                        case .stackedBar:
+                            let pairCount = min(leftRender.count, rightRender.count)
+                            ForEach(0..<pairCount, id: \.self) { index in
+                                let left = leftRender[index]
+                                let right = rightRender[index]
+                                BarMark(
+                                    x: .value("Time", left.timestamp),
+                                    y: .value("Left", max(0, left.value))
+                                )
+                                .foregroundStyle(.purple.opacity(0.9))
+                                BarMark(
+                                    x: .value("Time", left.timestamp),
+                                    y: .value("Right", max(0, right.value))
+                                )
+                                .foregroundStyle(.indigo.opacity(0.72))
+                            }
+                        case .scatter:
+                            ForEach(leftRender) { point in
+                                PointMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", point.value)
+                                )
+                                .foregroundStyle(.purple)
+                                .symbolSize(20)
+                            }
+                            ForEach(rightRender) { point in
+                                PointMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", point.value)
+                                )
+                                .foregroundStyle(.indigo)
+                                .symbolSize(20)
+                            }
+                        case .step:
+                            ForEach(leftRender) { point in
+                                LineMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", point.value)
+                                )
+                                .foregroundStyle(.purple)
+                                .interpolationMethod(.stepCenter)
+                                .lineStyle(StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                            }
+                            ForEach(rightRender) { point in
+                                LineMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", point.value)
+                                )
+                                .foregroundStyle(.indigo)
+                                .interpolationMethod(.stepCenter)
+                                .lineStyle(StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                            }
+                        case .lollipop:
+                            ForEach(leftRender) { point in
+                                RuleMark(
+                                    x: .value("Time", point.timestamp),
+                                    yStart: .value("Base", 50.0),
+                                    yEnd: .value("Left", point.value)
+                                )
+                                .foregroundStyle(.purple.opacity(0.75))
+                                PointMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Left", point.value)
+                                )
+                                .foregroundStyle(.purple)
+                                .symbolSize(22)
+                            }
+                            ForEach(rightRender) { point in
+                                RuleMark(
+                                    x: .value("Time", point.timestamp),
+                                    yStart: .value("Base", 50.0),
+                                    yEnd: .value("Right", point.value)
+                                )
+                                .foregroundStyle(.indigo.opacity(0.75))
+                                PointMark(
+                                    x: .value("Time", point.timestamp),
+                                    y: .value("Right", point.value)
+                                )
+                                .foregroundStyle(.indigo)
+                                .symbolSize(22)
+                            }
                         case .pie:
                             let leftMean = leftRender.isEmpty ? 0 : leftRender.map(\.value).reduce(0, +) / Double(leftRender.count)
                             let rightMean = rightRender.isEmpty ? 0 : rightRender.map(\.value).reduce(0, +) / Double(rightRender.count)
                             SectorMark(
-                                angle: .value("Left", max(0, leftMean)),
+                                angle: .value("Left", max(0, abs(leftMean))),
+                                innerRadius: .ratio(0.0),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(.purple)
+                            SectorMark(
+                                angle: .value("Right", max(0, abs(rightMean))),
+                                innerRadius: .ratio(0.0),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(.indigo)
+                        case .donut:
+                            let leftMean = leftRender.isEmpty ? 0 : leftRender.map(\.value).reduce(0, +) / Double(leftRender.count)
+                            let rightMean = rightRender.isEmpty ? 0 : rightRender.map(\.value).reduce(0, +) / Double(rightRender.count)
+                            SectorMark(
+                                angle: .value("Left", max(0, abs(leftMean))),
                                 innerRadius: .ratio(0.56),
                                 angularInset: 1
                             )
                             .foregroundStyle(.purple)
                             SectorMark(
-                                angle: .value("Right", max(0, rightMean)),
+                                angle: .value("Right", max(0, abs(rightMean))),
                                 innerRadius: .ratio(0.56),
                                 angularInset: 1
                             )
@@ -3161,22 +3726,20 @@ private struct BikeComputerBalanceCompositeCard: View {
                             }
                         }
 
-                        RuleMark(y: .value("Center", 50))
-                            .foregroundStyle(.secondary.opacity(0.35))
-                            .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        if !chartDisplayMode.isCircular {
+                            RuleMark(y: .value("Center", 50))
+                                .foregroundStyle(.secondary.opacity(0.35))
+                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        }
                     }
                     .chartXAxis(.hidden)
                     .chartYAxis(.hidden)
-                    .chartYScale(domain: 0...100)
                     .chartPlotStyle { plotArea in
                         plotArea
                             .background(Color.purple.opacity(0.08))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    .cartesianHoverTip(
-                        xTitle: L10n.choose(simplifiedChinese: "时间", english: "Time"),
-                        yTitle: label
-                    )
+                    .modifier(BalanceChartModeModifier(isCircular: chartDisplayMode.isCircular, label: label))
                     .frame(maxWidth: .infinity)
                     .frame(height: 74)
                 } else {
@@ -3224,6 +3787,28 @@ private struct BikeComputerBalanceCompositeCard: View {
         }
         .padding(8)
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .onChange(of: chartDisplayMode) { _, mode in
+            UserDefaults.standard.set(mode.rawValue, forKey: chartModeStorageKey)
+        }
+    }
+}
+
+private struct BalanceChartModeModifier: ViewModifier {
+    let isCircular: Bool
+    let label: String
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isCircular {
+            content
+        } else {
+            content
+                .chartYScale(domain: 0...100)
+                .cartesianHoverTip(
+                    xTitle: L10n.choose(simplifiedChinese: "时间", english: "Time"),
+                    yTitle: label
+                )
+        }
     }
 }
 

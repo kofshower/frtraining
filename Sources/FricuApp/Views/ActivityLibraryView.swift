@@ -90,13 +90,11 @@ struct ActivityLibraryView: View {
     }
 
     private func athleteDisplayName(for activity: Activity) -> String {
-        if let name = normalizedNonEmpty(activity.athleteName) {
-            return name
-        }
-        if let parsed = parseAthleteNameFromLegacyNotes(activity.notes) {
-            return parsed
-        }
-        return L10n.choose(simplifiedChinese: "默认运动员", english: "Default Athlete")
+        AthleteIdentityNormalizer.displayName(
+            rawName: activity.athleteName,
+            notes: activity.notes,
+            fallback: L10n.choose(simplifiedChinese: "默认运动员", english: "Default Athlete")
+        )
     }
 
     private func normalizedNonEmpty(_ value: String?) -> String? {
@@ -106,27 +104,7 @@ struct ActivityLibraryView: View {
     }
 
     private func parseAthleteNameFromLegacyNotes(_ notes: String) -> String? {
-        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-
-        let separators = [
-            "---来自 Fricu",
-            "---from Fricu",
-            " · Trainer ride",
-            " · 训练骑行",
-            "• Trainer ride",
-            "• 训练骑行"
-        ]
-        for separator in separators {
-            if let range = trimmed.range(of: separator, options: [.caseInsensitive]) {
-                let candidate = String(trimmed[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if !candidate.isEmpty {
-                    return candidate
-                }
-            }
-        }
-
-        return nil
+        AthleteIdentityNormalizer.extractName(fromLegacyText: notes)
     }
 
     private var activitiesByDay: [Date: [Activity]] {
@@ -942,6 +920,7 @@ private struct ActivityDetailSheet: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var store: AppStore
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "activity.detail")
     let activity: Activity
     let profile: AthleteProfile
     let loadSeries: [DailyLoadPoint]
@@ -1077,6 +1056,22 @@ private struct ActivityDetailSheet: View {
         preloadedSensorSamples
     }
 
+    private var activitySensorSampleSource: ActivitySensorSampleSource {
+        ActivitySourceDataDecoder.sampleSource(for: activity.id)
+    }
+
+    private var isTrainerBackedActivity: Bool {
+        let fileName = activity.sourceFileName?.lowercased() ?? ""
+        let externalID = activity.externalID?.lowercased() ?? ""
+        if fileName.hasPrefix("trainer-") || fileName.hasPrefix("in-progress-") {
+            return true
+        }
+        if externalID.contains("fricu:trainer") {
+            return true
+        }
+        return false
+    }
+
     private var traceTargetPoints: Int {
 #if os(iOS)
         return 360
@@ -1198,6 +1193,9 @@ private struct ActivityDetailSheet: View {
 
     private var powerTraceSourceText: String {
         if !activitySensorSamples.isEmpty {
+            if activitySensorSampleSource == .trainerLocalFallback {
+                return "来源: 骑行台本地 FIT 回补"
+            }
             return "来源: 原始传感器流 (FIT/TCX/GPX)"
         }
         if activity.intervals.contains(where: { $0.actualPower != nil || $0.targetPower != nil }) {
@@ -1207,6 +1205,14 @@ private struct ActivityDetailSheet: View {
             return "来源: 活动概要估算"
         }
         return "来源: 无功率数据"
+    }
+
+    private var powerMissingWarningText: String? {
+        guard powerTracePoints.isEmpty else { return nil }
+        if isTrainerBackedActivity {
+            return "警告：未检测到功率数据。已尝试从骑行台本地 FIT 回补；若仍为空，请检查骑行台功率广播（FTMS/Cycling Power）后重新同步或重录。"
+        }
+        return "警告：未检测到功率数据。"
     }
 
     private var heartRateSourceText: String {
@@ -2333,6 +2339,13 @@ private struct ActivityDetailSheet: View {
                     .frame(maxWidth: .infinity)
                 }
 
+                if let warning = powerMissingWarningText {
+                    Text(warning)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
                 Text("分布图")
                     .font(.title3.bold())
 
@@ -2355,7 +2368,14 @@ private struct ActivityDetailSheet: View {
                 }
 
                 GroupBox("HrPw (Heart Rate × Power)") {
+                    let hrPwChartMode = chartModeStore.mode(for: "hrpw_scatter", fallback: chartDisplayMode)
                     VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Spacer()
+                            AppChartModeMenuButton(
+                                selection: chartModeStore.binding(for: "hrpw_scatter", fallback: chartDisplayMode)
+                            )
+                        }
                         if hrPwRenderableScatterPoints.count < 8 {
                             Text(
                                 hrPwScatterPoints.count >= 8
@@ -2364,7 +2384,7 @@ private struct ActivityDetailSheet: View {
                             )
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                        } else if chartDisplayMode == .pie {
+                        } else if hrPwChartMode == .pie {
                             Chart(hrPwRenderableScatterPoints.suffix(60)) { point in
                                 SectorMark(
                                     angle: .value("HeartRate", max(0, point.hr)),
@@ -2399,7 +2419,7 @@ private struct ActivityDetailSheet: View {
                                     .lineStyle(.init(lineWidth: 1, dash: [3, 3]))
 
                                 ForEach(hrPwRenderableScatterPoints) { point in
-                                    switch chartDisplayMode {
+                                    switch hrPwChartMode {
                                     case .line:
                                         PointMark(
                                             x: .value("Power", point.power),
@@ -2434,7 +2454,7 @@ private struct ActivityDetailSheet: View {
                                     }
                                 }
 
-                                if chartDisplayMode == .line, !hrPwRegressionVisiblePoints.isEmpty {
+                                if hrPwChartMode == .line, !hrPwRegressionVisiblePoints.isEmpty {
                                     ForEach(hrPwRegressionVisiblePoints) { point in
                                         LineMark(
                                             x: .value("Power", point.minute),
@@ -2489,19 +2509,23 @@ private struct ActivityDetailSheet: View {
                 }
 
                 GroupBox("Decoupling (EF)") {
+                    let decouplingChartMode = chartModeStore.mode(for: "decoupling_ef", fallback: chartDisplayMode)
                     VStack(alignment: .leading, spacing: 8) {
                         if let decoupling = decouplingSummary, !decouplingTracePoints.isEmpty {
                             HStack {
                                 Text(String(format: "解耦率 %.1f%%", decoupling.ratePct))
                                     .font(.caption.bold())
                                 Spacer()
+                                AppChartModeMenuButton(
+                                    selection: chartModeStore.binding(for: "decoupling_ef", fallback: chartDisplayMode)
+                                )
                                 Text(String(format: "EF前半 %.3f → 后半 %.3f", decoupling.efFirst, decoupling.efSecond))
                                     .font(.caption2.monospaced())
                                     .foregroundStyle(.secondary)
                             }
 
                             Chart(decouplingTracePoints) { point in
-                                switch chartDisplayMode {
+                                switch decouplingChartMode {
                                 case .line:
                                     LineMark(
                                         x: .value("Minute", point.minute),
@@ -2982,25 +3006,61 @@ private struct ActivityHrPwRegression {
 }
 
 private struct ActivityDistributionCard: View {
+    @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "activity.distribution")
     let title: String
     let unitLabel: String
     let color: Color
     let bins: [ActivityDistributionBin]
 
     var body: some View {
+        let mode = chartModeStore.mode(for: title, fallback: chartDisplayMode)
         GroupBox(title) {
             VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Spacer()
+                    AppChartModeMenuButton(selection: chartModeStore.binding(for: title, fallback: chartDisplayMode))
+                }
                 if bins.isEmpty {
                     Text("No \(title.lowercased()) data")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Chart(bins) { bin in
-                        BarMark(
-                            x: .value("Range", bin.rangeLabel),
-                            y: .value("Samples", bin.sampleCount)
-                        )
-                        .foregroundStyle(color.gradient)
+                        switch mode {
+                        case .line:
+                            LineMark(
+                                x: .value("Range", bin.rangeLabel),
+                                y: .value("Samples", bin.sampleCount)
+                            )
+                            .foregroundStyle(color)
+                            .interpolationMethod(.linear)
+                        case .bar:
+                            BarMark(
+                                x: .value("Range", bin.rangeLabel),
+                                y: .value("Samples", bin.sampleCount)
+                            )
+                            .foregroundStyle(color.gradient)
+                        case .pie:
+                            SectorMark(
+                                angle: .value("Samples", max(0, bin.sampleCount)),
+                                innerRadius: .ratio(0.56),
+                                angularInset: 1
+                            )
+                            .foregroundStyle(color.opacity(0.8))
+                        case .flame:
+                            BarMark(
+                                x: .value("Range", bin.rangeLabel),
+                                y: .value("Samples", max(0, bin.sampleCount))
+                            )
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.yellow, .orange, color],
+                                    startPoint: .bottom,
+                                    endPoint: .top
+                                )
+                            )
+                        }
                     }
                     .chartXAxis {
                         AxisMarks(values: .automatic(desiredCount: 4))
@@ -3023,6 +3083,7 @@ private struct ActivityDistributionCard: View {
 
 private struct ActivityMiniSeriesCard: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "activity.mini")
     let title: String
     let unitLabel: String
     let color: Color
@@ -3077,6 +3138,7 @@ private struct ActivityMiniSeriesCard: View {
     }
 
     var body: some View {
+        let mode = chartModeStore.mode(for: "\(title).\(unitLabel)", fallback: chartDisplayMode)
         GroupBox(title) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -3084,6 +3146,12 @@ private struct ActivityMiniSeriesCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
+                    AppChartModeMenuButton(
+                        selection: chartModeStore.binding(
+                            for: "\(title).\(unitLabel)",
+                            fallback: chartDisplayMode
+                        )
+                    )
                     Label("Avg \(averageText)", systemImage: "minus.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -3095,7 +3163,7 @@ private struct ActivityMiniSeriesCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     Chart(smoothedPoints) { point in
-                        switch chartDisplayMode {
+                        switch mode {
                         case .line:
                             LineMark(
                                 x: .value("Minute", point.minute),

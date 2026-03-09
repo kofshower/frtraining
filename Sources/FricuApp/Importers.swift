@@ -34,14 +34,25 @@ struct ActivitySensorSample {
     let balanceRightPercent: Double?
 }
 
+enum ActivitySensorSampleSource {
+    case embeddedFile
+    case trainerLocalFallback
+    case unavailable
+}
+
 enum ActivitySourceDataDecoder {
-    private static var cache: [UUID: [ActivitySensorSample]] = [:]
+    private struct CacheEntry {
+        let samples: [ActivitySensorSample]
+        let source: ActivitySensorSampleSource
+    }
+
+    private static var cache: [UUID: CacheEntry] = [:]
     private static var cacheOrder: [UUID] = []
     private static let maxCacheEntries = 48
     private static let cacheLock = NSLock()
 
-    private static func storeCache(_ samples: [ActivitySensorSample], for id: UUID) {
-        cache[id] = samples
+    private static func storeCache(_ samples: [ActivitySensorSample], source: ActivitySensorSampleSource, for id: UUID) {
+        cache[id] = CacheEntry(samples: samples, source: source)
         if let index = cacheOrder.firstIndex(of: id) {
             cacheOrder.remove(at: index)
         }
@@ -56,52 +67,173 @@ enum ActivitySourceDataDecoder {
         }
     }
 
+    static func sampleSource(for activityID: UUID) -> ActivitySensorSampleSource {
+        cacheLock.lock()
+        let source = cache[activityID]?.source ?? .unavailable
+        cacheLock.unlock()
+        return source
+    }
+
+    static func invalidateCache(for activityID: UUID) {
+        cacheLock.lock()
+        cache.removeValue(forKey: activityID)
+        if let idx = cacheOrder.firstIndex(of: activityID) {
+            cacheOrder.remove(at: idx)
+        }
+        cacheLock.unlock()
+    }
+
     static func samples(for activity: Activity) -> [ActivitySensorSample] {
         cacheLock.lock()
         let cached = cache[activity.id]
         cacheLock.unlock()
         if let cached {
-            return cached
+            if shouldAttemptTrainerPowerFallback(for: activity, samples: cached.samples, source: cached.source),
+               let recovered = loadTrainerFallbackSamples(for: activity),
+               containsPositivePower(recovered)
+            {
+                cacheLock.lock()
+                storeCache(recovered, source: .trainerLocalFallback, for: activity.id)
+                cacheLock.unlock()
+                return recovered
+            }
+            return cached.samples
         }
-        guard
+
+        var parsed: [ActivitySensorSample] = []
+        var source: ActivitySensorSampleSource = .unavailable
+
+        if
             let encoded = activity.sourceFileBase64,
             let data = Data(base64Encoded: encoded),
             let fileType = activity.sourceFileType?.lowercased()
-        else {
-            cacheLock.lock()
-            storeCache([], for: activity.id)
-            cacheLock.unlock()
-            return []
+        {
+            switch fileType {
+            case "fit":
+                parsed = (try? FITActivityParser.parseSensorSamples(data: data)) ?? []
+            case "tcx":
+                parsed = (try? TCXActivityStreamParser.parse(data: data)) ?? []
+            case "gpx":
+                parsed = (try? GPXActivityStreamParser.parse(data: data)) ?? []
+            default:
+                parsed = []
+            }
+            source = parsed.isEmpty ? .unavailable : .embeddedFile
         }
 
-        let parsed: [ActivitySensorSample]
-        switch fileType {
-        case "fit":
-            parsed = (try? FITActivityParser.parseSensorSamples(data: data)) ?? []
-        case "tcx":
-            parsed = (try? TCXActivityStreamParser.parse(data: data)) ?? []
-        case "gpx":
-            parsed = (try? GPXActivityStreamParser.parse(data: data)) ?? []
-        default:
-            parsed = []
+        if shouldAttemptTrainerPowerFallback(for: activity, samples: parsed, source: source),
+           let recovered = loadTrainerFallbackSamples(for: activity),
+           containsPositivePower(recovered)
+        {
+            parsed = recovered
+            source = .trainerLocalFallback
         }
 
         cacheLock.lock()
-        storeCache(parsed, for: activity.id)
+        storeCache(parsed, source: source, for: activity.id)
         cacheLock.unlock()
         return parsed
+    }
+
+    private static func shouldAttemptTrainerPowerFallback(
+        for activity: Activity,
+        samples: [ActivitySensorSample],
+        source: ActivitySensorSampleSource
+    ) -> Bool {
+        guard isTrainerFITActivity(activity) else { return false }
+        guard !containsPositivePower(samples) else { return false }
+        return source != .trainerLocalFallback
+    }
+
+    private static func containsPositivePower(_ samples: [ActivitySensorSample]) -> Bool {
+        samples.contains { ($0.power ?? 0) > 0 }
+    }
+
+    private static func isTrainerFITActivity(_ activity: Activity) -> Bool {
+        let fileName = activity.sourceFileName?.lowercased() ?? ""
+        let fileType = activity.sourceFileType?.lowercased() ?? ""
+        let externalID = activity.externalID?.lowercased() ?? ""
+        if fileType == "fit", fileName.hasPrefix("trainer-") || fileName.hasPrefix("in-progress-") {
+            return true
+        }
+        if externalID.contains("fricu:trainer") {
+            return true
+        }
+        return false
+    }
+
+    private static func loadTrainerFallbackSamples(for activity: Activity) -> [ActivitySensorSample]? {
+        guard let fileName = activity.sourceFileName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !fileName.isEmpty else {
+            return nil
+        }
+        guard let url = resolveTrainerFITURL(fileName: fileName) else {
+            return nil
+        }
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else {
+            return nil
+        }
+        return (try? FITActivityParser.parseSensorSamples(data: data)) ?? []
+    }
+
+    private static func resolveTrainerFITURL(fileName: String) -> URL? {
+        let fm = FileManager.default
+        for directory in trainerRecordingDirectoryCandidates() {
+            let direct = directory.appendingPathComponent(fileName)
+            if fm.fileExists(atPath: direct.path) {
+                return direct
+            }
+            guard let children = try? fm.contentsOfDirectory(
+                at: directory,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            ) else {
+                continue
+            }
+            if let matched = children.first(where: { $0.lastPathComponent.caseInsensitiveCompare(fileName) == .orderedSame }) {
+                return matched
+            }
+        }
+        return nil
+    }
+
+    private static func trainerRecordingDirectoryCandidates() -> [URL] {
+        let fm = FileManager.default
+        var roots: [URL] = []
+        roots.append(URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
+        if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            roots.append(documents.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            roots.append(appSupport.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        roots.append(fm.temporaryDirectory.appendingPathComponent("fricu", isDirectory: true))
+
+        var result: [URL] = []
+        var seen: Set<String> = []
+        for root in roots {
+            let path = root.standardizedFileURL.path
+            if seen.insert(path).inserted {
+                result.append(root.appendingPathComponent("dist/recordings", isDirectory: true))
+            }
+        }
+        return result
     }
 }
 
 enum ActivityFileImporter {
-    static func importFile(at url: URL, profile: AthleteProfile) throws -> Activity {
+    static func importFile(
+        at url: URL,
+        profile: AthleteProfile,
+        fitFallbackDate: Date? = nil
+    ) throws -> Activity {
         let ext = url.pathExtension.lowercased()
         let data = try Data(contentsOf: url)
 
         let summary: ParsedActivitySummary
         switch ext {
         case "fit":
-            summary = try FITActivityParser.parse(data: data)
+            summary = try FITActivityParser.parse(data: data, fallbackDate: fitFallbackDate)
         case "tcx":
             summary = try TCXActivityParser.parse(data: data)
         case "gpx":
@@ -465,7 +597,7 @@ enum FITActivityParser {
         var powers: [Double] = []
     }
 
-    static func parse(data: Data) throws -> ParsedActivitySummary {
+    static func parse(data: Data, fallbackDate: Date? = nil) throws -> ParsedActivitySummary {
         let bytes = [UInt8](data)
         guard bytes.count >= 14 else {
             throw ActivityImportError.parserFailed("FIT file too small")
@@ -564,10 +696,11 @@ enum FITActivityParser {
             }
         }
 
-        let date = session.date ?? records.firstTime
+        let date = session.date ?? records.firstTime ?? fallbackDate
         guard let date else {
             throw ActivityImportError.parserFailed("FIT file has no valid timestamp")
         }
+        let usedFallbackTimestamp = session.date == nil && records.firstTime == nil && fallbackDate != nil
 
         let durationSec = session.durationSec ?? {
             guard let first = records.firstTime, let last = records.lastTime else { return 0 }
@@ -593,7 +726,7 @@ enum FITActivityParser {
             avgHeartRate: avgHR,
             avgPower: avgPower,
             normalizedPower: np,
-            notes: "Imported from FIT"
+            notes: usedFallbackTimestamp ? "Imported from FIT (fallback timestamp)" : "Imported from FIT"
         )
     }
 
@@ -773,34 +906,46 @@ enum FITActivityParser {
             let chars = bytes.prefix { $0 != 0 }
             guard !chars.isEmpty else { return nil }
             return .string(String(decoding: chars, as: UTF8.self))
-        case 131:
+        case 3:
             guard bytes.count >= 2 else { return nil }
             let raw = littleEndian ? Byte.decodeUInt16LE(bytes, at: 0) : Byte.decodeUInt16BE(bytes, at: 0)
             if raw == 0x7FFF { return nil }
             return .int(Int64(Int16(bitPattern: raw)))
-        case 132, 139:
+        case 4:
             guard bytes.count >= 2 else { return nil }
             let raw = littleEndian ? Byte.decodeUInt16LE(bytes, at: 0) : Byte.decodeUInt16BE(bytes, at: 0)
             if raw == 0xFFFF { return nil }
             return .uint(UInt64(raw))
-        case 133:
+        case 5:
             guard bytes.count >= 4 else { return nil }
             let raw = littleEndian ? Byte.decodeUInt32LE(bytes, at: 0) : Byte.decodeUInt32BE(bytes, at: 0)
             if raw == 0x7FFFFFFF { return nil }
             return .int(Int64(Int32(bitPattern: raw)))
-        case 134, 140:
+        case 6:
             guard bytes.count >= 4 else { return nil }
             let raw = littleEndian ? Byte.decodeUInt32LE(bytes, at: 0) : Byte.decodeUInt32BE(bytes, at: 0)
             if raw == 0xFFFFFFFF { return nil }
             return .uint(UInt64(raw))
-        case 136:
+        case 8:
             guard bytes.count >= 4 else { return nil }
             let raw = littleEndian ? Byte.decodeUInt32LE(bytes, at: 0) : Byte.decodeUInt32BE(bytes, at: 0)
             return .double(Double(Float(bitPattern: raw)))
-        case 137:
+        case 9:
             guard bytes.count >= 8 else { return nil }
             let raw = littleEndian ? Byte.decodeUInt64LE(bytes, at: 0) : Byte.decodeUInt64BE(bytes, at: 0)
             return .double(Double(bitPattern: raw))
+        case 11:
+            // uint16z
+            guard bytes.count >= 2 else { return nil }
+            let raw = littleEndian ? Byte.decodeUInt16LE(bytes, at: 0) : Byte.decodeUInt16BE(bytes, at: 0)
+            if raw == 0x0000 { return nil }
+            return .uint(UInt64(raw))
+        case 12:
+            // uint32z
+            guard bytes.count >= 4 else { return nil }
+            let raw = littleEndian ? Byte.decodeUInt32LE(bytes, at: 0) : Byte.decodeUInt32BE(bytes, at: 0)
+            if raw == 0x00000000 { return nil }
+            return .uint(UInt64(raw))
         default:
             return nil
         }

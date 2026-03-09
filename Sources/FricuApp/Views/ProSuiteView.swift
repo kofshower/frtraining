@@ -354,6 +354,7 @@ private struct PlannerWorkoutChip: View {
 private struct IntervalLabModuleView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "prosuite.interval")
 
     @State private var selectedActivityID: UUID?
     @State private var selectedIntervalID: UUID?
@@ -485,12 +486,19 @@ private struct IntervalLabModuleView: View {
                     }
 
                     GroupBox("间歇对比图") {
+                        let compareChartMode = chartModeStore.mode(for: "interval_compare", fallback: chartDisplayMode)
                         if compareRows.isEmpty {
                             Text("选择间歇后显示对比")
                                 .foregroundStyle(.secondary)
                         } else {
+                            HStack {
+                                Spacer()
+                                AppChartModeMenuButton(
+                                    selection: chartModeStore.binding(for: "interval_compare", fallback: chartDisplayMode)
+                                )
+                            }
                             Chart(compareRows) { row in
-                                switch chartDisplayMode {
+                                switch compareChartMode {
                                 case .line:
                                     LineMark(
                                         x: .value("Interval", row.label),
@@ -620,6 +628,7 @@ private enum MetricScopeFilter: String, CaseIterable, Identifiable {
 private struct MetricsLabModuleView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "prosuite.metrics")
 
     @State private var primaryMetricID = ChartMetricCatalog.all.first?.id ?? "daily_tss"
     @State private var secondaryEnabled = false
@@ -791,8 +800,15 @@ private struct MetricsLabModuleView: View {
             }
 
             GroupBox("可视化图表引擎") {
+                let metricsChartMode = chartModeStore.mode(for: "metrics_engine", fallback: chartDisplayMode)
+                HStack {
+                    Spacer()
+                    AppChartModeMenuButton(
+                        selection: chartModeStore.binding(for: "metrics_engine", fallback: chartDisplayMode)
+                    )
+                }
                 Chart {
-                    switch chartDisplayMode {
+                    switch metricsChartMode {
                     case .line:
                         if renderPrimaryAsBars {
                             ForEach(resultCache.primary) { point in
@@ -1008,6 +1024,7 @@ private struct MetricsLabModuleView: View {
 private struct PowerModelModuleView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "prosuite.power_model")
 
     @State private var athleteAge = 34
     @State private var athleteWeightKg = 69.0
@@ -1137,8 +1154,15 @@ private struct PowerModelModuleView: View {
                 }
 
                 GroupBox("CP/W'/Pmax 多模型") {
+                    let powerModelChartMode = chartModeStore.mode(for: "cp_model", fallback: chartDisplayMode)
+                    HStack {
+                        Spacer()
+                        AppChartModeMenuButton(
+                            selection: chartModeStore.binding(for: "cp_model", fallback: chartDisplayMode)
+                        )
+                    }
                     Chart {
-                        switch chartDisplayMode {
+                        switch powerModelChartMode {
                         case .line:
                             ForEach(analysis.observed) { point in
                                 PointMark(
@@ -1959,6 +1983,7 @@ private struct IntegrationConnectorTokenField: Identifiable {
 private struct ForensicModuleView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
     @EnvironmentObject private var store: AppStore
+    @StateObject private var chartModeStore = PerChartDisplayModeStore(namespace: "prosuite.forensic")
     @State private var compareItems = ["赛季A", "赛季B", "活动组", "区间组", "运动员组"]
 
     private var scatterRows: [ForensicScatterRow] {
@@ -1986,12 +2011,19 @@ private struct ForensicModuleView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             GroupBox("2D/3D Scatter (Forensic)") {
+                let forensicScatterChartMode = chartModeStore.mode(for: "scatter", fallback: chartDisplayMode)
                 if scatterRows.isEmpty {
                     Text("缺少功率+心率样本")
                         .foregroundStyle(.secondary)
                 } else {
+                    HStack {
+                        Spacer()
+                        AppChartModeMenuButton(
+                            selection: chartModeStore.binding(for: "scatter", fallback: chartDisplayMode)
+                        )
+                    }
                     Chart(scatterRows) { row in
-                        switch chartDisplayMode {
+                        switch forensicScatterChartMode {
                         case .line:
                             PointMark(
                                 x: .value("Power", row.power),
@@ -2038,8 +2070,15 @@ private struct ForensicModuleView: View {
             }
 
             GroupBox("Aerolab (CdA 估计轨迹)") {
+                let forensicAerolabChartMode = chartModeStore.mode(for: "aerolab", fallback: chartDisplayMode)
+                HStack {
+                    Spacer()
+                    AppChartModeMenuButton(
+                        selection: chartModeStore.binding(for: "aerolab", fallback: chartDisplayMode)
+                    )
+                }
                 Chart(aeroRows) { row in
-                    switch chartDisplayMode {
+                    switch forensicAerolabChartMode {
                     case .line:
                         LineMark(
                             x: .value("Session", row.index),

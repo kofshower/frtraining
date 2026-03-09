@@ -257,6 +257,8 @@ final class RemoteHTTPRepository: DataRepository {
 
         _ = try execute(req)
         clearPendingWrite(for: key)
+        // Opportunistically replay older pending writes when network/server becomes available again.
+        try? flushPendingWrites()
     }
 
     func flushPendingWrites() throws {
