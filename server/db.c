@@ -39,6 +39,28 @@ static int ensure_pending_writes_dir(void) {
     return fsync_directory(".");
 }
 
+static void extract_log_id_from_pending_name(const char *name, char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    out[0] = '\0';
+    if (!name) return;
+
+    const char *marker = strstr(name, "-lid-");
+    if (!marker) return;
+    marker += 5;
+
+    const char *end = strstr(marker, ".json");
+    if (!end || end <= marker) {
+        end = marker + strlen(marker);
+    }
+
+    size_t len = (size_t)(end - marker);
+    if (len >= out_len) {
+        len = out_len - 1;
+    }
+    memcpy(out, marker, len);
+    out[len] = '\0';
+}
+
 static int replay_pending_writes(sqlite3 *db) {
     if (ensure_pending_writes_dir() != 0) {
         log_error("failed to ensure pending writes dir");
@@ -75,6 +97,10 @@ static int replay_pending_writes(sqlite3 *db) {
             rc = -1;
             break;
         }
+        char log_id[96] = {0};
+        extract_log_id_from_pending_name(ent->d_name, log_id, sizeof(log_id));
+        const char *effective_log_id = log_id[0] != '\0' ? log_id : "-";
+        log_info("DATA WRITE replaying key=%s pending=%s logid=%s", dash_key, path, effective_log_id);
 
         FILE *f = fopen(path, "rb");
         if (!f) {
@@ -120,7 +146,12 @@ static int replay_pending_writes(sqlite3 *db) {
         int step_rc = sqlite3_step(stmt);
         free(payload);
         if (step_rc != SQLITE_DONE) {
-            log_error("failed to replay pending write %s: %s", ent->d_name, sqlite3_errmsg(db));
+            log_error(
+                "DATA WRITE replay failed key=%s pending=%s logid=%s reason=sqlite_step_error errmsg=%s",
+                dash_key,
+                path,
+                effective_log_id,
+                sqlite3_errmsg(db));
             rc = -1;
             break;
         }
@@ -129,7 +160,7 @@ static int replay_pending_writes(sqlite3 *db) {
             rc = -1;
             break;
         }
-        log_warn("replayed pending write: %s", ent->d_name);
+        log_info("DATA WRITE replayed key=%s status=stored pending=%s logid=%s", dash_key, path, effective_log_id);
     }
 
     closedir(dir);

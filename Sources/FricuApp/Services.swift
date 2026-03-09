@@ -168,6 +168,8 @@ final class RemoteHTTPRepository: DataRepository {
         var key: String
         var payload: Data
         var createdAt: Date
+        var logID: String?
+        var retryCount: Int?
     }
 
     /// Compatibility wrapper for deployments that expose activities inside a snapshot object.
@@ -178,7 +180,18 @@ final class RemoteHTTPRepository: DataRepository {
     private func loadPendingWrites() throws -> [PendingWrite] {
         guard FileManager.default.fileExists(atPath: pendingWritesURL.path) else { return [] }
         let data = try Data(contentsOf: pendingWritesURL)
-        return try decoder.decode([PendingWrite].self, from: data)
+        let decoded = try decoder.decode([PendingWrite].self, from: data)
+        return decoded.map { row in
+            var normalized = row
+            if normalized.logID?.isEmpty != false {
+                let createdToken = Int(normalized.createdAt.timeIntervalSince1970)
+                normalized.logID = "cli-legacy-\(normalized.key)-\(createdToken)"
+            }
+            if normalized.retryCount == nil || normalized.retryCount! < 0 {
+                normalized.retryCount = 0
+            }
+            return normalized
+        }
     }
 
     private func syncDirectory(_ directoryURL: URL) throws {
@@ -219,9 +232,27 @@ final class RemoteHTTPRepository: DataRepository {
         try writeDataDurably(data, to: pendingWritesURL)
     }
 
-    private func enqueuePendingWrite(key: String, payload: Data) throws {
+    private func makeLogID(for key: String) -> String {
+        let token = UUID().uuidString.lowercased()
+        return "cli-\(key)-\(token)"
+    }
+
+    private func applyLogHeaders(request: inout URLRequest, logID: String, retryCount: Int) {
+        request.setValue(logID, forHTTPHeaderField: "X-Log-Id")
+        request.setValue(String(max(0, retryCount)), forHTTPHeaderField: "X-Retry-Attempt")
+    }
+
+    private func enqueuePendingWrite(key: String, payload: Data, logID: String) throws {
         var writes = try loadPendingWrites().filter { $0.key != key }
-        writes.append(PendingWrite(key: key, payload: payload, createdAt: Date()))
+        writes.append(
+            PendingWrite(
+                key: key,
+                payload: payload,
+                createdAt: Date(),
+                logID: logID,
+                retryCount: 0
+            )
+        )
         try savePendingWrites(writes)
     }
 
@@ -251,9 +282,11 @@ final class RemoteHTTPRepository: DataRepository {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body = try encoder.encode(value)
         req.httpBody = body
+        let logID = makeLogID(for: key)
+        applyLogHeaders(request: &req, logID: logID, retryCount: 0)
 
         // Write-ahead queue: persist first so abrupt power loss during request cannot lose the payload.
-        try enqueuePendingWrite(key: key, payload: body)
+        try enqueuePendingWrite(key: key, payload: body, logID: logID)
 
         _ = try execute(req)
         clearPendingWrite(for: key)
@@ -271,10 +304,16 @@ final class RemoteHTTPRepository: DataRepository {
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = entry.payload
+            let logID = (entry.logID?.isEmpty == false) ? entry.logID! : makeLogID(for: entry.key)
+            let nextRetryCount = max(0, entry.retryCount ?? 0) + 1
+            applyLogHeaders(request: &req, logID: logID, retryCount: nextRetryCount)
             do {
                 _ = try execute(req)
             } catch {
-                stillPending.append(entry)
+                var failed = entry
+                failed.logID = logID
+                failed.retryCount = nextRetryCount
+                stillPending.append(failed)
             }
         }
         try savePendingWrites(stillPending)

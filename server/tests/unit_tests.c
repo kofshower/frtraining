@@ -123,6 +123,7 @@ static void test_put_is_journaled_and_persisted(void) {
     ssize_t n = read(fds[1], resp, sizeof(resp) - 1);
     assert(n > 0);
     assert(strstr(resp, "204 No Content") != NULL);
+    assert(strstr(resp, "X-Log-Id: ") != NULL);
 
     sqlite3 *sqlite = NULL;
     assert(sqlite3_open_v2("state.db", &sqlite, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK);
@@ -197,6 +198,8 @@ static void test_put_lock_is_queued_in_pending_writes(void) {
     assert(n > 0);
     assert(strstr(resp, "202 Accepted") != NULL);
     assert(strstr(resp, "\"status\":\"queued\"") != NULL);
+    assert(strstr(resp, "\"logid\":\"") != NULL);
+    assert(strstr(resp, "X-Log-Id: ") != NULL);
 
     DIR *dir = opendir("pending_writes");
     assert(dir != NULL);
