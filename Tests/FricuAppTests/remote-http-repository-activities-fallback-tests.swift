@@ -95,7 +95,11 @@ final class RemoteHTTPRepositoryActivitiesFallbackTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RemoteHTTPRepositoryURLProtocolStub.self]
         let session = URLSession(configuration: configuration)
-        return try RemoteHTTPRepository(baseURL: URL(string: "http://127.0.0.1:8080")!, session: session)
+        return try RemoteHTTPRepository(
+            baseURL: URL(string: "http://127.0.0.1:8080")!,
+            session: session,
+            accountID: "test-account"
+        )
     }
 
     /// Builds a deterministic HTTP response tuple used by the URL protocol stub.

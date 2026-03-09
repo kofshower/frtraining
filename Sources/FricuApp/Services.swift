@@ -105,6 +105,7 @@ struct ExportedFileUpload: Codable {
 enum RepositoryError: Error {
     case appSupportUnavailable
     case invalidServerURL
+    case invalidAccountID
     case httpError(Int)
     case noResponse
 }
@@ -114,12 +115,19 @@ final class RemoteHTTPRepository: DataRepository {
     static let fallbackServerURLString = "http://127.0.0.1:8080"
 
     private let baseURL: URL
+    private let accountID: String
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let pendingWritesURL: URL
 
-    init(baseURL: URL? = nil, session: URLSession? = nil) throws {
+    init(baseURL: URL? = nil, session: URLSession? = nil, accountID: String) throws {
+        let normalizedAccountID = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedAccountID.isEmpty else {
+            throw RepositoryError.invalidAccountID
+        }
+        self.accountID = normalizedAccountID
+
         if let baseURL {
             self.baseURL = baseURL
         } else if let custom = UserDefaults.standard.string(forKey: Self.serverURLDefaultsKey),
@@ -142,7 +150,10 @@ final class RemoteHTTPRepository: DataRepository {
             appropriateFor: nil,
             create: true
         )
-        let pendingDir = appSupport.appendingPathComponent("fricu", isDirectory: true)
+        let pendingDir = appSupport
+            .appendingPathComponent("fricu", isDirectory: true)
+            .appendingPathComponent("accounts", isDirectory: true)
+            .appendingPathComponent(Self.sanitizeAccountIDForPath(normalizedAccountID), isDirectory: true)
         try FileManager.default.createDirectory(at: pendingDir, withIntermediateDirectories: true)
         self.pendingWritesURL = pendingDir.appendingPathComponent("remote_pending_writes.json")
 
@@ -175,6 +186,17 @@ final class RemoteHTTPRepository: DataRepository {
     /// Compatibility wrapper for deployments that expose activities inside a snapshot object.
     private struct ActivitiesSnapshotEnvelope: Decodable {
         let activities: [Activity]
+    }
+
+    private static func sanitizeAccountIDForPath(_ accountID: String) -> String {
+        let mapped = accountID.map { character -> Character in
+            if character.isASCII && (character.isLetter || character.isNumber || character == "-" || character == "_") {
+                return character
+            }
+            return "_"
+        }
+        let text = String(mapped)
+        return text.isEmpty ? "account" : text
     }
 
     private func loadPendingWrites() throws -> [PendingWrite] {
@@ -242,6 +264,10 @@ final class RemoteHTTPRepository: DataRepository {
         request.setValue(String(max(0, retryCount)), forHTTPHeaderField: "X-Retry-Attempt")
     }
 
+    private func applyAccountHeader(request: inout URLRequest) {
+        request.setValue(accountID, forHTTPHeaderField: "X-Account-Id")
+    }
+
     private func enqueuePendingWrite(key: String, payload: Data, logID: String) throws {
         var writes = try loadPendingWrites().filter { $0.key != key }
         writes.append(
@@ -272,6 +298,7 @@ final class RemoteHTTPRepository: DataRepository {
     private func fetch<T: Decodable>(_ key: String, as type: T.Type) throws -> T {
         var req = URLRequest(url: endpoint(key))
         req.httpMethod = "GET"
+        applyAccountHeader(request: &req)
         let data = try execute(req)
         return try decoder.decode(T.self, from: data)
     }
@@ -280,6 +307,7 @@ final class RemoteHTTPRepository: DataRepository {
         var req = URLRequest(url: endpoint(key))
         req.httpMethod = "PUT"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyAccountHeader(request: &req)
         let body = try encoder.encode(value)
         req.httpBody = body
         let logID = makeLogID(for: key)
@@ -303,6 +331,7 @@ final class RemoteHTTPRepository: DataRepository {
             var req = URLRequest(url: endpoint(entry.key))
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            applyAccountHeader(request: &req)
             req.httpBody = entry.payload
             let logID = (entry.logID?.isEmpty == false) ? entry.logID! : makeLogID(for: entry.key)
             let nextRetryCount = max(0, entry.retryCount ?? 0) + 1
@@ -352,6 +381,7 @@ final class RemoteHTTPRepository: DataRepository {
     func loadActivities() throws -> [Activity] {
         var req = URLRequest(url: endpoint("activities"))
         req.httpMethod = "GET"
+        applyAccountHeader(request: &req)
         let data = try execute(req)
         if let rows = try? decoder.decode([Activity].self, from: data) {
             return rows.sorted { $0.date > $1.date }

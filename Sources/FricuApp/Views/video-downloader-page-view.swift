@@ -863,79 +863,131 @@ struct VideoDownloaderPageView: View {
                     .font(.largeTitle.bold())
 
                 if !isFittingPage {
-                    GroupBox(L10n.choose(simplifiedChinese: "新建下载任务", english: "Create Download Task")) {
+                    GroupBox(L10n.choose(simplifiedChinese: "视频下载流程", english: "Video Download Workflow")) {
                         VStack(alignment: .leading, spacing: 12) {
-                            Text(L10n.choose(
-                                simplifiedChinese: "支持粘贴 YouTube 或 Instagram 视频链接，系统会自动识别平台。",
-                                english: "Paste a YouTube or Instagram video link and the platform will be detected automatically."
-                            ))
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
+                            fittingFlowCard(
+                                step: 1,
+                                title: L10n.choose(simplifiedChinese: "导入视频链接", english: "Paste Video URL"),
+                                subtitle: downloadLinkStepSubtitle,
+                                state: downloadLinkStepState
+                            ) {
+                                TextField(
+                                    L10n.choose(
+                                        simplifiedChinese: "输入视频链接（https://...）",
+                                        english: "Paste video URL (https://...)"
+                                    ),
+                                    text: $sourceURLText
+                                )
+                                .textFieldStyle(.roundedBorder)
+                                .disabled(isDownloading)
+                            }
 
-                            TextField(
-                                L10n.choose(
-                                    simplifiedChinese: "输入视频链接（https://...）",
-                                    english: "Paste video URL (https://...)"
+                            fittingFlowCard(
+                                step: 2,
+                                title: L10n.choose(simplifiedChinese: "校验平台与链接", english: "Validate Platform and URL"),
+                                subtitle: downloadValidationStepSubtitle,
+                                state: downloadValidationStepState
+                            ) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    validationMessage
+                                    statusRow(title: "URL", value: normalizedURLText)
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "平台", english: "Platform"),
+                                        value: selectedPlatformText
+                                    )
+                                }
+                            }
+
+                            fittingFlowCard(
+                                step: 3,
+                                title: L10n.choose(simplifiedChinese: "设置下载参数", english: "Set Download Parameters"),
+                                subtitle: L10n.choose(
+                                    simplifiedChinese: "清晰度与速度可独立选择，默认优先 AVPlayer 兼容格式。",
+                                    english: "Quality and speed are configurable; default prioritizes AVPlayer-compatible output."
                                 ),
-                                text: $sourceURLText
-                            )
-                            .textFieldStyle(.roundedBorder)
+                                state: downloadConfigurationStepState
+                            ) {
+                                HStack(spacing: 14) {
+                                    HStack(spacing: 8) {
+                                        Text(L10n.choose(simplifiedChinese: "清晰度", english: "Quality"))
+                                            .font(.subheadline.weight(.semibold))
+                                        Picker(
+                                            L10n.choose(simplifiedChinese: "清晰度", english: "Quality"),
+                                            selection: $selectedQuality
+                                        ) {
+                                            ForEach(VideoDownloadQuality.allCases) { quality in
+                                                Text(quality.displayName).tag(quality)
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .pickerStyle(.menu)
+                                        .disabled(isDownloading)
+                                    }
 
-                            HStack(spacing: 8) {
-                                Text(L10n.choose(simplifiedChinese: "清晰度", english: "Quality"))
-                                    .font(.subheadline.weight(.semibold))
-                                Picker(
-                                    L10n.choose(simplifiedChinese: "清晰度", english: "Quality"),
-                                    selection: $selectedQuality
-                                ) {
-                                    ForEach(VideoDownloadQuality.allCases) { quality in
-                                        Text(quality.displayName).tag(quality)
+                                    HStack(spacing: 8) {
+                                        Text(L10n.choose(simplifiedChinese: "下载速度", english: "Speed"))
+                                            .font(.subheadline.weight(.semibold))
+                                        Picker(
+                                            L10n.choose(simplifiedChinese: "下载速度", english: "Speed"),
+                                            selection: $selectedSpeedMode
+                                        ) {
+                                            ForEach(VideoDownloadSpeedMode.allCases) { mode in
+                                                Text(mode.displayName).tag(mode)
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .pickerStyle(.menu)
+                                        .disabled(isDownloading)
                                     }
                                 }
-                                .labelsHidden()
-                                .pickerStyle(.menu)
-                                .disabled(isDownloading)
                             }
 
-                            HStack(spacing: 8) {
-                                Text(L10n.choose(simplifiedChinese: "下载速度", english: "Speed"))
-                                    .font(.subheadline.weight(.semibold))
-                                Picker(
-                                    L10n.choose(simplifiedChinese: "下载速度", english: "Speed"),
-                                    selection: $selectedSpeedMode
-                                ) {
-                                    ForEach(VideoDownloadSpeedMode.allCases) { mode in
-                                        Text(mode.displayName).tag(mode)
+                            fittingFlowCard(
+                                step: 4,
+                                title: L10n.choose(simplifiedChinese: "执行下载", english: "Run Download"),
+                                subtitle: currentJobStateText,
+                                state: downloadExecutionStepState
+                            ) {
+                                HStack(spacing: 12) {
+                                    Button(
+                                        isDownloading
+                                            ? L10n.choose(simplifiedChinese: "下载中...", english: "Downloading...")
+                                            : L10n.choose(simplifiedChinese: "开始下载", english: "Start Download")
+                                    ) {
+                                        handleStartDownloadTapped()
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .disabled(!isDownloadReady || isDownloading)
+
+                                    Button(L10n.choose(simplifiedChinese: "清空", english: "Clear")) {
+                                        sourceURLText = ""
+                                        resetJobFeedback()
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(isDownloading)
+
+                                    if isDownloading {
+                                        ProgressView()
+                                            .controlSize(.small)
                                     }
                                 }
-                                .labelsHidden()
-                                .pickerStyle(.menu)
-                                .disabled(isDownloading)
                             }
 
-                            validationMessage
-
-                            HStack(spacing: 12) {
-                                Button(
-                                    isDownloading
-                                        ? L10n.choose(simplifiedChinese: "下载中...", english: "Downloading...")
-                                        : L10n.choose(simplifiedChinese: "开始下载", english: "Start Download")
-                                ) {
-                                    handleStartDownloadTapped()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .disabled(!isDownloadReady || isDownloading)
-
-                                Button(L10n.choose(simplifiedChinese: "清空", english: "Clear")) {
-                                    sourceURLText = ""
-                                    resetJobFeedback()
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(isDownloading)
-
-                                if isDownloading {
-                                    ProgressView()
-                                        .controlSize(.small)
+                            fittingFlowCard(
+                                step: 5,
+                                title: L10n.choose(simplifiedChinese: "回放与后续处理", english: "Playback and Follow-up"),
+                                subtitle: downloadPlaybackStepSubtitle,
+                                state: downloadPlaybackStepState
+                            ) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "输出文件", english: "Output File"),
+                                        value: downloadedVideoURL?.lastPathComponent ?? L10n.choose(simplifiedChinese: "未下载", english: "Not downloaded")
+                                    )
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "输出路径", english: "Output Path"),
+                                        value: outputLocationText
+                                    )
                                 }
                             }
                         }
@@ -1612,6 +1664,122 @@ struct VideoDownloaderPageView: View {
         sourceVideoURL(for: .front) != nil ||
         sourceVideoURL(for: .side) != nil ||
         sourceVideoURL(for: .rear) != nil
+    }
+
+    private var hasSourceInput: Bool {
+        !sourceURLText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var downloadLinkStepState: VideoFittingFlowState {
+        switch validationResult {
+        case .emptyInput:
+            return .pending
+        case .invalidURL, .unsupportedPlatform:
+            return .blocked
+        case .valid:
+            return .done
+        }
+    }
+
+    private var downloadLinkStepSubtitle: String {
+        switch validationResult {
+        case .emptyInput:
+            return L10n.choose(
+                simplifiedChinese: "支持 YouTube / Instagram 链接，粘贴后自动识别平台。",
+                english: "Paste a YouTube/Instagram URL and the platform will be detected automatically."
+            )
+        case .invalidURL:
+            return L10n.choose(
+                simplifiedChinese: "链接格式无效，请使用完整 https 地址。",
+                english: "Invalid URL format. Use a full https link."
+            )
+        case .unsupportedPlatform:
+            return L10n.choose(
+                simplifiedChinese: "当前仅支持 YouTube / Instagram。",
+                english: "Only YouTube/Instagram are supported."
+            )
+        case let .valid(platform, normalizedURL):
+            return L10n.choose(
+                simplifiedChinese: "已识别 \(platform.displayName)：\(normalizedURL.absoluteString)",
+                english: "Detected \(platform.displayName): \(normalizedURL.absoluteString)"
+            )
+        }
+    }
+
+    private var downloadValidationStepState: VideoFittingFlowState {
+        switch validationResult {
+        case .emptyInput:
+            return .pending
+        case .invalidURL, .unsupportedPlatform:
+            return .blocked
+        case .valid:
+            return .done
+        }
+    }
+
+    private var downloadValidationStepSubtitle: String {
+        switch validationResult {
+        case .emptyInput:
+            return L10n.choose(
+                simplifiedChinese: "等待输入可校验的链接。",
+                english: "Waiting for a link to validate."
+            )
+        case .invalidURL:
+            return L10n.choose(
+                simplifiedChinese: "校验失败：链接结构不合法。",
+                english: "Validation failed: malformed URL."
+            )
+        case .unsupportedPlatform:
+            return L10n.choose(
+                simplifiedChinese: "校验失败：平台不在支持范围。",
+                english: "Validation failed: platform not supported."
+            )
+        case let .valid(platform, _):
+            return L10n.choose(
+                simplifiedChinese: "校验通过：\(platform.displayName) 链接可下载。",
+                english: "Validation passed: \(platform.displayName) link is ready for download."
+            )
+        }
+    }
+
+    private var downloadConfigurationStepState: VideoFittingFlowState {
+        if isDownloading { return .running }
+        if !isDownloadReady {
+            return hasSourceInput ? .blocked : .pending
+        }
+        return hasDownloadAttempt ? .done : .ready
+    }
+
+    private var downloadExecutionStepState: VideoFittingFlowState {
+        if isDownloading { return .running }
+        if downloadedVideoURL != nil { return .done }
+        if hasDownloadAttempt { return .blocked }
+        return isDownloadReady ? .ready : .pending
+    }
+
+    private var downloadPlaybackStepState: VideoFittingFlowState {
+        guard downloadedVideoURL != nil else { return .pending }
+        if playbackErrorText != "-" { return .blocked }
+        return (usesLibVLCPlayback || playbackPlayer != nil) ? .done : .ready
+    }
+
+    private var downloadPlaybackStepSubtitle: String {
+        if let file = downloadedVideoURL?.lastPathComponent {
+            if playbackErrorText != "-" {
+                return L10n.choose(
+                    simplifiedChinese: "文件 \(file) 已下载，但当前播放器加载失败。",
+                    english: "Downloaded \(file), but playback failed on current player."
+                )
+            }
+            return L10n.choose(
+                simplifiedChinese: "文件 \(file) 已就绪，可在下方播放器预览或进入 Fitting。",
+                english: "File \(file) is ready. Preview below or continue to fitting."
+            )
+        }
+        return L10n.choose(
+            simplifiedChinese: "下载成功后会自动进入可回放状态。",
+            english: "Playback becomes available after a successful download."
+        )
     }
 
     private var canRunPostComplianceSteps: Bool {

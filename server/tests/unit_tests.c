@@ -26,6 +26,10 @@ static void test_valid_key(void) {
     assert(is_valid_key("exported_file_1234"));
     assert(!is_valid_key("exported_file_"));
     assert(!is_valid_key("unknown"));
+    assert(is_valid_storage_key("acct_1::activities"));
+    assert(is_valid_storage_key("acct_1::profile"));
+    assert(!is_valid_storage_key("acct::unknown"));
+    assert(!is_valid_storage_key("::activities"));
 }
 
 static void test_parse_bind_addr(void) {
@@ -109,6 +113,7 @@ static void test_put_is_journaled_and_persisted(void) {
     const char *req =
         "PUT /v1/data/profile HTTP/1.1\r\n"
         "Host: localhost\r\n"
+        "X-Account-Id: tester\r\n"
         "Content-Length: 14\r\n\r\n"
         "{\"name\":\"Ana\"}";
     conn_t conn = {0};
@@ -128,7 +133,7 @@ static void test_put_is_journaled_and_persisted(void) {
     sqlite3 *sqlite = NULL;
     assert(sqlite3_open_v2("state.db", &sqlite, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK);
     sqlite3_stmt *stmt = NULL;
-    assert(sqlite3_prepare_v2(sqlite, "SELECT data_value FROM kv_store WHERE data_key='profile'", -1, &stmt, NULL) == SQLITE_OK);
+    assert(sqlite3_prepare_v2(sqlite, "SELECT data_value FROM kv_store WHERE data_key='tester::profile'", -1, &stmt, NULL) == SQLITE_OK);
     assert(sqlite3_step(stmt) == SQLITE_ROW);
     const unsigned char *v = sqlite3_column_text(stmt, 0);
     assert(v != NULL);
@@ -147,6 +152,51 @@ static void test_put_is_journaled_and_persisted(void) {
     }
     closedir(dir);
     assert(entries == 0);
+
+    free(conn.buf);
+    close(fds[0]);
+    close(fds[1]);
+    worker_db_close(&db);
+    assert(fchdir(old_cwd) == 0);
+    close(old_cwd);
+    char cleanup_cmd[512] = {0};
+    assert(snprintf(cleanup_cmd, sizeof(cleanup_cmd), "rm -rf '%s' >/dev/null 2>&1", tmpdir) > 0);
+    assert(system(cleanup_cmd) == 0);
+}
+
+static void test_missing_account_id_rejected(void) {
+    char dir_template[] = "/tmp/fricu-test-no-account-XXXXXX";
+    char *tmpdir = mkdtemp(dir_template);
+    assert(tmpdir != NULL);
+
+    int old_cwd = open(".", O_RDONLY);
+    assert(old_cwd >= 0);
+    assert(chdir(tmpdir) == 0);
+
+    assert(init_db("state.db") == 0);
+    worker_db_t db;
+    assert(worker_db_open(&db, "state.db") == 0);
+
+    int fds[2] = {-1, -1};
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+    const char *req =
+        "GET /v1/data/activities HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Connection: close\r\n\r\n";
+    conn_t conn = {0};
+    conn.cap = REQ_BUF_SIZE;
+    conn.buf = (char *)malloc(conn.cap);
+    assert(conn.buf != NULL);
+    conn.len = strlen(req);
+    memcpy(conn.buf, req, conn.len);
+    assert(try_process_client(fds[0], &db, &conn) == 1);
+
+    char resp[512] = {0};
+    ssize_t n = read(fds[1], resp, sizeof(resp) - 1);
+    assert(n > 0);
+    assert(strstr(resp, "401 Unauthorized") != NULL);
+    assert(strstr(resp, "missing X-Account-Id") != NULL);
 
     free(conn.buf);
     close(fds[0]);
@@ -183,6 +233,7 @@ static void test_put_lock_is_queued_in_pending_writes(void) {
     const char *req =
         "PUT /v1/data/app_settings HTTP/1.1\r\n"
         "Host: localhost\r\n"
+        "X-Account-Id: tester\r\n"
         "Content-Length: 10\r\n\r\n"
         "{\"v\":true}";
     conn_t conn = {0};
@@ -209,7 +260,7 @@ static void test_put_lock_is_queued_in_pending_writes(void) {
     while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
             entries++;
-            if (strncmp(ent->d_name, "app_settings-", strlen("app_settings-")) == 0) {
+            if (strncmp(ent->d_name, "tester::app_settings-", strlen("tester::app_settings-")) == 0) {
                 has_app_settings = 1;
             }
         }
@@ -231,7 +282,7 @@ static void test_put_lock_is_queued_in_pending_writes(void) {
     sqlite3 *sqlite = NULL;
     assert(sqlite3_open_v2("state.db", &sqlite, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK);
     sqlite3_stmt *stmt = NULL;
-    assert(sqlite3_prepare_v2(sqlite, "SELECT data_value FROM kv_store WHERE data_key='app_settings'", -1, &stmt, NULL) == SQLITE_OK);
+    assert(sqlite3_prepare_v2(sqlite, "SELECT data_value FROM kv_store WHERE data_key='tester::app_settings'", -1, &stmt, NULL) == SQLITE_OK);
     assert(sqlite3_step(stmt) == SQLITE_ROW);
     const unsigned char *v = sqlite3_column_text(stmt, 0);
     assert(v != NULL);
@@ -257,7 +308,7 @@ static void test_replay_pending_write_on_restart(void) {
 
     assert(init_db("state.db") == 0);
     assert(mkdir("pending_writes", 0700) == 0 || errno == EEXIST);
-    FILE *f = fopen("pending_writes/profile-999-1-1.json", "wb");
+    FILE *f = fopen("pending_writes/tester::profile-999-1-1.json", "wb");
     assert(f != NULL);
     assert(fwrite("{\"name\":\"Recovered\"}", 1, 20, f) == 20);
     assert(fclose(f) == 0);
@@ -267,7 +318,7 @@ static void test_replay_pending_write_on_restart(void) {
     sqlite3 *sqlite = NULL;
     assert(sqlite3_open_v2("state.db", &sqlite, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK);
     sqlite3_stmt *stmt = NULL;
-    assert(sqlite3_prepare_v2(sqlite, "SELECT data_value FROM kv_store WHERE data_key='profile'", -1, &stmt, NULL) == SQLITE_OK);
+    assert(sqlite3_prepare_v2(sqlite, "SELECT data_value FROM kv_store WHERE data_key='tester::profile'", -1, &stmt, NULL) == SQLITE_OK);
     assert(sqlite3_step(stmt) == SQLITE_ROW);
     const unsigned char *v = sqlite3_column_text(stmt, 0);
     assert(v != NULL);
@@ -275,7 +326,7 @@ static void test_replay_pending_write_on_restart(void) {
     sqlite3_finalize(stmt);
     sqlite3_close(sqlite);
 
-    assert(access("pending_writes/profile-999-1-1.json", F_OK) != 0);
+    assert(access("pending_writes/tester::profile-999-1-1.json", F_OK) != 0);
 
     assert(fchdir(old_cwd) == 0);
     close(old_cwd);
@@ -291,6 +342,7 @@ int main(void) {
     test_socket_send_flags();
     test_configure_socket_after_accept();
     test_put_is_journaled_and_persisted();
+    test_missing_account_id_rejected();
     test_replay_pending_write_on_restart();
     test_put_lock_is_queued_in_pending_writes();
     puts("unit tests passed");

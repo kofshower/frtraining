@@ -1,6 +1,7 @@
 #include "server.h"
 #include "server_internal.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -25,6 +26,7 @@ const char *DATA_KEYS[] = {
 const size_t DATA_KEYS_COUNT = sizeof(DATA_KEYS) / sizeof(DATA_KEYS[0]);
 
 bool is_valid_key(const char *key) {
+    if (!key || key[0] == '\0') return false;
     const char *exported_prefix = "exported_file_";
     size_t exported_prefix_len = strlen(exported_prefix);
     if (strncmp(key, exported_prefix, exported_prefix_len) == 0 && key[exported_prefix_len] != '\0') {
@@ -34,6 +36,24 @@ bool is_valid_key(const char *key) {
         if (strcmp(DATA_KEYS[i], key) == 0) return true;
     }
     return false;
+}
+
+bool is_valid_storage_key(const char *key) {
+    if (!key || key[0] == '\0') return false;
+    if (is_valid_key(key)) return true;
+
+    const char *sep = strstr(key, "::");
+    if (!sep || sep == key) return false;
+    const char *logical = sep + 2;
+    if (logical[0] == '\0') return false;
+
+    for (const char *p = key; p < sep; p++) {
+        unsigned char ch = (unsigned char)(*p);
+        if (!(isalnum(ch) || ch == '-' || ch == '_' || ch == '.')) {
+            return false;
+        }
+    }
+    return is_valid_key(logical);
 }
 
 int parse_bind_addr(const char *bind_addr_str, char *host, size_t host_len, int *port) {

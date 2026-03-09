@@ -21,9 +21,11 @@
 
 #define PENDING_WRITES_DIR "pending_writes"
 #define LOG_ID_MAX_LEN 96
+#define ACCOUNT_ID_MAX_LEN 128
 
 typedef struct {
     char log_id[LOG_ID_MAX_LEN];
+    char account_id[ACCOUNT_ID_MAX_LEN];
     int retry_attempt;
 } request_log_context_t;
 
@@ -75,6 +77,20 @@ static void sanitize_log_id_for_filename(const char *input, char *out, size_t ou
                 out[idx++] = (char)ch;
             } else {
                 out[idx++] = '_';
+            }
+        }
+    }
+    out[idx] = '\0';
+}
+
+static void sanitize_account_id(const char *input, char *out, size_t out_len) {
+    if (!out || out_len == 0) return;
+    size_t idx = 0;
+    if (input) {
+        for (size_t i = 0; input[i] != '\0' && idx + 1 < out_len; i++) {
+            unsigned char ch = (unsigned char)input[i];
+            if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.') {
+                out[idx++] = (char)ch;
             }
         }
     }
@@ -161,7 +177,23 @@ static request_log_context_t build_request_log_context(const char *req, const ch
         }
     }
 
+    char raw_account_id[256] = {0};
+    if (read_header_value(req, header_end, "X-Account-Id", raw_account_id, sizeof(raw_account_id))) {
+        sanitize_account_id(raw_account_id, context.account_id, sizeof(context.account_id));
+    }
+
     return context;
+}
+
+static int build_storage_key(
+    const char *account_id,
+    const char *logical_key,
+    char *out_storage_key,
+    size_t out_storage_key_len) {
+    if (!account_id || account_id[0] == '\0' || !logical_key || logical_key[0] == '\0') return -1;
+    int written = snprintf(out_storage_key, out_storage_key_len, "%s::%s", account_id, logical_key);
+    if (written <= 0 || (size_t)written >= out_storage_key_len) return -1;
+    return 0;
 }
 
 static int create_pending_write(
@@ -365,13 +397,14 @@ static void log_http_request(
     size_t payload_bytes,
     const request_log_context_t *ctx) {
     const char *log_id = (ctx && ctx->log_id[0] != '\0') ? ctx->log_id : "-";
+    const char *account_id = (ctx && ctx->account_id[0] != '\0') ? ctx->account_id : "-";
     int retry_attempt = ctx ? ctx->retry_attempt : 0;
     if (status_code >= 500) {
-        log_error("HTTP %s %s -> %d (%zu bytes) logid=%s retry=%d", method, path, status_code, payload_bytes, log_id, retry_attempt);
+        log_error("HTTP %s %s -> %d (%zu bytes) account=%s logid=%s retry=%d", method, path, status_code, payload_bytes, account_id, log_id, retry_attempt);
     } else if (status_code >= 400) {
-        log_warn("HTTP %s %s -> %d (%zu bytes) logid=%s retry=%d", method, path, status_code, payload_bytes, log_id, retry_attempt);
+        log_warn("HTTP %s %s -> %d (%zu bytes) account=%s logid=%s retry=%d", method, path, status_code, payload_bytes, account_id, log_id, retry_attempt);
     } else {
-        log_info("HTTP %s %s -> %d (%zu bytes) logid=%s retry=%d", method, path, status_code, payload_bytes, log_id, retry_attempt);
+        log_info("HTTP %s %s -> %d (%zu bytes) account=%s logid=%s retry=%d", method, path, status_code, payload_bytes, account_id, log_id, retry_attempt);
     }
 }
 
@@ -384,18 +417,23 @@ static int handle_get_data(int fd, worker_db_t *db, const char *key, const reque
 
     sqlite3_reset(stmt);
     sqlite3_clear_bindings(stmt);
-    sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+    char storage_key[256] = {0};
+    if (build_storage_key(ctx->account_id, key, storage_key, sizeof(storage_key)) != 0) {
+        send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"invalid account key\"}", ctx);
+        return 500;
+    }
+    sqlite3_bind_text(stmt, 1, storage_key, -1, SQLITE_TRANSIENT);
     int rc = sqlite3_step(stmt);
     if (rc == SQLITE_ROW) {
         const unsigned char *value = sqlite3_column_text(stmt, 0);
         send_response_with_log_context(fd, 200, "OK", (const char *)value, ctx);
-        log_info("DATA READ key=%s source=db logid=%s", key, ctx->log_id);
+        log_info("DATA READ key=%s source=db account=%s logid=%s", key, ctx->account_id, ctx->log_id);
         return 200;
     } else {
         int is_object_key = strcmp(key, "profile") == 0 || strcmp(key, "app_settings") == 0;
         const char *default_json = is_object_key ? "{}" : "[]";
         send_response_with_log_context(fd, 200, "OK", default_json, ctx);
-        log_info("DATA READ key=%s source=default logid=%s", key, ctx->log_id);
+        log_info("DATA READ key=%s source=default account=%s logid=%s", key, ctx->account_id, ctx->log_id);
         return 200;
     }
 }
@@ -423,14 +461,20 @@ static int handle_put_data(
     sqlite3_reset(stmt);
     sqlite3_clear_bindings(stmt);
 
-    char pending_path[512] = {0};
-    if (create_pending_write(key, payload, payload_len, ctx, pending_path, sizeof(pending_path)) != 0) {
-        send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"durable journal error\"}", ctx);
-        log_error("DATA WRITE failed key=%s reason=pending_write_create_failed bytes=%zu logid=%s", key, payload_len, ctx->log_id);
+    char storage_key[256] = {0};
+    if (build_storage_key(ctx->account_id, key, storage_key, sizeof(storage_key)) != 0) {
+        send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"invalid account key\"}", ctx);
         return 500;
     }
 
-    sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+    char pending_path[512] = {0};
+    if (create_pending_write(storage_key, payload, payload_len, ctx, pending_path, sizeof(pending_path)) != 0) {
+        send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"durable journal error\"}", ctx);
+        log_error("DATA WRITE failed key=%s reason=pending_write_create_failed bytes=%zu account=%s logid=%s", key, payload_len, ctx->account_id, ctx->log_id);
+        return 500;
+    }
+
+    sqlite3_bind_text(stmt, 1, storage_key, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 2, payload, -1, SQLITE_TRANSIENT);
     int rc = SQLITE_ERROR;
     const int max_retries = 8;
@@ -444,8 +488,9 @@ static int handle_put_data(
 
         if ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && attempt < max_retries) {
             log_warn(
-                "DATA WRITE retrying key=%s logid=%s attempt=%d rc=%d bytes=%zu",
+                "DATA WRITE retrying key=%s account=%s logid=%s attempt=%d rc=%d bytes=%zu",
                 key,
+                ctx->account_id,
                 ctx->log_id,
                 attempt + 1,
                 rc,
@@ -474,12 +519,13 @@ static int handle_put_data(
             ext);
         send_response_with_log_context(fd, 202, "Accepted", response_body, ctx);
         log_warn(
-            "DATA WRITE queued key=%s reason=sqlite_lock rc=%d ext=%d bytes=%zu pending=%s logid=%s retries=%d",
+            "DATA WRITE queued key=%s reason=sqlite_lock rc=%d ext=%d bytes=%zu pending=%s account=%s logid=%s retries=%d",
             key,
             rc,
             ext,
             payload_len,
             pending_path,
+            ctx->account_id,
             ctx->log_id,
             attempt_used);
         return 202;
@@ -506,7 +552,7 @@ static int handle_put_data(
 
         send_response_with_log_context(fd, 500, "Internal Server Error", response_body, ctx);
         log_error(
-            "DATA WRITE failed key=%s reason=sqlite_step_error rc=%d rc_name=%s ext=%d ext_name=%s errmsg=%s bytes=%zu backup=%s logid=%s retries=%d",
+            "DATA WRITE failed key=%s reason=sqlite_step_error rc=%d rc_name=%s ext=%d ext_name=%s errmsg=%s bytes=%zu backup=%s account=%s logid=%s retries=%d",
             key,
             rc,
             rc_name ? rc_name : "unknown",
@@ -515,6 +561,7 @@ static int handle_put_data(
             errmsg ? errmsg : "unknown",
             payload_len,
             backup_ok == 0 ? backup_path : "none",
+            ctx->account_id,
             ctx->log_id,
             attempt_used);
         return 500;
@@ -522,12 +569,12 @@ static int handle_put_data(
 
     if (remove_pending_write(pending_path) != 0) {
         send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"durable journal cleanup error\"}", ctx);
-        log_error("DATA WRITE failed key=%s reason=pending_write_cleanup_failed path=%s logid=%s", key, pending_path, ctx->log_id);
+        log_error("DATA WRITE failed key=%s reason=pending_write_cleanup_failed path=%s account=%s logid=%s", key, pending_path, ctx->account_id, ctx->log_id);
         return 500;
     }
 
     send_response_with_log_context(fd, 204, "No Content", "", ctx);
-    log_info("DATA WRITE key=%s status=stored bytes=%zu logid=%s retries=%d", key, payload_len, ctx->log_id, attempt_used);
+    log_info("DATA WRITE key=%s status=stored bytes=%zu account=%s logid=%s retries=%d", key, payload_len, ctx->account_id, ctx->log_id, attempt_used);
     return 204;
 }
 
@@ -563,6 +610,12 @@ int try_process_client(int fd, worker_db_t *db, conn_t *conn) {
     if (!is_valid_key(key)) {
         send_response_with_log_context(fd, 404, "Not Found", "{\"error\":\"unknown key\"}", &log_ctx);
         log_http_request(method, path, 404, 0, &log_ctx);
+        return 1;
+    }
+
+    if (log_ctx.account_id[0] == '\0') {
+        send_response_with_log_context(fd, 401, "Unauthorized", "{\"error\":\"missing X-Account-Id\"}", &log_ctx);
+        log_http_request(method, path, 401, 0, &log_ctx);
         return 1;
     }
 

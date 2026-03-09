@@ -147,6 +147,8 @@ struct AthletePanel: Identifiable, Hashable {
 
 @MainActor
 final class AppStore: ObservableObject {
+    private static let singleAccountPanelPrefix = "__account__::"
+
     @Published private(set) var activities: [Activity] = []
     @Published private(set) var dailyMealPlans: [DailyMealPlan] = []
     @Published private(set) var customFoodLibrary: [CustomFoodLibraryItem] = []
@@ -164,8 +166,13 @@ final class AppStore: ObservableObject {
     let powerMeter = PowerMeterManager()
     @Published private(set) var trainerRiderSessions: [TrainerRiderSession] = []
     @Published private(set) var primaryTrainerSessionID: UUID?
+    @Published private(set) var currentAccountID: String = "__anonymous__"
+    @Published private(set) var currentAccountDisplayName: String = L10n.choose(
+        simplifiedChinese: "未登录用户",
+        english: "Anonymous"
+    )
 
-    @Published var selectedAthletePanelID: String = AthletePanel.allID {
+    @Published var selectedAthletePanelID: String = "__account__::__anonymous__" {
         didSet {
             guard selectedAthletePanelID != oldValue else { return }
             applySelectedAthleteProfileIfNeeded()
@@ -249,6 +256,7 @@ final class AppStore: ObservableObject {
     private var trainerRiderConnectionMemoryBySessionID: [UUID: TrainerRiderConnectionMemory] = [:]
     private let trainerRiderConnectionStoreDefaultsKey = "fricu.trainer.rider.connection.store.v1"
     private let athleteProfileStoreDefaultsKey = "fricu.athlete.profile.store.v1"
+    private let legacySingleAccountPurgeDefaultsKey = "fricu.single.account.cleanup.v1"
     private let serverHostDefaultsKey = "fricu.server.host.v1"
     private let serverPortDefaultsKey = "fricu.server.port.v1"
     private let nutritionUSDAAPIKeyDefaultsKey = "nutrition.usda.apiKey"
@@ -277,17 +285,64 @@ final class AppStore: ObservableObject {
         return formatter
     }()
 
-    private static func activitiesCacheFileURL() throws -> URL {
-        try LocalJSONRepository.dataDirectoryURL().appendingPathComponent("activities.json")
+    private var currentAccountPanelID: String {
+        Self.singleAccountPanelPrefix + currentAccountID
+    }
+
+    private var isAnonymousAccount: Bool {
+        currentAccountID == "__anonymous__"
     }
 
     init() {
+        purgeLegacyMultiAthleteStateIfNeeded()
         loadServerEndpointFromDefaults()
         configureRepository()
         configureInitialTrainerSessions()
         setupAppSettingsSyncPipeline()
         setupDerivedRefreshPipeline()
         setupTrainerRecordingPipeline()
+        markDerivedStateDirty()
+    }
+
+    private func purgeLegacyMultiAthleteStateIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: legacySingleAccountPurgeDefaultsKey) else { return }
+        defaults.removeObject(forKey: athleteProfileStoreDefaultsKey)
+        defaults.set(true, forKey: legacySingleAccountPurgeDefaultsKey)
+    }
+
+    func activateAuthenticatedAccount(accountID: String, displayName: String) {
+        let normalizedID = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedDisplayName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedID.isEmpty else {
+            lastError = L10n.choose(simplifiedChinese: "账号 ID 不能为空", english: "Account ID cannot be empty")
+            return
+        }
+        let resolvedDisplayName = normalizedDisplayName.isEmpty
+            ? L10n.choose(simplifiedChinese: "未命名账号", english: "Unnamed Account")
+            : normalizedDisplayName
+
+        let changed = currentAccountID != normalizedID
+        currentAccountID = normalizedID
+        currentAccountDisplayName = resolvedDisplayName
+        selectedAthletePanelID = currentAccountPanelID
+        clearClientLogs()
+        lastError = nil
+        syncStatus = nil
+        configureRepository()
+        configureInitialTrainerSessions()
+
+        if changed {
+            activities = []
+            dailyMealPlans = []
+            customFoodLibrary = []
+            plannedWorkouts = []
+            wellnessSamples = []
+            intervalsCalendarEvents = []
+            lactateHistoryRecords = []
+            activityMetricInsightsCache = [:]
+        }
+        refreshAthletePanelsAndSelection(preferSpecificSelection: false)
         markDerivedStateDirty()
     }
 
@@ -386,7 +441,7 @@ final class AppStore: ObservableObject {
 
         return AppSettingsSnapshot(
             trainerRiderConnectionStoreData: defaults.data(forKey: trainerRiderConnectionStoreDefaultsKey),
-            athleteProfileStoreData: defaults.data(forKey: athleteProfileStoreDefaultsKey),
+            athleteProfileStoreData: nil,
             appLanguageRawValue: defaults.string(forKey: AppLanguageOption.storageKey),
             chartDisplayModeRawValue: defaults.string(forKey: AppChartDisplayMode.storageKey),
             nutritionUSDAAPIKey: defaults.string(forKey: nutritionUSDAAPIKeyDefaultsKey),
@@ -409,9 +464,7 @@ final class AppStore: ObservableObject {
             defaults.set(data, forKey: trainerRiderConnectionStoreDefaultsKey)
             shouldReloadTrainerSessions = true
         }
-        if let data = snapshot.athleteProfileStoreData {
-            defaults.set(data, forKey: athleteProfileStoreDefaultsKey)
-        }
+        _ = snapshot.athleteProfileStoreData
         if let appLanguageRawValue = snapshot.appLanguageRawValue {
             defaults.set(appLanguageRawValue, forKey: AppLanguageOption.storageKey)
         }
@@ -455,6 +508,7 @@ final class AppStore: ObservableObject {
     }
 
     private func hydrateAppSettingsFromRepository() {
+        guard !isAnonymousAccount else { return }
         guard let repository else { return }
         do {
             if let serverSettings = try repository.loadAppSettings(), !serverSettings.isEmpty {
@@ -481,6 +535,7 @@ final class AppStore: ObservableObject {
     }
 
     private func persistAppSettingsToRepository(reason: String = "unspecified") {
+        guard !isAnonymousAccount else { return }
         guard !isApplyingServerBackedSettings else {
             appendClientLog(level: "INFO", message: "Skip app settings sync (\(reason)): applying server-backed settings.")
             return
@@ -546,8 +601,14 @@ final class AppStore: ObservableObject {
             guard let url = URL(string: base) else {
                 throw RepositoryError.invalidServerURL
             }
-            self.repository = try RemoteHTTPRepository(baseURL: url)
-            appendClientLog(level: "INFO", message: "Configured server repository: \(base)")
+            self.repository = try RemoteHTTPRepository(
+                baseURL: url,
+                accountID: currentAccountID
+            )
+            appendClientLog(
+                level: "INFO",
+                message: "Configured server repository: \(base) account=\(currentAccountID)"
+            )
         } catch {
             self.repository = nil
             self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
@@ -571,30 +632,45 @@ final class AppStore: ObservableObject {
         UserDefaults.standard.set(parsedPort, forKey: serverPortDefaultsKey)
         configureRepository()
         persistAppSettingsToRepository(reason: "updateServerEndpoint")
-        bootstrap()
+        bootstrap(runTrainerFITSelfHeal: false)
         syncStatus = "Server endpoint updated to \(normalizedHost):\(parsedPort)"
     }
 
     private func configureInitialTrainerSessions() {
         let restoredStore = loadTrainerRiderConnectionStore()
-        let restoredRiders = (restoredStore?.riders ?? []).filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let restoredRiders = (restoredStore?.riders ?? [])
+            .filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
         if restoredRiders.isEmpty {
-            trainerRiderConnectionMemoryBySessionID = [:]
-            trainerRiderSessions = []
-            primaryTrainerSessionID = nil
+            let primary = TrainerRiderConnectionMemory(
+                id: UUID(),
+                name: currentAccountDisplayName,
+                preferredTrainerDeviceID: nil,
+                preferredHeartRateDeviceID: nil,
+                preferredPowerMeterDeviceID: nil,
+                appearance: .default
+            )
+            trainerRiderConnectionMemoryBySessionID = [primary.id: primary]
+            trainerRiderSessions = [makeTrainerRiderSession(from: primary, useSharedManagers: true)]
+            primaryTrainerSessionID = primary.id
         } else {
-            let primaryID = resolvedPrimarySessionID(
-                in: restoredRiders,
-                preferred: restoredStore?.primarySessionID
-            )
-            trainerRiderConnectionMemoryBySessionID = Dictionary(
-                uniqueKeysWithValues: restoredRiders.map { ($0.id, $0) }
-            )
-            trainerRiderSessions = restoredRiders.map { memory in
-                makeTrainerRiderSession(from: memory, useSharedManagers: memory.id == primaryID)
+            let primaryID = resolvedPrimarySessionID(in: restoredRiders, preferred: restoredStore?.primarySessionID)
+            guard let picked = restoredRiders.first(where: { $0.id == primaryID }) ?? restoredRiders.first else {
+                trainerRiderConnectionMemoryBySessionID = [:]
+                trainerRiderSessions = []
+                primaryTrainerSessionID = nil
+                trainerRecordingStatusBySession = [:]
+                refreshPrimaryTrainerRecordingSnapshot()
+                setupTrainerRecordingPipeline()
+                return
             }
-            primaryTrainerSessionID = primaryID
+            var single = picked
+            single.name = currentAccountDisplayName
+            trainerRiderConnectionMemoryBySessionID = Dictionary(
+                uniqueKeysWithValues: [(single.id, single)]
+            )
+            trainerRiderSessions = [makeTrainerRiderSession(from: single, useSharedManagers: true)]
+            primaryTrainerSessionID = single.id
         }
 
         trainerRecordingStatusBySession = Dictionary(
@@ -749,38 +825,24 @@ final class AppStore: ObservableObject {
     }
 
     func addTrainerRiderSession(named preferredName: String? = nil) {
-        let trimmed = preferredName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let name = trimmed.isEmpty ? nextTrainerSessionName : trimmed
-        let memory = TrainerRiderConnectionMemory(
-            id: UUID(),
-            name: name,
-            preferredTrainerDeviceID: nil,
-            preferredHeartRateDeviceID: nil,
-            preferredPowerMeterDeviceID: nil,
-            appearance: .default
+        _ = preferredName
+        _ = nextTrainerSessionName
+        lastError = L10n.choose(
+            simplifiedChinese: "单账号模式下不支持新增运动员面板。",
+            english: "Single-account mode does not support adding athlete panels."
         )
-        let session = makeTrainerRiderSession(from: memory, useSharedManagers: false)
-        trainerRiderConnectionMemoryBySessionID[session.id] = memory
-        trainerRiderSessions.append(session)
-        updateTrainerRecordingStatus(TrainerRecordingStatus(), for: session.id)
-        observeTrainerConnection(for: session)
-        observeTrainerPower(for: session)
-        observePowerMeterPower(for: session)
-        persistTrainerRiderConnectionStore()
-        refreshAthletePanelsAndSelection(preferSpecificSelection: false)
     }
 
     func renameTrainerRiderSession(id: UUID, to newName: String) {
-        guard let index = trainerRiderSessions.firstIndex(where: { $0.id == id }) else { return }
-        let oldName = trainerRiderSessions[index].name
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard trimmed != oldName else { return }
+        guard let index = trainerRiderSessions.firstIndex(where: { $0.id == id }) else { return }
+        guard trainerRiderSessions[index].name != trimmed else { return }
         trainerRiderSessions[index].name = trimmed
+        currentAccountDisplayName = trimmed
         var memory = baseConnectionMemory(for: id)
         memory.name = trimmed
         trainerRiderConnectionMemoryBySessionID[id] = memory
-        migrateAthleteIdentity(from: oldName, to: trimmed)
         persistTrainerRiderConnectionStore()
         refreshAthletePanelsAndSelection(preferSpecificSelection: false)
     }
@@ -798,42 +860,11 @@ final class AppStore: ObservableObject {
     }
 
     func removeTrainerRiderSession(id: UUID) {
-        guard let index = trainerRiderSessions.firstIndex(where: { $0.id == id }) else { return }
-        let session = trainerRiderSessions[index]
-        if id == primaryTrainerSessionID {
-            lastError = "Primary rider cannot be removed."
-            return
-        }
-        if trainerRecordingStatus(for: id).isActive {
-            lastError = "Stop rider recording before removing this rider."
-            return
-        }
-
-        session.trainer.stopScan()
-        session.trainer.disconnect()
-        session.heartRateMonitor.stopScan()
-        session.heartRateMonitor.disconnect()
-        session.powerMeter.stopScan()
-        session.powerMeter.disconnect()
-        trainerRiderSessions.remove(at: index)
-        trainerRiderConnectionMemoryBySessionID[id] = nil
-        trainerConnectionCancellableBySession[id]?.cancel()
-        trainerConnectionCancellableBySession[id] = nil
-        trainerPowerCancellableBySession[id]?.cancel()
-        trainerPowerCancellableBySession[id] = nil
-        powerMeterPowerCancellableBySession[id]?.cancel()
-        powerMeterPowerCancellableBySession[id] = nil
-        trainerRecordingStatusBySession[id] = nil
-        trainerRecordingSessionByRider[id] = nil
-        trainerRecordingTimerTaskBySession[id]?.cancel()
-        trainerRecordingTimerTaskBySession[id] = nil
-        trainerRecordingFinalizationTaskBySession[id]?.cancel()
-        trainerRecordingFinalizationTaskBySession[id] = nil
-        isFinalizingTrainerRecordingBySession.remove(id)
-        removeTrainerRecordingCheckpointFIT(for: id)
-        persistTrainerRiderConnectionStore()
-        refreshAthletePanelsAndSelection(preferSpecificSelection: false)
-        refreshPrimaryTrainerRecordingSnapshot()
+        _ = id
+        lastError = L10n.choose(
+            simplifiedChinese: "单账号模式下不支持删除运动员面板。",
+            english: "Single-account mode does not support deleting athlete panels."
+        )
     }
 
     private func trainerRiderSession(id: UUID) -> TrainerRiderSession? {
@@ -887,26 +918,11 @@ final class AppStore: ObservableObject {
         if let primary = primaryTrainerRiderName {
             return primary
         }
-        if let existing = activities
-            .compactMap({ normalizedNonEmptyString($0.athleteName) ?? parseAthleteNameFromLegacyNotes($0.notes) })
-            .first {
-            return existing
-        }
-        return L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
+        return currentAccountDisplayName
     }
 
     private func loadAthleteProfileStoreIfNeeded(fallback: AthleteProfile) {
-        var restored: [String: AthleteProfile] = [:]
-        if let data = UserDefaults.standard.data(forKey: athleteProfileStoreDefaultsKey) {
-            if let decoded = try? JSONDecoder().decode([String: AthleteProfile].self, from: data) {
-                restored = decoded
-            }
-        }
-        if restored.isEmpty {
-            let fallbackKey = athletePanelID(forName: fallbackAthleteName)
-            restored[fallbackKey] = fallback
-        }
-        athleteProfilesByPanelID = restored
+        athleteProfilesByPanelID = [currentAccountPanelID: fallback]
     }
 
     private func persistAthleteProfileStore() {
@@ -923,15 +939,13 @@ final class AppStore: ObservableObject {
 
     private func cacheProfileForSelectedAthlete() {
         guard !isApplyingAthleteProfile else { return }
-        guard selectedAthletePanelID != AthletePanel.allID else { return }
-        athleteProfilesByPanelID[selectedAthletePanelID] = profile
+        athleteProfilesByPanelID[currentAccountPanelID] = profile
         persistAthleteProfileStore()
     }
 
     private func applySelectedAthleteProfileIfNeeded() {
-        guard selectedAthletePanelID != AthletePanel.allID else { return }
-        let chosen = athleteProfilesByPanelID[selectedAthletePanelID] ?? profile
-        athleteProfilesByPanelID[selectedAthletePanelID] = chosen
+        let chosen = athleteProfilesByPanelID[currentAccountPanelID] ?? profile
+        athleteProfilesByPanelID[currentAccountPanelID] = chosen
         persistAthleteProfileStore()
         guard derivedProfileFingerprint(profile) != derivedProfileFingerprint(chosen) else { return }
         isApplyingAthleteProfile = true
@@ -940,120 +954,20 @@ final class AppStore: ObservableObject {
     }
 
     private func refreshAthletePanelsAndSelection(preferSpecificSelection: Bool) {
-        var countsByPanelID: [String: Int] = [:]
-        var titleByPanelID: [String: String] = [:]
-
-        for activity in activities {
-            let title = athleteDisplayName(for: activity)
-            let panelID = athletePanelID(forName: title)
-            countsByPanelID[panelID, default: 0] += 1
-            if titleByPanelID[panelID] == nil {
-                titleByPanelID[panelID] = title
-            }
-        }
-
-        for session in trainerRiderSessions {
-            let title = session.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !title.isEmpty else { continue }
-            let panelID = athletePanelID(forName: title)
-            if titleByPanelID[panelID] == nil {
-                titleByPanelID[panelID] = title
-            }
-            countsByPanelID[panelID, default: 0] += 0
-        }
-
-        for workout in plannedWorkouts {
-            guard let name = normalizedNonEmptyString(workout.athleteName) else { continue }
-            let panelID = athletePanelID(forName: name)
-            if titleByPanelID[panelID] == nil {
-                titleByPanelID[panelID] = name
-            }
-            countsByPanelID[panelID, default: 0] += 0
-        }
-
-        for plan in dailyMealPlans {
-            guard let name = normalizedNonEmptyString(plan.athleteName) else { continue }
-            let panelID = athletePanelID(forName: name)
-            if titleByPanelID[panelID] == nil {
-                titleByPanelID[panelID] = name
-            }
-            countsByPanelID[panelID, default: 0] += 0
-        }
-
-        for sample in wellnessSamples {
-            guard let name = normalizedNonEmptyString(sample.athleteName) else { continue }
-            let panelID = athletePanelID(forName: name)
-            if titleByPanelID[panelID] == nil {
-                titleByPanelID[panelID] = name
-            }
-            countsByPanelID[panelID, default: 0] += 0
-        }
-
-        for event in intervalsCalendarEvents {
-            guard let name = normalizedNonEmptyString(event.athleteName) else { continue }
-            let panelID = athletePanelID(forName: name)
-            if titleByPanelID[panelID] == nil {
-                titleByPanelID[panelID] = name
-            }
-            countsByPanelID[panelID, default: 0] += 0
-        }
-
-        if titleByPanelID.isEmpty {
-            let fallback = fallbackAthleteName
-            let panelID = athletePanelID(forName: fallback)
-            titleByPanelID[panelID] = fallback
-            countsByPanelID[panelID] = 0
-        }
-
-        var rows: [AthletePanel] = titleByPanelID.map { panelID, title in
+        _ = preferSpecificSelection
+        let panelID = currentAccountPanelID
+        athletePanelsCache = [
             AthletePanel(
                 id: panelID,
-                title: title,
-                count: countsByPanelID[panelID] ?? 0,
+                title: currentAccountDisplayName,
+                count: activities.count,
                 isAll: false
             )
+        ]
+        if selectedAthletePanelID != panelID {
+            selectedAthletePanelID = panelID
         }
-        let hiddenPlaceholderPanelIDs = Set(
-            rows
-                .filter { $0.count == 0 && isDisposablePlaceholderAthleteName($0.title) }
-                .map(\.id)
-        )
-        if !hiddenPlaceholderPanelIDs.isEmpty {
-            rows.removeAll { hiddenPlaceholderPanelIDs.contains($0.id) }
-            athleteProfilesByPanelID = athleteProfilesByPanelID.filter { key, _ in
-                !hiddenPlaceholderPanelIDs.contains(key)
-            }
-        }
-        rows.sort { lhs, rhs in
-            if lhs.count != rhs.count { return lhs.count > rhs.count }
-            return lhs.title.localizedCaseInsensitiveCompare(rhs.title) == .orderedAscending
-        }
-
-        let all = AthletePanel(
-            id: AthletePanel.allID,
-            title: L10n.choose(simplifiedChinese: "全部运动员", english: "All Athletes"),
-            count: activities.count,
-            isAll: true
-        )
-        athletePanelsCache = [all] + rows
-
-        let previousSelection = selectedAthletePanelID
-        if !athletePanelsCache.contains(where: { $0.id == previousSelection }) {
-            selectedAthletePanelID = rows.first?.id ?? AthletePanel.allID
-        } else if preferSpecificSelection, previousSelection == AthletePanel.allID {
-            selectedAthletePanelID = rows.first?.id ?? AthletePanel.allID
-        }
-        if selectedAthletePanelID != AthletePanel.allID,
-           let selectedPanel = athletePanelsCache.first(where: { $0.id == selectedAthletePanelID }),
-           selectedPanel.count == 0,
-           isDisposablePlaceholderAthleteName(selectedPanel.title),
-           let firstWithActivities = rows.first(where: { $0.count > 0 }) {
-            selectedAthletePanelID = firstWithActivities.id
-        }
-
-        for panel in rows where athleteProfilesByPanelID[panel.id] == nil {
-            athleteProfilesByPanelID[panel.id] = profile
-        }
+        athleteProfilesByPanelID = [panelID: profile]
         persistAthleteProfileStore()
     }
 
@@ -1188,8 +1102,9 @@ final class AppStore: ObservableObject {
         persistAthleteProfileStore()
     }
 
-    func bootstrap(runTrainerFITSelfHeal: Bool = true) {
+    func bootstrap(runTrainerFITSelfHeal: Bool = false) {
         do {
+            _ = runTrainerFITSelfHeal
             let startedAt = Date()
             appendClientLog(level: "INFO", message: "Bootstrap started: loading settings and repository data.")
             hydrateAppSettingsFromRepository()
@@ -1262,31 +1177,6 @@ final class AppStore: ObservableObject {
             }
 
             self.profile = loadedProfile
-            if runTrainerFITSelfHeal {
-                let recovery = recoverUnlinkedTrainerFITActivities(
-                    includeInProgress: true,
-                    trigger: "bootstrap"
-                )
-                appendClientLog(
-                    level: recovery.failedCount > 0 ? "WARN" : "INFO",
-                    message: recovery.summaryLine
-                )
-                if recovery.recoveredCount > 0 {
-                    syncStatus = recovery.summaryLine
-                }
-                let ownershipRepair = repairTrainerFITOwnershipFromExportedHints(trigger: "bootstrap")
-                if ownershipRepair.reassignedCount > 0 || ownershipRepair.failedPersist {
-                    appendClientLog(
-                        level: ownershipRepair.failedPersist ? "WARN" : "INFO",
-                        message: ownershipRepair.summaryLine
-                    )
-                }
-            }
-            let powerRepair = repairTrainerActivitiesMissingPower(trigger: "bootstrap")
-            if powerRepair.repairedCount > 0 {
-                syncStatus = powerRepair.summaryLine
-            }
-            migrateLegacyAthleteNamesIfNeeded()
             loadAthleteProfileStoreIfNeeded(fallback: loadedProfile)
             refreshAthletePanelsAndSelection(preferSpecificSelection: true)
             applySelectedAthleteProfileIfNeeded()
@@ -1620,33 +1510,19 @@ final class AppStore: ObservableObject {
     }
 
     var trainerRiderSessionsForSelectedAthlete: [TrainerRiderSession] {
-        guard selectedAthletePanelID != AthletePanel.allID else {
-            return trainerRiderSessions
-        }
-        return trainerRiderSessions.filter { athletePanelID(forName: $0.name) == selectedAthletePanelID }
+        trainerRiderSessions
     }
 
     var selectedAthleteTitle: String {
-        guard selectedAthletePanelID != AthletePanel.allID else {
-            return L10n.choose(simplifiedChinese: "全部运动员", english: "All Athletes")
-        }
-        return athletePanelsCache.first(where: { $0.id == selectedAthletePanelID })?.title
-            ?? L10n.choose(simplifiedChinese: "未选择运动员", english: "No Athlete Selected")
+        currentAccountDisplayName
     }
 
     var isAllAthletesSelected: Bool {
-        selectedAthletePanelID == AthletePanel.allID
+        false
     }
 
     var selectedAthleteNameForWrite: String {
-        if selectedAthletePanelID != AthletePanel.allID,
-           let panel = athletePanelsCache.first(where: { $0.id == selectedAthletePanelID }) {
-            return panel.title
-        }
-        if let primary = primaryTrainerRiderName {
-            return primary
-        }
-        return L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
+        currentAccountDisplayName
     }
 
     func profileForAthlete(named athleteName: String?) -> AthleteProfile {
@@ -3946,80 +3822,16 @@ final class AppStore: ObservableObject {
     }
 
     func canDeleteAthletePanel(panelID: String) -> Bool {
-        guard panelID != AthletePanel.allID else { return false }
-        // Keep the current primary rider panel protected because it owns shared BLE managers.
-        return !isPrimaryTrainerAthletePanel(panelID: panelID)
+        _ = panelID
+        return false
     }
 
     func deleteAthletePanelAndAssociatedData(panelID: String) {
-        guard panelID != AthletePanel.allID else { return }
-        guard let panel = athletePanelsCache.first(where: { $0.id == panelID }) else { return }
-        guard canDeleteAthletePanel(panelID: panelID) else {
-            lastError = L10n.choose(
-                simplifiedChinese: "当前主骑手面板无法直接删除。请先切换主骑手或删除其他面板。",
-                english: "The current primary rider panel cannot be deleted directly. Switch primary rider or delete another panel first."
-            )
-            return
-        }
-
-        let originalActivitiesCount = activities.count
-        let originalWorkoutsCount = plannedWorkouts.count
-        let originalMealPlansCount = dailyMealPlans.count
-        let originalWellnessCount = wellnessSamples.count
-        let originalEventsCount = intervalsCalendarEvents.count
-
-        let removedActivityIDs = Set(
-            activities
-                .filter { athletePanelID(for: $0) == panelID }
-                .map(\.id)
+        _ = panelID
+        lastError = L10n.choose(
+            simplifiedChinese: "单账号模式下不支持删除运动员面板。",
+            english: "Single-account mode does not support deleting athlete panels."
         )
-        let updatedActivities = activities.filter { athletePanelID(for: $0) != panelID }
-        let updatedWorkouts = plannedWorkouts.filter { athletePanelID(forName: $0.athleteName) != panelID }
-        let updatedMealPlans = dailyMealPlans.filter { athletePanelID(forName: $0.athleteName) != panelID }
-        let updatedWellness = wellnessSamples.filter { athletePanelID(forName: $0.athleteName) != panelID }
-        let updatedEvents = intervalsCalendarEvents.filter { athletePanelID(forName: $0.athleteName) != panelID }
-
-        do {
-            try persistActivities(updatedActivities)
-            try persistWorkouts(updatedWorkouts)
-            try persistDailyMealPlans(updatedMealPlans)
-            try persistWellnessSamples(updatedWellness)
-            try persistCalendarEvents(updatedEvents)
-        } catch {
-            lastError = "Failed to delete athlete panel data: \(error.localizedDescription)"
-            return
-        }
-
-        if !removedActivityIDs.isEmpty {
-            pruneActivityMetricInsights()
-        }
-
-        athleteProfilesByPanelID.removeValue(forKey: panelID)
-        persistAthleteProfileStore()
-
-        let removableSessionIDs = trainerRiderSessions
-            .filter { $0.id != primaryTrainerSessionID && athletePanelID(forName: $0.name) == panelID }
-            .map(\.id)
-        for sessionID in removableSessionIDs {
-            removeTrainerRiderSession(id: sessionID)
-        }
-
-        refreshAthletePanelsAndSelection(preferSpecificSelection: false)
-        markDerivedStateDirty()
-
-        let removedCountsSummary = [
-            L10n.choose(simplifiedChinese: "活动", english: "activities") + " \(originalActivitiesCount - updatedActivities.count)",
-            L10n.choose(simplifiedChinese: "训练计划", english: "workouts") + " \(originalWorkoutsCount - updatedWorkouts.count)",
-            L10n.choose(simplifiedChinese: "饮食计划", english: "meal plans") + " \(originalMealPlansCount - updatedMealPlans.count)",
-            L10n.choose(simplifiedChinese: "生理指标", english: "wellness") + " \(originalWellnessCount - updatedWellness.count)",
-            L10n.choose(simplifiedChinese: "日历事件", english: "calendar events") + " \(originalEventsCount - updatedEvents.count)"
-        ]
-
-        syncStatus = L10n.choose(
-            simplifiedChinese: "已删除运动员面板数据：\(panel.title)（" + removedCountsSummary.joined(separator: "，") + "）",
-            english: "Deleted athlete panel data for \(panel.title) (\(removedCountsSummary.joined(separator: ", ")))."
-        )
-        lastError = nil
     }
 
     func deleteActivities(ids: Set<UUID>) {
@@ -4618,29 +4430,11 @@ final class AppStore: ObservableObject {
     }
 
     private func loadActivitiesFromLocalCache() -> [Activity]? {
-        guard let url = try? Self.activitiesCacheFileURL(),
-              FileManager.default.fileExists(atPath: url.path),
-              let data = try? Data(contentsOf: url) else {
-            return nil
-        }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        guard let rows = try? decoder.decode([Activity].self, from: data) else {
-            return nil
-        }
-        return rows.sorted { $0.date > $1.date }
+        nil
     }
 
     private func persistActivitiesToLocalCache(_ rows: [Activity]) {
-        do {
-            let local = try LocalJSONRepository()
-            try local.saveActivities(rows)
-        } catch {
-            appendClientLog(
-                level: "WARN",
-                message: "Failed to persist local activity cache: \(detailedErrorDescription(error))"
-            )
-        }
+        _ = rows
     }
 
     private func deduplicateActivities(_ rows: [Activity]) -> [Activity] {
@@ -4732,19 +4526,18 @@ final class AppStore: ObservableObject {
     }
 
     private func parseAthleteNameFromLegacyNotes(_ notes: String) -> String? {
-        AthleteIdentityNormalizer.extractName(fromLegacyText: notes)
+        _ = notes
+        return nil
     }
 
     private func athleteDisplayName(for activity: Activity) -> String {
-        AthleteIdentityNormalizer.displayName(
-            rawName: activity.athleteName,
-            notes: activity.notes,
-            fallback: L10n.choose(simplifiedChinese: "未分配运动员", english: "Unassigned Athlete")
-        )
+        _ = activity
+        return currentAccountDisplayName
     }
 
     private func athletePanelID(forName name: String?) -> String {
-        AthleteIdentityNormalizer.panelID(from: name)
+        _ = name
+        return currentAccountPanelID
     }
 
     private func athletePanelID(for activity: Activity) -> String {
@@ -4752,7 +4545,8 @@ final class AppStore: ObservableObject {
     }
 
     private func matchesSelectedAthlete(panelID: String) -> Bool {
-        selectedAthletePanelID == AthletePanel.allID || panelID == selectedAthletePanelID
+        _ = panelID
+        return true
     }
 
     private func matchesSelectedAthlete(name: String?) -> Bool {
@@ -5701,28 +5495,27 @@ final class AppStore: ObservableObject {
     }
 
     nonisolated private static func parseAthleteNameFromLegacyNotesForCompute(_ notes: String) -> String? {
-        AthleteIdentityNormalizer.extractName(fromLegacyText: notes)
+        _ = notes
+        return nil
     }
 
     nonisolated private static func athletePanelIDForCompute(name: String?) -> String {
-        AthleteIdentityNormalizer.panelID(from: name)
+        _ = name
+        return "__single_account__"
     }
 
     nonisolated private static func athletePanelIDForCompute(activity: Activity) -> String {
-        if let tagged = normalizedNonEmptyStringForCompute(activity.athleteName) {
-            return athletePanelIDForCompute(name: tagged)
-        }
-        if let parsed = parseAthleteNameFromLegacyNotesForCompute(activity.notes) {
-            return athletePanelIDForCompute(name: parsed)
-        }
-        return AthletePanel.unknownAthleteToken
+        _ = activity
+        return "__single_account__"
     }
 
     nonisolated private static func matchesSelectedAthleteForCompute(
         panelID: String,
         selectedAthletePanelID: String
     ) -> Bool {
-        selectedAthletePanelID == AthletePanel.allID || panelID == selectedAthletePanelID
+        _ = panelID
+        _ = selectedAthletePanelID
+        return true
     }
 
     nonisolated private static func dynamicLoadSeriesDaysForCompute(for activities: [Activity]) -> Int {

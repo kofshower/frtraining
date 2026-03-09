@@ -4,6 +4,7 @@
 #include "server.h"
 #include "logger.h"
 
+#include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
 #include <sqlite3.h>
@@ -61,6 +62,46 @@ static void extract_log_id_from_pending_name(const char *name, char *out, size_t
     out[len] = '\0';
 }
 
+static int extract_pending_key_from_name(const char *name, char *out_key, size_t out_key_len) {
+    if (!name || !out_key || out_key_len == 0) return 0;
+    out_key[0] = '\0';
+
+    size_t len = strlen(name);
+    if (len < 6 || strcmp(name + len - 5, ".json") != 0) {
+        return 0;
+    }
+
+    char local[512] = {0};
+    if (len >= sizeof(local)) return 0;
+    memcpy(local, name, len - 5);
+    local[len - 5] = '\0';
+
+    char *lid = strstr(local, "-lid-");
+    if (lid) {
+        *lid = '\0';
+    }
+
+    char *cursor = local + strlen(local);
+    for (int i = 0; i < 3; i++) {
+        char *dash = strrchr(local, '-');
+        if (!dash || dash >= cursor) return 0;
+        char *digits = dash + 1;
+        if (*digits == '\0') return 0;
+        for (char *p = digits; *p != '\0'; p++) {
+            if (!isdigit((unsigned char)(*p))) {
+                return 0;
+            }
+        }
+        *dash = '\0';
+        cursor = dash;
+    }
+
+    size_t key_len = strlen(local);
+    if (key_len == 0 || key_len >= out_key_len) return 0;
+    memcpy(out_key, local, key_len + 1);
+    return 1;
+}
+
 static int replay_pending_writes(sqlite3 *db) {
     if (ensure_pending_writes_dir() != 0) {
         log_error("failed to ensure pending writes dir");
@@ -87,8 +128,9 @@ static int replay_pending_writes(sqlite3 *db) {
     while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
 
-        char dash_key[128] = {0};
-        if (sscanf(ent->d_name, "%127[^-]-", dash_key) != 1 || !is_valid_key(dash_key)) {
+        char dash_key[256] = {0};
+        if (!extract_pending_key_from_name(ent->d_name, dash_key, sizeof(dash_key)) ||
+            !is_valid_storage_key(dash_key)) {
             continue;
         }
 

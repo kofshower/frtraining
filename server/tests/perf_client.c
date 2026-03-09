@@ -61,7 +61,11 @@ static int request_once(const char *host, int port, const char *req) {
 
 static void *worker(void *arg) {
     worker_args_t *w = (worker_args_t *)arg;
-    const char *get_req = "GET /v1/data/activities HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    const char *get_req =
+        "GET /v1/data/activities HTTP/1.1\r\n"
+        "Host: 127.0.0.1\r\n"
+        "X-Account-Id: perf\r\n"
+        "Connection: close\r\n\r\n";
     for (int i = 0; i < w->requests; i++) {
         if (request_once(w->host, w->port, get_req) == 0) {
             atomic_fetch_add(w->success, 1);
@@ -86,6 +90,7 @@ int main(int argc, char **argv) {
     const char *put_req =
         "PUT /v1/data/activities HTTP/1.1\r\n"
         "Host: 127.0.0.1\r\n"
+        "X-Account-Id: perf\r\n"
         "Content-Type: application/json\r\n"
         "Content-Length: 21\r\n"
         "Connection: close\r\n\r\n"

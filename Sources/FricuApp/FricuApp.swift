@@ -9,47 +9,14 @@ import Glibc
 @main
 struct FricuApp: App {
     @StateObject private var store: AppStore
+    @StateObject private var auth: AuthController
     @AppStorage(AppLanguageOption.storageKey) private var appLanguageRawValue = AppLanguageOption.system.rawValue
 
     init() {
         L10n.installBundleBridgeIfNeeded()
-        let args = ProcessInfo.processInfo.arguments
-        if args.contains("--backfill-trainer-fits") {
-            let includeInProgress = !args.contains("--exclude-in-progress")
-            let cliStore = AppStore()
-            cliStore.bootstrap(runTrainerFITSelfHeal: false)
-            let outputText = cliStore.runOneTimeTrainerFITBackfill(includeInProgress: includeInProgress)
-            print(outputText)
-            fflush(stdout)
-            exit(0)
-        }
-        if let athlete = Self.argumentValue("--force-trainer-fit-athlete", in: args) {
-            let dateToken = Self.argumentValue("--force-trainer-fit-date", in: args)
-            let fileListRaw = Self.argumentValue("--force-trainer-fit-files", in: args)
-            let fileNames = fileListRaw?
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty } ?? []
-
-            let cliStore = AppStore()
-            cliStore.bootstrap(runTrainerFITSelfHeal: false)
-            let outputText = cliStore.forceReassignTrainerFITSnapshots(
-                athleteName: athlete,
-                dateToken: dateToken,
-                fileNames: fileNames
-            )
-            print(outputText)
-            fflush(stdout)
-            exit(0)
-        }
         PowerAssertionController.shared.beginPreventingSleep()
         _store = StateObject(wrappedValue: AppStore())
-    }
-
-    private static func argumentValue(_ key: String, in args: [String]) -> String? {
-        guard let idx = args.firstIndex(of: key), idx + 1 < args.count else { return nil }
-        let value = args[idx + 1].trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? nil : value
+        _auth = StateObject(wrappedValue: AuthController())
     }
 
     private var appLocale: Locale {
@@ -60,28 +27,25 @@ struct FricuApp: App {
     var body: some Scene {
         #if os(macOS)
             WindowGroup("Fricu") {
-                RootView()
+                AuthGateView()
                     .environmentObject(store)
+                    .environmentObject(auth)
                     .environment(\.locale, appLocale)
-                    .task {
-                        store.bootstrap()
-                    }
             }
             .windowResizability(.contentSize)
 
             Settings {
                 SettingsView()
                     .environmentObject(store)
+                    .environmentObject(auth)
                     .environment(\.locale, appLocale)
             }
         #else
             WindowGroup("Fricu") {
-                RootView()
+                AuthGateView()
                     .environmentObject(store)
+                    .environmentObject(auth)
                     .environment(\.locale, appLocale)
-                    .task {
-                        store.bootstrap()
-                    }
             }
         #endif
     }
@@ -348,8 +312,6 @@ private struct AppPageChrome<Content: View>: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            athletePicker(width: width - 26)
-
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(AppSection.allCases) { candidate in
@@ -399,14 +361,14 @@ private struct AppPageChrome<Content: View>: View {
         Group {
             if horizontal {
                 HStack(spacing: 10) {
-                    athletePicker(width: width)
+                    accountBadge(width: width)
                     if showPagePicker {
                         sectionPicker(width: width)
                     }
                 }
             } else {
                 VStack(spacing: 8) {
-                    athletePicker(width: width)
+                    accountBadge(width: width)
                     if showPagePicker {
                         sectionPicker(width: width)
                     }
@@ -415,16 +377,20 @@ private struct AppPageChrome<Content: View>: View {
         }
     }
 
-    private func athletePicker(width: CGFloat) -> some View {
-        Picker(
-            L10n.choose(simplifiedChinese: "运动员", english: "Athlete"),
-            selection: $store.selectedAthletePanelID
-        ) {
-            ForEach(store.athletePanels) { athlete in
-                Text(athlete.title).tag(athlete.id)
-            }
+    private func accountBadge(width: CGFloat) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "person.crop.circle")
+            Text(verbatim: store.currentAccountDisplayName)
+                .lineLimit(1)
         }
-        .appDropdownTheme(width: headerPickerWidth(for: width))
+        .font(.subheadline.weight(.semibold))
+        .padding(.horizontal, 14)
+        .frame(height: 38)
+        .frame(width: headerPickerWidth(for: width), alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.regularMaterial)
+        )
     }
 
     private func sectionPicker(width: CGFloat) -> some View {
@@ -489,6 +455,7 @@ private struct ThresholdRangeEditorRow: Identifiable {
 struct SettingsView: View {
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var auth: AuthController
     @AppStorage(AppLanguageOption.storageKey) private var appLanguageRawValue = AppLanguageOption.system.rawValue
     @State private var cyclingFTP = ""
     @State private var runningFTP = ""
@@ -530,40 +497,12 @@ struct SettingsView: View {
     @State private var estimateStatus: String?
     @State private var thresholdRangeEditorRows: [ThresholdRangeEditorRow] = []
     @State private var thresholdRangeValidationMessage: String?
-    @State private var newAthletePanelName = ""
-    @State private var showDeleteAthletePanelConfirm = false
-    @State private var pendingDeleteAthletePanel: AthletePanel?
 
     private var appLanguageBinding: Binding<AppLanguageOption> {
         Binding<AppLanguageOption>(
             get: { AppLanguageOption(rawValue: appLanguageRawValue) ?? .system },
             set: { appLanguageRawValue = $0.rawValue }
         )
-    }
-
-    private var manageableAthletePanels: [AthletePanel] {
-        store.athletePanels.filter { !$0.isAll }
-    }
-
-    private func addAthletePanelFromSettings() {
-        let trimmed = newAthletePanelName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        if let existing = manageableAthletePanels.first(where: {
-            $0.title.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
-        }) {
-            store.selectedAthletePanelID = existing.id
-            newAthletePanelName = ""
-            return
-        }
-
-        store.addTrainerRiderSession(named: trimmed)
-        if let created = store.athletePanels.first(where: {
-            !$0.isAll && $0.title.localizedCaseInsensitiveCompare(trimmed) == .orderedSame
-        }) {
-            store.selectedAthletePanelID = created.id
-        }
-        newAthletePanelName = ""
     }
 
     private func parseOptionalIntField(_ value: String, fallback: Int) -> Int {
@@ -831,7 +770,7 @@ struct SettingsView: View {
                         .font(.title3.bold())
                     Text("Inputs for load modeling, TSS estimation, and AI recommendations.")
                         .foregroundStyle(.secondary)
-                    Text("\(L10n.choose(simplifiedChinese: "当前面板", english: "Current Panel")): \(store.selectedAthleteTitle)")
+                    Text("\(L10n.choose(simplifiedChinese: "当前账号", english: "Current Account")): \(store.currentAccountDisplayName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -845,87 +784,24 @@ struct SettingsView: View {
                     .appDropdownTheme()
                 }
 
-                GroupBox(L10n.choose(simplifiedChinese: "运动员面板管理", english: "Athlete Panel Management")) {
+                GroupBox(L10n.choose(simplifiedChinese: "账号", english: "Account")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(
-                            L10n.choose(
-                                simplifiedChinese: "新增/删除入口统一在此处。页面顶部下拉框用于切换当前运动员。",
-                                english: "Add/delete athlete panels only here. Use the top dropdown to switch current athlete."
-                            )
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                        HStack(spacing: 8) {
-                            TextField(
-                                L10n.choose(simplifiedChinese: "新运动员名称", english: "New athlete name"),
-                                text: $newAthletePanelName
-                            )
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit {
-                                addAthletePanelFromSettings()
-                            }
-
-                            Button(
+                        Text("\(L10n.choose(simplifiedChinese: "当前账号", english: "Current")): \(store.currentAccountDisplayName)")
+                            .font(.subheadline.weight(.semibold))
+                        if let session = auth.currentSession {
+                            Text(
                                 L10n.choose(
-                                    simplifiedChinese: "新增运动员面板",
-                                    english: "Add Athlete Panel"
+                                    simplifiedChinese: "登录方式：\(session.provider.displayName)",
+                                    english: "Provider: \(session.provider.displayName)"
                                 )
-                            ) {
-                                addAthletePanelFromSettings()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(newAthletePanelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
-
-                        if manageableAthletePanels.isEmpty {
-                            Text(L10n.choose(simplifiedChinese: "暂无运动员面板", english: "No athlete panels"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            ForEach(manageableAthletePanels) { panel in
-                                HStack(spacing: 10) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(panel.title)
-                                            .font(.subheadline.weight(.semibold))
-                                        Text(
-                                            L10n.choose(
-                                                simplifiedChinese: "活动数 \(panel.count)",
-                                                english: "Activities \(panel.count)"
-                                            )
-                                        )
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    if panel.id == store.selectedAthletePanelID {
-                                        Text(L10n.choose(simplifiedChinese: "当前", english: "Current"))
-                                            .font(.caption2)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 3)
-                                            .background(.blue.opacity(0.14), in: Capsule())
-                                    }
-
-                                    if store.canDeleteAthletePanel(panelID: panel.id) {
-                                        Button(
-                                            L10n.choose(simplifiedChinese: "删除", english: "Delete"),
-                                            role: .destructive
-                                        ) {
-                                            pendingDeleteAthletePanel = panel
-                                            showDeleteAthletePanelConfirm = true
-                                        }
-                                        .buttonStyle(.bordered)
-                                    } else {
-                                        Text(L10n.choose(simplifiedChinese: "主骑手", english: "Primary Rider"))
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.vertical, 2)
-                            }
+                        Button(L10n.choose(simplifiedChinese: "退出登录", english: "Log Out"), role: .destructive) {
+                            auth.logout()
                         }
+                        .buttonStyle(.bordered)
                     }
                     .padding(.top, 4)
                 }
@@ -1581,37 +1457,10 @@ struct SettingsView: View {
             loadFieldsFromProfile()
             loadServerURLField()
         }
-        .onChange(of: store.selectedAthletePanelID) { _, _ in
+        .onChange(of: store.currentAccountID) { _, _ in
             profileEstimate = nil
             estimateStatus = nil
             loadFieldsFromProfile()
-        }
-        .confirmationDialog(
-            L10n.choose(simplifiedChinese: "删除运动员面板？", english: "Delete athlete panel?"),
-            isPresented: $showDeleteAthletePanelConfirm,
-            titleVisibility: .visible
-        ) {
-            if let panel = pendingDeleteAthletePanel {
-                Button(
-                    L10n.choose(simplifiedChinese: "删除面板与相关数据", english: "Delete Panel + Data"),
-                    role: .destructive
-                ) {
-                    store.deleteAthletePanelAndAssociatedData(panelID: panel.id)
-                    pendingDeleteAthletePanel = nil
-                }
-            }
-            Button(L10n.choose(simplifiedChinese: "取消", english: "Cancel"), role: .cancel) {
-                pendingDeleteAthletePanel = nil
-            }
-        } message: {
-            if let panel = pendingDeleteAthletePanel {
-                Text(
-                    L10n.choose(
-                        simplifiedChinese: "将删除 \(panel.title) 的活动、训练计划、饮食计划、wellness 数据和日历事件。此操作不可撤销。",
-                        english: "This will delete activities, workouts, meal plans, wellness data, and calendar events for \(panel.title). This cannot be undone."
-                    )
-                )
-            }
         }
     }
 }
