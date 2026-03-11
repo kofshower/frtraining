@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 private enum TrainerWorkflowState {
     case pending
@@ -40,9 +43,14 @@ private enum TrainerWorkflowState {
 
 struct TrainerPageView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var expandedSteps: Set<Int> = [2]
 
     private var visibleSessions: [TrainerRiderSession] {
         store.trainerRiderSessionsForSelectedAthlete
+    }
+
+    private var primarySession: TrainerRiderSession? {
+        visibleSessions.first
     }
 
     private var connectedTrainerCount: Int {
@@ -86,11 +94,6 @@ struct TrainerPageView: View {
         visibleSessions.filter { hasMeaningfulValue(store.trainerRecordingStatus(for: $0.id).lastSyncSummary) }.count
     }
 
-    private var athleteSelectionStepState: TrainerWorkflowState {
-        if visibleSessions.isEmpty { return .pending }
-        return store.isAllAthletesSelected ? .ready : .done
-    }
-
     private var connectionStepState: TrainerWorkflowState {
         guard !visibleSessions.isEmpty else { return .pending }
         if connectedTrainerCount == 0 && connectedHeartRateCount == 0 && connectedPowerMeterCount == 0 {
@@ -129,29 +132,34 @@ struct TrainerPageView: View {
                 Text("Trainer")
                     .font(.largeTitle.bold())
 
-                Text("支持多骑手并行训练：每位骑手独立连接骑行台、心率表、功率计。")
+                Text("单运动员训练流：当前账号仅保留一个骑行会话，不支持并行骑手。")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                Text("运动员切换统一使用顶部下拉框。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("新增/删除运动员面板请在 Settings 的 Athlete Panel Management 中操作。")
-                    .font(.caption)
                     .foregroundStyle(.secondary)
 
                 GroupBox(L10n.choose(simplifiedChinese: "骑行台流程", english: "Trainer Workflow")) {
                     VStack(alignment: .leading, spacing: 12) {
-                        trainerFlowCard(
+                        trainerFlowSection(
                             step: 1,
-                            title: L10n.choose(simplifiedChinese: "选择运动员", english: "Select Athlete"),
+                            title: L10n.choose(simplifiedChinese: "确认当前账号", english: "Confirm Account"),
                             subtitle: L10n.choose(
-                                simplifiedChinese: "当前：\(store.selectedAthleteTitle)。建议锁定单个运动员后再执行后续流程。",
-                                english: "Current: \(store.selectedAthleteTitle). Select a specific athlete panel before proceeding."
+                                simplifiedChinese: "当前运动员：\(store.selectedAthleteTitle)。",
+                                english: "Current athlete: \(store.selectedAthleteTitle)."
                             ),
-                            state: athleteSelectionStepState
-                        )
+                            state: visibleSessions.isEmpty ? .pending : .done
+                        ) {
+                            flowDetailContainer {
+                                Text(
+                                    L10n.choose(
+                                        simplifiedChinese: "账号与运动员一一对应，本流程中的设备连接、训练控制、录制与 FIT 保存都归属当前账号。",
+                                        english: "Account and athlete are 1:1. Device connection, control, recording, and FIT persistence in this flow all belong to the current account."
+                                    )
+                                )
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
 
-                        trainerFlowCard(
+                        trainerFlowSection(
                             step: 2,
                             title: L10n.choose(simplifiedChinese: "连接设备", english: "Connect Devices"),
                             subtitle: L10n.choose(
@@ -159,9 +167,21 @@ struct TrainerPageView: View {
                                 english: "Trainer \(connectedTrainerCount)/\(visibleSessions.count) · HR \(connectedHeartRateCount)/\(visibleSessions.count) · Power meter \(connectedPowerMeterCount)/\(visibleSessions.count)"
                             ),
                             state: connectionStepState
-                        )
+                        ) {
+                            flowDetailContainer {
+                                if let session = primarySession {
+                                    HeartRateControlPanel(monitor: session.heartRateMonitor)
+                                    PowerMeterControlPanel(powerMeter: session.powerMeter)
+                                } else {
+                                    ContentUnavailableView(
+                                        L10n.choose(simplifiedChinese: "当前账号无可用设备会话", english: "No available device session"),
+                                        systemImage: "bolt.horizontal.circle"
+                                    )
+                                }
+                            }
+                        }
 
-                        trainerFlowCard(
+                        trainerFlowSection(
                             step: 3,
                             title: L10n.choose(simplifiedChinese: "设置训练控制", english: "Configure Control"),
                             subtitle: L10n.choose(
@@ -169,9 +189,20 @@ struct TrainerPageView: View {
                                 english: "Configured \(configuredControlCount)/\(visibleSessions.count) sessions (ERG/grade/simulation)."
                             ),
                             state: setupStepState
-                        )
+                        ) {
+                            flowDetailContainer {
+                                if let session = primarySession {
+                                    TrainerControlPanel(session: session)
+                                } else {
+                                    ContentUnavailableView(
+                                        L10n.choose(simplifiedChinese: "当前账号无骑行台会话", english: "No trainer session for current account"),
+                                        systemImage: "person.crop.circle.badge.exclamationmark"
+                                    )
+                                }
+                            }
+                        }
 
-                        trainerFlowCard(
+                        trainerFlowSection(
                             step: 4,
                             title: L10n.choose(simplifiedChinese: "开始训练与录制", english: "Ride and Record"),
                             subtitle: L10n.choose(
@@ -179,9 +210,25 @@ struct TrainerPageView: View {
                                 english: "Recording \(activeRecordingCount) session(s) · Live telemetry ready for \(telemetryReadyCount) session(s)."
                             ),
                             state: rideStepState
-                        )
+                        ) {
+                            flowDetailContainer {
+                                #if os(iOS)
+                                if UIDevice.current.userInterfaceIdiom == .pad {
+                                    TrainerIPadCapturePanel()
+                                }
+                                #endif
+                                Text(
+                                    L10n.choose(
+                                        simplifiedChinese: "录制入口已嵌入在上一步“设置训练控制”卡片中。开始骑行后，这里会同步显示状态。",
+                                        english: "Recording controls are embedded in the previous Configure Control card. Status here updates in sync after ride start."
+                                    )
+                                )
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            }
+                        }
 
-                        trainerFlowCard(
+                        trainerFlowSection(
                             step: 5,
                             title: L10n.choose(simplifiedChinese: "保存 FIT 与同步服务端", english: "Persist FIT and Sync"),
                             subtitle: L10n.choose(
@@ -189,44 +236,22 @@ struct TrainerPageView: View {
                                 english: "FIT generated: \(fitReadyCount) · Synced/queued: \(syncedFitCount)."
                             ),
                             state: saveStepState
-                        )
+                        ) {
+                            flowDetailContainer {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("FIT: \(store.trainerRecordingLastFitPath ?? "-")")
+                                        .font(.footnote.monospaced())
+                                        .foregroundStyle(.secondary)
+                                    Text("Sync: \(store.trainerRecordingLastSyncSummary ?? "-")")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                if visibleSessions.isEmpty {
-                    ContentUnavailableView(
-                        L10n.choose(simplifiedChinese: "当前运动员无骑行台会话", english: "No trainer rider for selected athlete"),
-                        systemImage: "person.crop.circle.badge.exclamationmark"
-                    )
-                } else {
-                    ForEach(visibleSessions) { session in
-                        let isPrimary = session.id == store.primaryTrainerSessionID
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                Text(session.name)
-                                    .font(.headline)
-
-                                if isPrimary {
-                                    Text("Primary")
-                                        .font(.caption2)
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 3)
-                                        .background(.blue.opacity(0.14), in: Capsule())
-                                }
-
-                                Spacer()
-                            }
-
-                            HeartRateControlPanel(monitor: session.heartRateMonitor)
-                            PowerMeterControlPanel(powerMeter: session.powerMeter)
-                            TrainerControlPanel(session: session)
-                        }
-                        .padding(12)
-                        .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-                Text("每位骑手可独立录制并保存 FIT；主骑手状态会同步到全局状态栏。")
+                Text("记录状态会同步到全局状态栏，并自动写入 FIT。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -241,33 +266,65 @@ struct TrainerPageView: View {
     }
 
     @ViewBuilder
-    private func trainerFlowCard(
+    private func trainerFlowSection<Content: View>(
         step: Int,
         title: String,
         subtitle: String,
-        state: TrainerWorkflowState
+        state: TrainerWorkflowState,
+        @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(step)")
-                    .font(.caption.monospacedDigit().weight(.semibold))
-                    .frame(width: 18, height: 18)
-                    .background(state.color.opacity(0.16), in: Circle())
-                    .foregroundStyle(state.color)
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Label(trainerFlowStateLabel(state), systemImage: state.symbol)
-                    .font(.caption)
-                    .foregroundStyle(state.color)
+        let expanded = expandedSteps.contains(step)
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if expanded {
+                        expandedSteps.remove(step)
+                    } else {
+                        expandedSteps.insert(step)
+                    }
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(step)")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .frame(width: 18, height: 18)
+                            .background(state.color.opacity(0.16), in: Circle())
+                            .foregroundStyle(state.color)
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Label(trainerFlowStateLabel(state), systemImage: state.symbol)
+                            .font(.caption)
+                            .foregroundStyle(state.color)
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            Text(subtitle)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            .buttonStyle(.plain)
+
+            if expanded {
+                content()
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .top)), removal: .opacity))
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func flowDetailContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            content()
+        }
         .padding(12)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func trainerFlowStateLabel(_ state: TrainerWorkflowState) -> String {

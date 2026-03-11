@@ -17,7 +17,7 @@ struct AuthGateView: View {
                             accountID: session.accountID,
                             displayName: session.displayName
                         )
-                        store.bootstrap(runTrainerFITSelfHeal: false)
+                        store.bootstrap()
                         activeAccountID = session.accountID
                     }
             } else {
@@ -26,7 +26,7 @@ struct AuthGateView: View {
                         accountID: session.accountID,
                         displayName: session.displayName
                     )
-                    store.bootstrap(runTrainerFITSelfHeal: false)
+                    store.bootstrap()
                     activeAccountID = session.accountID
                 }
             }
@@ -73,8 +73,8 @@ private struct LoginView: View {
                     .font(.largeTitle.weight(.heavy))
                 Text(
                     L10n.choose(
-                        simplifiedChinese: "单账号模式：先登录再进入训练与数据页面。",
-                        english: "Single-account mode: sign in before using training and data pages."
+                        simplifiedChinese: "登录后进入训练与数据页面；单账号仅对应一个运动员与一个骑行会话。",
+                        english: "Sign in to access training/data pages; each account uses a single athlete and one trainer session."
                     )
                 )
                 .foregroundStyle(.secondary)

@@ -3,11 +3,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 HOST="${FRICU_SERVER_HOST:-127.0.0.1}"
-PORT="${FRICU_SERVER_PORT:-8787}"
-DB_FILE="${FRICU_SERVER_DB_FILE:-${FRICU_SERVER_DATA_FILE:-$ROOT_DIR/server/data/fricu.db}}"
+PORT="${FRICU_SERVER_PORT:-8080}"
+DB_FILE="${FRICU_DB_PATH:-$ROOT_DIR/fricu_server.db}"
+SERVER_BIN="$ROOT_DIR/server/fricu-server"
 
 mkdir -p "$(dirname "$DB_FILE")"
 
-echo "Starting Fricu backend on http://$HOST:$PORT"
+cd "$ROOT_DIR"
+
+if [ ! -x "$SERVER_BIN" ]; then
+  echo "Building Fricu C backend..."
+  make -C "$ROOT_DIR/server"
+fi
+
+echo "Starting Fricu C backend on http://$HOST:$PORT"
 echo "SQLite DB: $DB_FILE"
-exec python3 "$ROOT_DIR/server/fricu_server.py" --host "$HOST" --port "$PORT" --db-file "$DB_FILE"
+export FRICU_SERVER_BIND="$HOST:$PORT"
+export FRICU_DB_PATH="$DB_FILE"
+exec "$SERVER_BIN"

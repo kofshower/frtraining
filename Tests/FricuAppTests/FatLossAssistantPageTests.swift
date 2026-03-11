@@ -45,4 +45,19 @@ final class FatLossAssistantPageTests: XCTestCase {
             XCTAssertFalse(token.english.isEmpty)
         }
     }
+
+    /// Ensures decision-tree nodes are one-to-one with detail cards and keep stable order.
+    func testDecisionTreeNodesMapOneToOneWithCards() {
+        let nodes = FatLossDecisionNode.allCases
+
+        XCTAssertEqual(nodes.map(\.stepNumber), [1, 2, 3, 4])
+        XCTAssertEqual(Set(nodes.map(\.id)).count, nodes.count)
+        XCTAssertEqual(Set(nodes.map(\.detailCardTitle)).count, nodes.count)
+
+        for node in nodes {
+            XCTAssertFalse(node.title.isEmpty)
+            XCTAssertFalse(node.icon.isEmpty)
+            XCTAssertFalse(node.detailCardTitle.isEmpty)
+        }
+    }
 }

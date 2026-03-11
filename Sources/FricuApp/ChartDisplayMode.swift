@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 enum AppChartDisplayMode: String, CaseIterable, Identifiable {
@@ -37,6 +38,20 @@ enum AppChartDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum PersistedChartDisplayModeKeys {
+    static let perChartPrefix = "fricu.chart.display.mode.v2."
+    private static let trackedPrefixes = [
+        perChartPrefix,
+        "fricu.chart.real_map.",
+        "fricu.chart.whoosh.",
+        "fricu.chart.bike."
+    ]
+
+    static func isPersistedKey(_ key: String) -> Bool {
+        trackedPrefixes.contains { key.hasPrefix($0) }
+    }
+}
+
 private struct AppChartDisplayModeEnvironmentKey: EnvironmentKey {
     static let defaultValue: AppChartDisplayMode = .line
 }
@@ -51,10 +66,18 @@ extension EnvironmentValues {
 @MainActor
 final class PerChartDisplayModeStore: ObservableObject {
     private let namespace: String
+    private var defaultsChangeCancellable: AnyCancellable?
     @Published private var cache: [String: AppChartDisplayMode] = [:]
 
     init(namespace: String) {
         self.namespace = namespace
+        defaultsChangeCancellable = NotificationCenter.default
+            .publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.cache.removeAll()
+                self?.objectWillChange.send()
+            }
     }
 
     func mode(for chartID: String, fallback: AppChartDisplayMode) -> AppChartDisplayMode {

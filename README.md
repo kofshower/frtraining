@@ -250,21 +250,37 @@ Local data is stored under:
 当前仓库已改为 C-S 架构：
 
 - `FricuApp` 作为客户端，仅通过 HTTP 访问服务端数据。
-- 服务端位于 `server/`，使用 C + SQLite + POSIX Socket 实现。
-- 服务端数据存储使用 SQLite（嵌入式数据库，默认 `fricu_server.db`）。
+- 服务端位于 `server/`，当前主实现为 C + SQLite 多线程 HTTP 服务。
+- 服务端数据存储使用 SQLite（嵌入式数据库，默认仓库根目录 `fricu_server.db`）。
 
 ### 服务端启动
 
 ```bash
+./scripts/run-server.sh
+```
+
+也可直接运行：
+
+```bash
 cd server
 make
-./fricu-server
+FRICU_SERVER_BIND=127.0.0.1:8080 FRICU_DB_PATH=../fricu_server.db ./fricu-server
 ```
 
 可选环境变量：
 
-- `FRICU_SERVER_BIND`：监听地址，默认 `0.0.0.0:8080`
-- `FRICU_DB_PATH`：数据库路径，默认 `fricu_server.db`
+- `FRICU_SERVER_HOST`：监听地址，默认 `127.0.0.1`
+- `FRICU_SERVER_PORT`：监听端口，默认 `8080`
+- `FRICU_DB_PATH`：数据库路径，默认 `./fricu_server.db`
+- `FRICU_SERVER_BIND`：完整监听地址，格式 `host:port`
+
+### 服务端协议
+
+- `GET /health`
+- `GET /v1/data/<key>`
+- `PUT /v1/data/<key>`
+- 所有 `/v1/data/*` 请求必须携带 `X-Account-Id`
+- 服务端会回显 `X-Log-Id`，并在日志中打印 `account` / `logid` / `retry`
 
 ### 客户端连接服务端
 
@@ -278,24 +294,13 @@ FRICU_SERVER_URL=http://127.0.0.1:8080 ./scripts/run-dev.sh
 ### 服务端测试
 
 ```bash
-cd server
-make test
+make -C server test
 ```
 
-### 50k 并发压测
+### 压测
 
-服务端已针对高并发做优化（固定大小 worker 线程池 + 连接队列 + SQLite WAL + busy timeout），并提供 50k 并发压测脚本：
+可继续使用仓库内压测脚本：
 
 ```bash
-cd server
-make perf-test
+python3 scripts/load-test-server.py --host 127.0.0.1 --port 8080 --endpoint /health
 ```
-
-可选环境变量：
-
-- `FRICU_SERVER_WORKERS`：worker 线程数（默认 `64`）
-- `FRICU_SERVER_QUEUE`：连接队列容量（默认 `65536`）
-
-- `GET /health`
-- `GET /v1/data/activities`
-- `PUT /v1/data/activities`

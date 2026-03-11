@@ -13,6 +13,7 @@ import VLCKit
 enum VideoDownloadPlatform: String, CaseIterable, Identifiable {
     case youtube
     case instagram
+    case directMedia
 
     var id: String { rawValue }
 
@@ -23,6 +24,8 @@ enum VideoDownloadPlatform: String, CaseIterable, Identifiable {
             return "YouTube"
         case .instagram:
             return "Instagram"
+        case .directMedia:
+            return L10n.choose(simplifiedChinese: "直链视频", english: "Direct Media")
         }
     }
 
@@ -33,6 +36,8 @@ enum VideoDownloadPlatform: String, CaseIterable, Identifiable {
             return ["youtube.com", "youtu.be", "m.youtube.com"]
         case .instagram:
             return ["instagram.com", "www.instagram.com"]
+        case .directMedia:
+            return []
         }
     }
 }
@@ -181,8 +186,13 @@ struct VideoDownloadRequestValidator {
             return .invalidURL
         }
 
+        if isLikelyDirectMediaURL(parsedURL) {
+            return .valid(platform: .directMedia, normalizedURL: parsedURL)
+        }
+
         guard let matchedPlatform = VideoDownloadPlatform.allCases.first(where: { platform in
-            platform.acceptedHostSuffixes.contains(where: { suffix in
+            guard platform != .directMedia else { return false }
+            return platform.acceptedHostSuffixes.contains(where: { suffix in
                 host == suffix || host.hasSuffix("." + suffix)
             })
         }) else {
@@ -190,6 +200,18 @@ struct VideoDownloadRequestValidator {
         }
 
         return .valid(platform: matchedPlatform, normalizedURL: parsedURL)
+    }
+
+    private func isLikelyDirectMediaURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return false
+        }
+        let ext = url.pathExtension.lowercased()
+        let allowed = Set([
+            "mp4", "mov", "m4v", "webm", "mkv", "avi", "wmv",
+            "m3u8", "ts"
+        ])
+        return allowed.contains(ext)
     }
 }
 
@@ -328,6 +350,54 @@ struct OpenSourceDecoderRuntimeLocator {
     }
 }
 
+/// Resolves writable app-scoped directories for download/import/report assets.
+struct VideoWorkspaceDirectoryResolver {
+    enum Kind {
+        case downloads
+        case fittingReports
+        case imports
+    }
+
+    func resolve(kind: Kind) throws -> URL {
+        let fm = FileManager.default
+        let folderName: String
+        switch kind {
+        case .downloads:
+            folderName = "FricuDownloads"
+        case .fittingReports:
+            folderName = "FricuFittingReports"
+        case .imports:
+            folderName = "FricuImportedVideos"
+        }
+
+        #if os(iOS)
+        let root = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fm.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? fm.temporaryDirectory
+        let appRoot = root.appendingPathComponent("Fricu", isDirectory: true)
+        let target = appRoot.appendingPathComponent(folderName, isDirectory: true)
+        #else
+        let root = fm.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? fm.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        let target = root.appendingPathComponent(folderName, isDirectory: true)
+        #endif
+
+        do {
+            try fm.createDirectory(at: target, withIntermediateDirectories: true)
+            return target
+        } catch {
+            throw VideoDownloadExecutionError.commandFailed(
+                reason: L10n.choose(
+                    simplifiedChinese: "无法创建输出目录：\(error.localizedDescription)",
+                    english: "Unable to create output directory: \(error.localizedDescription)"
+                )
+            )
+        }
+    }
+}
+
 /// Generates localized explanations when a downloaded media file fails local playback.
 struct VideoPlaybackCompatibilityAdvisor {
     /// Builds a user-facing explanation for unsupported local playback.
@@ -370,6 +440,8 @@ struct VideoDownloadExecutor {
         try await Task.detached(priority: .userInitiated) {
             try downloadOnMacOS(sourceURL: sourceURL, quality: quality, speedMode: speedMode)
         }.value
+        #elseif os(iOS)
+        try await downloadOnIOS(sourceURL: sourceURL, quality: quality, speedMode: speedMode)
         #else
         throw VideoDownloadExecutionError.commandFailed(
             reason: L10n.choose(
@@ -569,21 +641,7 @@ struct VideoDownloadExecutor {
 
     /// Ensures download output directory exists.
     private func ensureOutputDirectory() throws -> URL {
-        guard let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first else {
-            throw VideoDownloadExecutionError.outputDirectoryUnavailable
-        }
-        let outputDirectory = downloads.appendingPathComponent("FricuDownloads", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-            return outputDirectory
-        } catch {
-            throw VideoDownloadExecutionError.commandFailed(
-                reason: L10n.choose(
-                    simplifiedChinese: "无法创建下载目录：\(error.localizedDescription)",
-                    english: "Unable to create output directory: \(error.localizedDescription)"
-                )
-            )
-        }
+        try VideoWorkspaceDirectoryResolver().resolve(kind: .downloads)
     }
 
     /// Runs a command and returns captured stdout/stderr.
@@ -628,9 +686,117 @@ struct VideoDownloadExecutor {
         return (stdout, stderr)
     }
     #endif
+
+    #if os(iOS)
+    private func downloadOnIOS(
+        sourceURL: URL,
+        quality _: VideoDownloadQuality,
+        speedMode _: VideoDownloadSpeedMode
+    ) async throws -> VideoDownloadResult {
+        let fm = FileManager.default
+        let outputDirectory = try VideoWorkspaceDirectoryResolver().resolve(kind: .downloads)
+
+        let isDirect = isLikelyDirectMediaURL(sourceURL) || (try await remoteAppearsVideoAsset(sourceURL))
+        guard isDirect else {
+            throw VideoDownloadExecutionError.commandFailed(
+                reason: L10n.choose(
+                    simplifiedChinese: "iPad 端仅支持直链视频下载（mp4/mov/m3u8 等）。YouTube/Instagram 页面链接请先在服务端或 Mac 端解析后再下载。",
+                    english: "On iPad, only direct media URLs are supported (mp4/mov/m3u8, etc.). Resolve YouTube/Instagram page links on server/macOS first, then download."
+                )
+            )
+        }
+
+        let (tempURL, response) = try await URLSession.shared.download(from: sourceURL)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw VideoDownloadExecutionError.commandFailed(
+                reason: L10n.choose(
+                    simplifiedChinese: "下载失败，HTTP \(http.statusCode)。",
+                    english: "Download failed, HTTP \(http.statusCode)."
+                )
+            )
+        }
+
+        let ext = resolveFileExtension(sourceURL: sourceURL, response: response)
+        let suggested = (response.suggestedFilename?.isEmpty == false)
+            ? response.suggestedFilename!
+            : "video-\(DateFormatter.fricuCompactTimestamp.string(from: Date())).\(ext)"
+        let fileName = sanitizeFileName(suggested)
+        let outputURL = outputDirectory.appendingPathComponent(fileName, isDirectory: false)
+
+        if fm.fileExists(atPath: outputURL.path) {
+            try fm.removeItem(at: outputURL)
+        }
+        do {
+            try fm.moveItem(at: tempURL, to: outputURL)
+        } catch {
+            throw VideoDownloadExecutionError.commandFailed(
+                reason: L10n.choose(
+                    simplifiedChinese: "写入 iPad App 目录失败：\(error.localizedDescription)",
+                    english: "Failed writing into iPad app directory: \(error.localizedDescription)"
+                )
+            )
+        }
+
+        return VideoDownloadResult(outputURL: outputURL, extractedMediaURL: sourceURL.absoluteString)
+    }
+
+    private func remoteAppearsVideoAsset(_ sourceURL: URL) async throws -> Bool {
+        var request = URLRequest(url: sourceURL)
+        request.httpMethod = "HEAD"
+        request.timeoutInterval = 20
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse,
+               let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased() {
+                return contentType.hasPrefix("video/") || contentType.contains("application/vnd.apple.mpegurl")
+            }
+        } catch {
+            // Fallback to extension-based detection.
+        }
+        return false
+    }
+
+    private func isLikelyDirectMediaURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return false
+        }
+        let ext = url.pathExtension.lowercased()
+        let allowed = Set([
+            "mp4", "mov", "m4v", "webm", "mkv", "avi", "wmv",
+            "m3u8", "ts"
+        ])
+        return allowed.contains(ext)
+    }
+
+    private func resolveFileExtension(sourceURL: URL, response: URLResponse) -> String {
+        let sourceExt = sourceURL.pathExtension.lowercased()
+        if !sourceExt.isEmpty {
+            return sourceExt
+        }
+        if let mime = response.mimeType, let type = UTType(mimeType: mime) {
+            if let preferred = type.preferredFilenameExtension {
+                return preferred
+            }
+        }
+        if let suggested = response.suggestedFilename {
+            let ext = URL(fileURLWithPath: suggested).pathExtension.lowercased()
+            if !ext.isEmpty { return ext }
+        }
+        return "mp4"
+    }
+
+    private func sanitizeFileName(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "video-\(UUID().uuidString).mp4" }
+        let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let parts = trimmed.components(separatedBy: invalid)
+        let normalized = parts.joined(separator: "_")
+        return normalized.isEmpty ? "video-\(UUID().uuidString).mp4" : normalized
+    }
+    #endif
 }
 
-/// A dedicated page for preparing YouTube and Instagram video download jobs.
+/// A dedicated page for preparing social/direct video download jobs.
 enum VideoToolPageMode {
     case downloader
     case fitting
@@ -679,83 +845,6 @@ private enum VideoFittingFlowState {
     }
 }
 
-private struct VideoCaptureGuidance {
-    let fps: Double
-    let luma: Double?
-    let sharpness: Double?
-    let occlusionRatio: Double?
-    let distortionRisk: Double?
-    let skeletonAlignability: Double?
-
-    var fpsPass: Bool { fps >= 30 }
-    var lumaPass: Bool { (luma ?? 0.33) >= 0.28 }
-    var sharpnessPass: Bool { (sharpness ?? 0.08) >= 0.055 }
-    var occlusionPass: Bool { (occlusionRatio ?? 0.0) <= 0.38 }
-    var distortionPass: Bool { (distortionRisk ?? 0.0) <= 0.34 }
-    var skeletonAlignPass: Bool { (skeletonAlignability ?? 0.0) >= 0.62 }
-    var qualityGatePass: Bool {
-        fpsPass &&
-        lumaPass &&
-        sharpnessPass &&
-        occlusionPass &&
-        distortionPass &&
-        skeletonAlignPass
-    }
-
-    var gateFailureTips: [String] {
-        var tips: [String] = []
-        if !fpsPass {
-            tips.append(
-                L10n.choose(
-                    simplifiedChinese: "帧率过低（建议 60fps，最低 30fps）",
-                    english: "Frame rate too low (target 60fps, minimum 30fps)"
-                )
-            )
-        }
-        if !lumaPass {
-            tips.append(
-                L10n.choose(
-                    simplifiedChinese: "光照不足（提升前侧光，避免逆光）",
-                    english: "Insufficient lighting (add front/side light, avoid backlight)"
-                )
-            )
-        }
-        if !sharpnessPass {
-            tips.append(
-                L10n.choose(
-                    simplifiedChinese: "画面模糊（固定机位，提高快门/对焦）",
-                    english: "Image is blurry (stabilize camera, increase shutter/focus)"
-                )
-            )
-        }
-        if !occlusionPass {
-            tips.append(
-                L10n.choose(
-                    simplifiedChinese: "遮挡过多（保证髋-膝-踝连续可见，避免衣物遮挡）",
-                    english: "Too much occlusion (keep hip-knee-ankle visible; avoid clothing occlusion)"
-                )
-            )
-        }
-        if !distortionPass {
-            tips.append(
-                L10n.choose(
-                    simplifiedChinese: "画面畸变或机位偏斜较大（避免超广角，保持车身中轴居中且平直）",
-                    english: "Distortion/perspective is too strong (avoid ultra-wide lens and keep bike axis centered)"
-                )
-            )
-        }
-        if !skeletonAlignPass {
-            tips.append(
-                L10n.choose(
-                    simplifiedChinese: "骨骼对位识别不稳定（穿贴身衣物，建议在髋/膝/踝加标记点）",
-                    english: "Skeleton alignment is unstable (wear tighter clothing and add hip/knee/ankle markers)"
-                )
-            )
-        }
-        return tips
-    }
-}
-
 /// Shared video workspace that can run in downloader mode or fitting mode.
 struct VideoDownloaderPageView: View {
     private let pageMode: VideoToolPageMode
@@ -795,8 +884,8 @@ struct VideoDownloaderPageView: View {
     @State private var flowComplianceChecked = false
     @State private var flowCompliancePassed = false
     @State private var flowComplianceMessage = L10n.choose(
-        simplifiedChinese: "待检查：导入视频后执行合规检查。",
-        english: "Pending: import video and run compliance check."
+        simplifiedChinese: "待检查：先分配前 / 侧 / 后机位视频，再执行合规检查。",
+        english: "Pending: assign front/side/rear videos first, then run compliance check."
     )
     @State private var flowComplianceFailureDetails: [String] = []
     @State private var virtualSaddleDeltaMM = 0.0
@@ -806,11 +895,15 @@ struct VideoDownloaderPageView: View {
     @State private var sideCameraVideoURL: URL?
     @State private var rearCameraVideoURL: URL?
     @State private var activeVideoImportTarget: VideoImportTarget?
+    @State private var isVideoImporterSheetPresented = false
     @AppStorage("fricu.video.player.fitting.mode.v1") private var videoFittingModeRawValue = VideoFittingMode.fit.rawValue
     @AppStorage("fricu.video.player.force.avplayer.v1") private var forceAVPlayerForPlayback = false
     @AppStorage("fricu.video.fitting.pose.model.v1") private var poseEstimationModelRawValue = VideoPoseEstimationModel.auto.rawValue
     private let validator = VideoDownloadRequestValidator()
     private let executor = VideoDownloadExecutor()
+    private let fittingFlowPlanningService = VideoFittingFlowPlanningService()
+    private let preflightQualityGateService = VideoFittingPreflightQualityGateService()
+    private let qualityProbeService = VideoCaptureQualityProbeService()
     private let jointAngleAnalyzer = VideoJointAngleAnalyzer()
     private let reportExporter = VideoFittingReportExporter()
 
@@ -996,47 +1089,39 @@ struct VideoDownloaderPageView: View {
                 }
 
                 if isFittingPage {
-                    GroupBox(L10n.choose(simplifiedChinese: "本地视频", english: "Local Video")) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "当前文件", english: "Current File"),
-                                value: downloadedVideoURL?.lastPathComponent ?? L10n.choose(simplifiedChinese: "未设置", english: "Not set")
-                            )
-                            HStack(spacing: 10) {
-                                Button(L10n.choose(simplifiedChinese: "选择视频", english: "Choose Video")) {
-                                    presentPrimaryFittingVideoImporter()
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button(L10n.choose(simplifiedChinese: "清除", english: "Clear")) {
-                                    resetPlaybackAndAnalysisFeedback()
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(downloadedVideoURL == nil)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
                     GroupBox(L10n.choose(simplifiedChinese: "视频 Fitting 流程", english: "Video Fitting Workflow")) {
                         VStack(alignment: .leading, spacing: 12) {
                             fittingFlowCard(
                                 step: 1,
-                                title: L10n.choose(simplifiedChinese: "导入视频", english: "Import Video"),
-                                subtitle: downloadedVideoURL?.lastPathComponent ?? L10n.choose(simplifiedChinese: "先选择本地视频文件", english: "Select a local video first"),
-                                state: analyzableLocalVideoURL == nil ? .pending : .done
+                                title: L10n.choose(simplifiedChinese: "分配机位（前 / 侧 / 后）", english: "Assign Views (Front / Side / Rear)"),
+                                subtitle: L10n.choose(
+                                    simplifiedChinese: "流程起点：先为每个机位选择独立视频；缺失机位将缺少对应分析结果。",
+                                    english: "Flow starts here: assign dedicated videos for each view first; missing views will miss corresponding analysis outputs."
+                                ),
+                                state: viewAssignmentStepState
                             ) {
-                                HStack(spacing: 10) {
-                                    Button(L10n.choose(simplifiedChinese: "选择视频", english: "Choose Video")) {
-                                        presentPrimaryFittingVideoImporter()
-                                    }
-                                    .buttonStyle(.borderedProminent)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    jointAnalysisSourceRow(for: .front)
+                                    jointAnalysisSourceRow(for: .side)
+                                    jointAnalysisSourceRow(for: .rear)
 
-                                    Button(L10n.choose(simplifiedChinese: "清除", english: "Clear")) {
-                                        resetPlaybackAndAnalysisFeedback()
+                                    if !missingRequiredCameraViews.isEmpty {
+                                        let missingText = missingRequiredCameraViews.map(\.displayName).joined(separator: " / ")
+                                        Text(
+                                            L10n.choose(
+                                                simplifiedChinese: "未配置机位：\(missingText)。对应结果不会展示。",
+                                                english: "Unassigned views: \(missingText). Corresponding results will not be shown."
+                                            )
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+
+                                        ForEach(missingRequiredCameraViews) { view in
+                                            Text("• \(missingViewImpactText(for: view))")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
                                     }
-                                    .buttonStyle(.bordered)
-                                    .disabled(downloadedVideoURL == nil)
                                 }
                             }
 
@@ -1055,10 +1140,21 @@ struct VideoDownloaderPageView: View {
                                         handleRunFlowComplianceCheckTapped()
                                     }
                                     .buttonStyle(.borderedProminent)
-                                    .disabled(isRunningFlowComplianceCheck || !hasAnyCameraSource)
+                                    .disabled(isRunningFlowComplianceCheck || !hasAnyAssignedCameraSources)
 
                                     ForEach(supportedCyclingViews) { view in
                                         captureGuidanceRow(for: view)
+                                    }
+
+                                    if !missingRequiredCameraViews.isEmpty {
+                                        Text(
+                                            L10n.choose(
+                                                simplifiedChinese: "提示：未配置机位不会阻止合规检查，但会导致该机位结果缺失。",
+                                                english: "Tip: unassigned views won't block compliance check, but their analysis outputs will be missing."
+                                            )
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     }
 
                                     if !flowComplianceFailureDetails.isEmpty {
@@ -1084,49 +1180,182 @@ struct VideoDownloaderPageView: View {
                                 subtitle: L10n.choose(simplifiedChinese: "先跑单机位识别，验证关节可稳定跟踪", english: "Run single-view recognition first to confirm stable tracking"),
                                 state: skeletonRecognitionStepState
                             ) {
-                                HStack(spacing: 10) {
-                                    Picker(
-                                        L10n.choose(simplifiedChinese: "分析视角", english: "Analysis View"),
-                                        selection: $selectedJointAnalysisView
-                                    ) {
-                                        ForEach(supportedCyclingViews) { view in
-                                            Text(view.displayName).tag(view)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack(spacing: 10) {
+                                        Text(L10n.choose(simplifiedChinese: "分析视角", english: "Analysis View"))
+                                            .font(.subheadline.weight(.semibold))
+                                        Picker(
+                                            L10n.choose(simplifiedChinese: "分析视角", english: "Analysis View"),
+                                            selection: $selectedJointAnalysisView
+                                        ) {
+                                            ForEach(supportedCyclingViews) { view in
+                                                Text(view.displayName).tag(view)
+                                            }
+                                        }
+                                        .pickerStyle(.segmented)
+                                    }
+
+                                    HStack(spacing: 10) {
+                                        Text(L10n.choose(simplifiedChinese: "骨骼模型", english: "Skeleton Model"))
+                                            .font(.subheadline.weight(.semibold))
+                                        Picker(
+                                            L10n.choose(simplifiedChinese: "骨骼模型", english: "Skeleton Model"),
+                                            selection: $poseEstimationModelRawValue
+                                        ) {
+                                            ForEach(VideoPoseEstimationModel.allCases) { model in
+                                                Text(model.displayName).tag(model.rawValue)
+                                            }
+                                        }
+                                        .appDropdownTheme(width: 300, compact: true)
+                                    }
+
+                                    Stepper(
+                                        L10n.choose(
+                                            simplifiedChinese: "采样帧数上限 \(jointAngleMaxSamples)",
+                                            english: "Max sampled frames \(jointAngleMaxSamples)"
+                                        ),
+                                        value: $jointAngleMaxSamples,
+                                        in: 120...720,
+                                        step: 60
+                                    )
+                                    .frame(maxWidth: 320, alignment: .leading)
+
+                                    HStack(spacing: 10) {
+                                        Button(
+                                            isAnalyzingJointAngles
+                                                ? L10n.choose(simplifiedChinese: "识别中...", english: "Recognizing...")
+                                                : L10n.choose(simplifiedChinese: "识别当前视角关节", english: "Recognize Selected View")
+                                        ) {
+                                            handleAnalyzeJointAnglesTapped()
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || sourceVideoURL(for: selectedJointAnalysisView) == nil)
+                                    }
+
+                                    if !canRunPostComplianceSteps {
+                                        Text(
+                                            L10n.choose(
+                                                simplifiedChinese: "请先完成并通过上方合规检查，再执行关节识别。",
+                                                english: "Complete and pass the compliance check above before running joint recognition."
+                                            )
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                    }
+
+                                    if isAnalyzingJointAngles {
+                                        HStack(spacing: 8) {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                            Text(L10n.choose(simplifiedChinese: "正在识别人体彩点并计算关节指标...", english: "Detecting body keypoints and computing fitting metrics..."))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
                                         }
                                     }
-                                    .pickerStyle(.segmented)
 
-                                    Button(
-                                        isAnalyzingJointAngles
-                                            ? L10n.choose(simplifiedChinese: "识别中...", english: "Recognizing...")
-                                            : L10n.choose(simplifiedChinese: "识别当前视角关节", english: "Recognize Selected View")
-                                    ) {
-                                        handleAnalyzeJointAnglesTapped()
+                                    if let result = selectedJointAngleResult {
+                                        jointAnalysisResultSection(result: result)
+                                    } else {
+                                        Text(
+                                            L10n.choose(
+                                                simplifiedChinese: "当前视角暂无分析结果。",
+                                                english: "No analysis result for the selected view yet."
+                                            )
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     }
-                                    .buttonStyle(.borderedProminent)
-                                    .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || sourceVideoURL(for: selectedJointAnalysisView) == nil)
+
+                                    if jointAngleErrorText != "-" {
+                                        Text(jointAngleErrorText)
+                                            .font(.caption)
+                                            .foregroundStyle(.orange)
+                                    }
                                 }
                             }
 
                             fittingFlowCard(
                                 step: 4,
-                                title: L10n.choose(simplifiedChinese: "分配机位（前 / 侧 / 后）", english: "Assign Views (Front / Side / Rear)"),
-                                subtitle: L10n.choose(simplifiedChinese: "每个机位可单独配置视频；未设置时回退当前视频", english: "Each camera view can use a dedicated file; unset views fallback to current video"),
-                                state: viewAssignmentStepState
-                            ) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    jointAnalysisSourceRow(for: .front)
-                                    jointAnalysisSourceRow(for: .side)
-                                    jointAnalysisSourceRow(for: .rear)
-                                }
-                            }
-
-                            fittingFlowCard(
-                                step: 5,
                                 title: L10n.choose(simplifiedChinese: "分析并导出报告 / 视频", english: "Analyze and Export Report / Video"),
                                 subtitle: L10n.choose(simplifiedChinese: "通过合规后才能执行最终分析和导出", english: "Final analysis/export is available only after compliance passes"),
                                 state: reportStepState
                             ) {
                                 VStack(alignment: .leading, spacing: 10) {
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "输出路径", english: "Output"),
+                                        value: outputLocationText
+                                    )
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "播放内核", english: "Playback Engine"),
+                                        value: playbackEngineText
+                                    )
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting"),
+                                        value: videoFittingMode.displayName
+                                    )
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "播放测试", english: "Playback"),
+                                        value: playbackStatusText
+                                    )
+                                    statusRow(
+                                        title: L10n.choose(simplifiedChinese: "关节角分析", english: "Joint Angle Analysis"),
+                                        value: jointAngleStatusText
+                                    )
+
+                                    let capabilityMatrix = fittingCapabilityMatrix
+                                    Text(
+                                        L10n.choose(
+                                            simplifiedChinese: "能力覆盖：\(capabilityMatrix.availableCount)/\(capabilityMatrix.statuses.count)",
+                                            english: "Capability coverage: \(capabilityMatrix.availableCount)/\(capabilityMatrix.statuses.count)"
+                                        )
+                                    )
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(capabilityMatrix.unavailableCount == 0 ? .green : .orange)
+
+                                    ForEach(capabilityMatrix.statuses) { status in
+                                        HStack(spacing: 8) {
+                                            Image(systemName: status.isAvailable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                                .foregroundStyle(status.isAvailable ? .green : .orange)
+                                                .font(.caption)
+                                            Text(status.capability.title)
+                                                .font(.caption.weight(.semibold))
+                                            Text(status.message)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                            Spacer(minLength: 0)
+                                        }
+                                    }
+
+                                    HStack(spacing: 10) {
+                                        Label(
+                                            L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting"),
+                                            systemImage: videoFittingMode.symbol
+                                        )
+                                        .font(.subheadline.weight(.semibold))
+
+                                        Picker(
+                                            L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting"),
+                                            selection: $videoFittingModeRawValue
+                                        ) {
+                                            ForEach(VideoFittingMode.allCases) { mode in
+                                                Label(mode.displayName, systemImage: mode.symbol).tag(mode.rawValue)
+                                            }
+                                        }
+                                        .appDropdownTheme(width: 180, compact: true)
+                                        .disabled(isDownloading)
+
+                                        Toggle(
+                                            isOn: $forceAVPlayerForPlayback
+                                        ) {
+                                            Text(L10n.choose(simplifiedChinese: "强制 AVPlayer", english: "Force AVPlayer"))
+                                                .font(.caption)
+                                        }
+                                        .toggleStyle(.switch)
+                                        .disabled(isDownloading)
+                                    }
+
+                                    fittingPlaybackPanel()
+
                                     Stepper(
                                         L10n.choose(
                                             simplifiedChinese: "长时段采集时长 \(String(format: "%.0f", autoCaptureDurationSeconds))s（20-60s）",
@@ -1147,7 +1376,7 @@ struct VideoDownloaderPageView: View {
                                             handleAnalyzeAllCameraViewsTapped()
                                         }
                                         .buttonStyle(.borderedProminent)
-                                        .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || !hasAnyCameraSource)
+                                        .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps)
 
                                         Button(
                                             isAnalyzingJointAngles
@@ -1157,7 +1386,7 @@ struct VideoDownloaderPageView: View {
                                             handleAutoCaptureAndAnalyzeTapped()
                                         }
                                         .buttonStyle(.bordered)
-                                        .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || !hasAnyCameraSource)
+                                        .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps)
                                     }
 
                                     HStack(spacing: 10) {
@@ -1171,7 +1400,7 @@ struct VideoDownloaderPageView: View {
                                             handleExportReportVideosTapped()
                                         }
                                         .buttonStyle(.bordered)
-                                        .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || !hasAnyCameraSource)
+                                        .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps)
                                     }
 
                                     if autoCaptureStatusText != "-" {
@@ -1191,31 +1420,30 @@ struct VideoDownloaderPageView: View {
                     }
                 }
 
-                GroupBox(L10n.choose(simplifiedChinese: "状态说明", english: "Status")) {
+                if !isFittingPage {
+                    GroupBox(L10n.choose(simplifiedChinese: "状态说明", english: "Status")) {
                     VStack(alignment: .leading, spacing: 8) {
-                        if !isFittingPage {
-                            statusRow(title: "URL", value: normalizedURLText)
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "平台", english: "Platform"),
-                                value: selectedPlatformText
-                            )
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "任务状态", english: "Job State"),
-                                value: currentJobStateText
-                            )
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "已选清晰度", english: "Selected Quality"),
-                                value: selectedQuality.displayName
-                            )
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "下载速度", english: "Speed Mode"),
-                                value: selectedSpeedMode.displayName
-                            )
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "视频下载地址", english: "Media URL"),
-                                value: extractedMediaURLText
-                            )
-                        }
+                        statusRow(title: "URL", value: normalizedURLText)
+                        statusRow(
+                            title: L10n.choose(simplifiedChinese: "平台", english: "Platform"),
+                            value: selectedPlatformText
+                        )
+                        statusRow(
+                            title: L10n.choose(simplifiedChinese: "任务状态", english: "Job State"),
+                            value: currentJobStateText
+                        )
+                        statusRow(
+                            title: L10n.choose(simplifiedChinese: "已选清晰度", english: "Selected Quality"),
+                            value: selectedQuality.displayName
+                        )
+                        statusRow(
+                            title: L10n.choose(simplifiedChinese: "下载速度", english: "Speed Mode"),
+                            value: selectedSpeedMode.displayName
+                        )
+                        statusRow(
+                            title: L10n.choose(simplifiedChinese: "视频下载地址", english: "Media URL"),
+                            value: extractedMediaURLText
+                        )
                         statusRow(
                             title: L10n.choose(simplifiedChinese: "输出路径", english: "Output"),
                             value: outputLocationText
@@ -1224,68 +1452,23 @@ struct VideoDownloaderPageView: View {
                             title: L10n.choose(simplifiedChinese: "播放内核", english: "Playback Engine"),
                             value: playbackEngineText
                         )
-                        if isFittingPage {
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting"),
-                                value: videoFittingMode.displayName
-                            )
-                        }
                         statusRow(
                             title: L10n.choose(simplifiedChinese: "播放测试", english: "Playback"),
                             value: playbackStatusText
                         )
-                        if isFittingPage {
-                            statusRow(
-                                title: L10n.choose(simplifiedChinese: "关节角分析", english: "Joint Angle Analysis"),
-                                value: jointAngleStatusText
-                            )
-                        }
                     }
                     .font(.subheadline)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                }
 
-                GroupBox(L10n.choose(simplifiedChinese: "播放测试", english: "Playback Test")) {
+                if !isFittingPage {
+                    GroupBox(L10n.choose(simplifiedChinese: "播放测试", english: "Playback Test")) {
                     VStack(alignment: .leading, spacing: 10) {
-                        if isFittingPage {
-                            HStack(spacing: 10) {
-                                Label(
-                                    L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting"),
-                                    systemImage: videoFittingMode.symbol
-                                )
-                                .font(.subheadline.weight(.semibold))
-
-                                Picker(
-                                    L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting"),
-                                    selection: $videoFittingModeRawValue
-                                ) {
-                                    ForEach(VideoFittingMode.allCases) { mode in
-                                        Label(mode.displayName, systemImage: mode.symbol).tag(mode.rawValue)
-                                    }
-                                }
-                                .appDropdownTheme(width: 180, compact: true)
-                                .disabled(isDownloading)
-
-                                Toggle(
-                                    isOn: $forceAVPlayerForPlayback
-                                ) {
-                                    Text(L10n.choose(simplifiedChinese: "强制 AVPlayer", english: "Force AVPlayer"))
-                                        .font(.caption)
-                                }
-                                .toggleStyle(.switch)
-                                .disabled(isDownloading)
-                            }
-                        }
-
                         if usesLibVLCPlayback, downloadedVideoURL != nil {
                             #if os(macOS) && canImport(VLCKit)
                             ZStack {
                                 EmbeddedLibVLCPlayerView(controller: libVLCPlaybackController)
-                                if isFittingPage, let sample = activeOverlaySample {
-                                    JointWireframeOverlay(sample: sample)
-                                        .padding(10)
-                                        .allowsHitTesting(false)
-                                }
                             }
                             .frame(minHeight: playerMinHeight, maxHeight: playerMaxHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -1315,11 +1498,6 @@ struct VideoDownloaderPageView: View {
                                     player: player,
                                     fittingMode: activePlaybackFittingMode
                                 )
-                                if isFittingPage, let sample = activeOverlaySample {
-                                    JointWireframeOverlay(sample: sample)
-                                        .padding(10)
-                                        .allowsHitTesting(false)
-                                }
                             }
                                 .frame(minHeight: playerMinHeight, maxHeight: playerMaxHeight)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -1390,8 +1568,8 @@ struct VideoDownloaderPageView: View {
                         } else {
                             Text(
                                 L10n.choose(
-                                    simplifiedChinese: isFittingPage ? "选择本地视频后会在这里加载播放器。" : "下载成功后会在这里自动加载播放器。",
-                                    english: isFittingPage ? "The player appears here after selecting a local video." : "The player will appear here automatically after a successful download."
+                                    simplifiedChinese: "下载成功后会在这里自动加载播放器。",
+                                    english: "The player will appear here automatically after a successful download."
                                 )
                             )
                             .font(.callout)
@@ -1400,124 +1578,6 @@ struct VideoDownloaderPageView: View {
 
                         if playbackErrorText != "-" {
                             Text(playbackErrorText)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                if isFittingPage {
-                    GroupBox(L10n.choose(simplifiedChinese: "视频关节角分析（Beta）", english: "Video Joint Angle Analysis (Beta)")) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 10) {
-                            Text(L10n.choose(simplifiedChinese: "分析视角", english: "Analysis View"))
-                                .font(.subheadline.weight(.semibold))
-                            Picker(
-                                L10n.choose(simplifiedChinese: "分析视角", english: "Analysis View"),
-                                selection: $selectedJointAnalysisView
-                            ) {
-                                ForEach(supportedCyclingViews) { view in
-                                    Text(view.displayName).tag(view)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-
-                        HStack(spacing: 10) {
-                            Text(L10n.choose(simplifiedChinese: "骨骼模型", english: "Skeleton Model"))
-                                .font(.subheadline.weight(.semibold))
-                            Picker(
-                                L10n.choose(simplifiedChinese: "骨骼模型", english: "Skeleton Model"),
-                                selection: $poseEstimationModelRawValue
-                            ) {
-                                ForEach(VideoPoseEstimationModel.allCases) { model in
-                                    Text(model.displayName).tag(model.rawValue)
-                                }
-                            }
-                            .appDropdownTheme(width: 300, compact: true)
-                        }
-
-                        Stepper(
-                            L10n.choose(
-                                simplifiedChinese: "采样帧数上限 \(jointAngleMaxSamples)",
-                                english: "Max sampled frames \(jointAngleMaxSamples)"
-                            ),
-                            value: $jointAngleMaxSamples,
-                            in: 120...720,
-                            step: 60
-                        )
-                        .frame(maxWidth: 320, alignment: .leading)
-
-                        jointAnalysisSourceRow(for: .front)
-                        jointAnalysisSourceRow(for: .side)
-                        jointAnalysisSourceRow(for: .rear)
-
-                        HStack(spacing: 10) {
-                            Button(
-                                isAnalyzingJointAngles
-                                    ? L10n.choose(simplifiedChinese: "分析中...", english: "Analyzing...")
-                                    : L10n.choose(simplifiedChinese: "分析当前视角", english: "Analyze Selected View")
-                            ) {
-                                handleAnalyzeJointAnglesTapped()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || sourceVideoURL(for: selectedJointAnalysisView) == nil)
-
-                            Button(
-                                L10n.choose(simplifiedChinese: "分析全部机位", english: "Analyze All Views")
-                            ) {
-                                handleAnalyzeAllCameraViewsTapped()
-                            }
-                            .buttonStyle(.bordered)
-                            .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || !hasAnyCameraSource)
-                        }
-
-                        if !hasAnyCameraSource {
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "请先为前/侧/后视角至少选择一个本地视频。未单独设置时会回退使用当前下载视频。",
-                                    english: "Choose at least one local video for front/side/rear. If a dedicated source is not set, the current downloaded video is used as fallback."
-                                )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        } else if !canRunPostComplianceSteps {
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "请先完成上方“视频合规检查（畸变/骨骼对位）”，未通过时会拒绝分析流程。",
-                                    english: "Run the compliance check above (distortion/skeleton alignment) first. Analysis is blocked until it passes."
-                                )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                        }
-
-                        if isAnalyzingJointAngles {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text(L10n.choose(simplifiedChinese: "正在识别人体彩点并计算关节指标...", english: "Detecting body keypoints and computing fitting metrics..."))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        if let result = selectedJointAngleResult {
-                            jointAnalysisResultSection(result: result)
-                        } else {
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "当前视角暂无分析结果。",
-                                    english: "No analysis result for the selected view yet."
-                                )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-
-                        if jointAngleErrorText != "-" {
-                            Text(jointAngleErrorText)
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }
@@ -1555,23 +1615,12 @@ struct VideoDownloaderPageView: View {
             }
         }
         .fileImporter(
-            isPresented: isVideoImporterPresented,
+            isPresented: $isVideoImporterSheetPresented,
             allowedContentTypes: [.movie, .mpeg4Movie, .quickTimeMovie],
             allowsMultipleSelection: false
         ) { result in
             handleVideoImportResult(result)
         }
-    }
-
-    private var isVideoImporterPresented: Binding<Bool> {
-        Binding(
-            get: { activeVideoImportTarget != nil },
-            set: { isPresented in
-                if !isPresented {
-                    activeVideoImportTarget = nil
-                }
-            }
-        )
     }
 
     private var playerMinHeight: CGFloat {
@@ -1642,6 +1691,136 @@ struct VideoDownloaderPageView: View {
         return "-"
     }
 
+    @ViewBuilder
+    private func fittingPlaybackPanel() -> some View {
+        if usesLibVLCPlayback, downloadedVideoURL != nil {
+            #if os(macOS) && canImport(VLCKit)
+            ZStack {
+                EmbeddedLibVLCPlayerView(controller: libVLCPlaybackController)
+                if let sample = activeOverlaySample {
+                    JointWireframeOverlay(sample: sample)
+                        .padding(10)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(minHeight: playerMinHeight, maxHeight: playerMaxHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            HStack(spacing: 8) {
+                Button(L10n.choose(simplifiedChinese: "播放", english: "Play")) {
+                    libVLCPlaybackController.play()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(L10n.choose(simplifiedChinese: "暂停", english: "Pause")) {
+                    libVLCPlaybackController.pause()
+                }
+                .buttonStyle(.bordered)
+
+                Button(L10n.choose(simplifiedChinese: "重播", english: "Replay")) {
+                    libVLCPlaybackController.replay()
+                }
+                .buttonStyle(.bordered)
+
+                playerSizeToggleButton
+            }
+            #endif
+        } else if let player = playbackPlayer, downloadedVideoURL != nil {
+            ZStack {
+                EmbeddedAVPlayerView(
+                    player: player,
+                    fittingMode: activePlaybackFittingMode
+                )
+                if let sample = activeOverlaySample {
+                    JointWireframeOverlay(sample: sample)
+                        .padding(10)
+                        .allowsHitTesting(false)
+                }
+            }
+            .frame(minHeight: playerMinHeight, maxHeight: playerMaxHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(spacing: 6) {
+                Slider(
+                    value: Binding(
+                        get: {
+                            VideoPlaybackProgressFormatter.clampedProgress(
+                                currentSeconds: playbackCurrentSeconds,
+                                durationSeconds: playbackDurationSeconds
+                            )
+                        },
+                        set: { updatedProgress in
+                            playbackCurrentSeconds = VideoPlaybackProgressFormatter.seekTime(
+                                progress: updatedProgress,
+                                durationSeconds: playbackDurationSeconds
+                            )
+                        }
+                    ),
+                    in: 0...1,
+                    onEditingChanged: { isEditing in
+                        isSeekingPlaybackPosition = isEditing
+                        if !isEditing {
+                            seekPlayback(to: playbackCurrentSeconds)
+                        }
+                    }
+                )
+
+                HStack {
+                    Text(VideoPlaybackProgressFormatter.formatTimestamp(seconds: playbackCurrentSeconds))
+                    Spacer()
+                    Text(VideoPlaybackProgressFormatter.formatTimestamp(seconds: playbackDurationSeconds))
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 8) {
+                Button(L10n.choose(simplifiedChinese: "后退10秒", english: "-10s")) {
+                    seekPlayback(by: -10)
+                }
+                .buttonStyle(.bordered)
+
+                Button(L10n.choose(simplifiedChinese: "播放", english: "Play")) {
+                    player.play()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button(L10n.choose(simplifiedChinese: "暂停", english: "Pause")) {
+                    player.pause()
+                }
+                .buttonStyle(.bordered)
+
+                Button(L10n.choose(simplifiedChinese: "重播", english: "Replay")) {
+                    seekPlayback(to: 0)
+                    player.play()
+                }
+                .buttonStyle(.bordered)
+
+                Button(L10n.choose(simplifiedChinese: "前进10秒", english: "+10s")) {
+                    seekPlayback(by: 10)
+                }
+                .buttonStyle(.bordered)
+
+                playerSizeToggleButton
+            }
+        } else {
+            Text(
+                L10n.choose(
+                    simplifiedChinese: "选择本地视频后会在这里加载播放器。",
+                    english: "The player appears here after selecting a local video."
+                )
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+
+        if playbackErrorText != "-" {
+            Text(playbackErrorText)
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+    }
+
     private var analyzableLocalVideoURL: URL? {
         guard let localURL = downloadedVideoURL else { return nil }
         guard localURL.isFileURL else { return nil }
@@ -1660,10 +1839,36 @@ struct VideoDownloaderPageView: View {
         [.front, .side, .rear]
     }
 
-    private var hasAnyCameraSource: Bool {
-        sourceVideoURL(for: .front) != nil ||
-        sourceVideoURL(for: .side) != nil ||
-        sourceVideoURL(for: .rear) != nil
+    private var assignedCameraViews: Set<CyclingCameraView> {
+        Set(supportedCyclingViews.filter { explicitCameraVideoURL(for: $0) != nil })
+    }
+
+    private var fittingWorkflowSnapshot: VideoFittingWorkflowSnapshot {
+        VideoFittingWorkflowSnapshot(
+            assignedViewCount: assignedCameraViews.count,
+            requiredViewCount: supportedCyclingViews.count,
+            isComplianceRunning: isRunningFlowComplianceCheck,
+            complianceChecked: flowComplianceChecked,
+            compliancePassed: flowCompliancePassed,
+            isAnalyzing: isAnalyzingJointAngles,
+            hasRecognitionResults: hasAnyJointRecognitionResult
+        )
+    }
+
+    private var fittingWorkflowStates: VideoFittingWorkflowStates {
+        VideoFittingWorkflowResolver.resolve(from: fittingWorkflowSnapshot)
+    }
+
+    private var fittingCapabilityMatrix: VideoFittingCapabilityMatrix {
+        VideoFittingCapabilityMatrix.build(assignedViews: assignedCameraViews)
+    }
+
+    private var missingRequiredCameraViews: [CyclingCameraView] {
+        supportedCyclingViews.filter { explicitCameraVideoURL(for: $0) == nil }
+    }
+
+    private var hasAnyAssignedCameraSources: Bool {
+        fittingWorkflowSnapshot.hasAnyAssignedView
     }
 
     private var hasSourceInput: Bool {
@@ -1685,8 +1890,8 @@ struct VideoDownloaderPageView: View {
         switch validationResult {
         case .emptyInput:
             return L10n.choose(
-                simplifiedChinese: "支持 YouTube / Instagram 链接，粘贴后自动识别平台。",
-                english: "Paste a YouTube/Instagram URL and the platform will be detected automatically."
+                simplifiedChinese: "支持 YouTube / Instagram 链接；iPad 也可使用 mp4/mov/m3u8 等直链。",
+                english: "Supports YouTube/Instagram links; on iPad you can also use direct mp4/mov/m3u8 URLs."
             )
         case .invalidURL:
             return L10n.choose(
@@ -1695,8 +1900,8 @@ struct VideoDownloaderPageView: View {
             )
         case .unsupportedPlatform:
             return L10n.choose(
-                simplifiedChinese: "当前仅支持 YouTube / Instagram。",
-                english: "Only YouTube/Instagram are supported."
+                simplifiedChinese: "当前仅支持 YouTube / Instagram 或直链视频地址。",
+                english: "Only YouTube/Instagram or direct media URLs are supported."
             )
         case let .valid(platform, normalizedURL):
             return L10n.choose(
@@ -1731,8 +1936,8 @@ struct VideoDownloaderPageView: View {
             )
         case .unsupportedPlatform:
             return L10n.choose(
-                simplifiedChinese: "校验失败：平台不在支持范围。",
-                english: "Validation failed: platform not supported."
+                simplifiedChinese: "校验失败：平台不在支持范围（仅 YouTube / Instagram / 直链视频）。",
+                english: "Validation failed: platform not supported (YouTube / Instagram / direct media only)."
             )
         case let .valid(platform, _):
             return L10n.choose(
@@ -1783,7 +1988,7 @@ struct VideoDownloaderPageView: View {
     }
 
     private var canRunPostComplianceSteps: Bool {
-        flowComplianceChecked && flowCompliancePassed
+        fittingWorkflowStates.canRunPostCompliance
     }
 
     private var hasAnyJointRecognitionResult: Bool {
@@ -1791,62 +1996,34 @@ struct VideoDownloaderPageView: View {
     }
 
     private var flowComplianceStepState: VideoFittingFlowState {
-        if isRunningFlowComplianceCheck { return .running }
-        if !hasAnyCameraSource { return .pending }
-        if !flowComplianceChecked { return .ready }
-        return flowCompliancePassed ? .done : .blocked
+        uiFlowState(for: fittingWorkflowStates.compliance)
     }
 
     private var skeletonRecognitionStepState: VideoFittingFlowState {
-        if isAnalyzingJointAngles { return .running }
-        if !canRunPostComplianceSteps { return .blocked }
-        return hasAnyJointRecognitionResult ? .done : .ready
+        uiFlowState(for: fittingWorkflowStates.skeletonRecognition)
     }
 
     private var viewAssignmentStepState: VideoFittingFlowState {
-        if !canRunPostComplianceSteps { return .blocked }
-        let explicitCount = supportedCyclingViews.filter { explicitCameraVideoURL(for: $0) != nil }.count
-        return explicitCount > 0 ? .done : .ready
+        uiFlowState(for: fittingWorkflowStates.viewAssignment)
     }
 
     private var reportStepState: VideoFittingFlowState {
-        if isAnalyzingJointAngles { return .running }
-        if !canRunPostComplianceSteps { return .blocked }
-        return hasAnyJointRecognitionResult ? .ready : .pending
+        uiFlowState(for: fittingWorkflowStates.report)
     }
 
-    private func preflightQualityGate(
+    private func runPreflightQualityGate(
         plans: [(CyclingCameraView, URL)]
-    ) async -> (passed: [(CyclingCameraView, URL)], failures: [String]) {
-        var passed: [(CyclingCameraView, URL)] = []
-        var failures: [String] = []
-        for (view, url) in plans {
-            let guidance = await evaluateCaptureGuidance(for: url)
-            await MainActor.run {
-                captureGuidanceByView[view] = guidance
+    ) async -> VideoFittingPreflightQualityGateResult {
+        let gate = await preflightQualityGateService.run(
+            plans: plans,
+            evaluateGuidance: { url in
+                await qualityProbeService.evaluateCaptureGuidance(for: url)
             }
-            if guidance.qualityGatePass {
-                passed.append((view, url))
-            } else {
-                failures.append(qualityGateFailureMessage(view: view, guidance: guidance))
-            }
-        }
-        return (passed, failures)
-    }
-
-    private func qualityGateFailureMessage(view: CyclingCameraView, guidance: VideoCaptureGuidance) -> String {
-        let fpsText = String(format: "%.1f", guidance.fps)
-        let lumaText = guidance.luma.map { String(format: "%.2f", $0) } ?? "--"
-        let sharpnessText = guidance.sharpness.map { String(format: "%.3f", $0) } ?? "--"
-        let occlusionText = guidance.occlusionRatio.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
-        let distortionText = guidance.distortionRisk.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
-        let alignText = guidance.skeletonAlignability.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
-        let tips = guidance.gateFailureTips
-        let detailLines = tips.map { "• \($0)" }.joined(separator: "\n")
-        return L10n.choose(
-            simplifiedChinese: "\(view.displayName) 机位未通过质量门控（FPS \(fpsText) / 亮度 \(lumaText) / 清晰 \(sharpnessText) / 遮挡 \(occlusionText) / 畸变风险 \(distortionText) / 对位可识别 \(alignText)）。\n重拍指令：\n\(detailLines)\n请重拍后再分析。",
-            english: "\(view.displayName) failed quality gate (FPS \(fpsText) / Luma \(lumaText) / Sharpness \(sharpnessText) / Occlusion \(occlusionText) / Distortion risk \(distortionText) / Skeleton alignability \(alignText)).\nRetake instructions:\n\(detailLines)\nPlease retake before analysis."
         )
+        await MainActor.run {
+            captureGuidanceByView.merge(gate.guidanceByView) { _, latest in latest }
+        }
+        return gate
     }
 
     private func resetFlowComplianceState() {
@@ -1854,23 +2031,33 @@ struct VideoDownloaderPageView: View {
         flowComplianceChecked = false
         flowCompliancePassed = false
         flowComplianceMessage = L10n.choose(
-            simplifiedChinese: "待检查：导入视频后执行合规检查。",
-            english: "Pending: import video and run compliance check."
+            simplifiedChinese: "待检查：请先为前 / 侧 / 后分别配置视频，再执行合规检查。",
+            english: "Pending: assign front/side/rear videos first, then run compliance check."
         )
         flowComplianceFailureDetails = []
     }
 
     private func handleRunFlowComplianceCheckTapped() {
-        let plans = supportedCyclingViews.compactMap { view -> (CyclingCameraView, URL)? in
-            guard let url = sourceVideoURL(for: view) else { return nil }
-            return (view, url)
+        if !hasAnyAssignedCameraSources {
+            flowComplianceChecked = false
+            flowCompliancePassed = false
+            flowComplianceMessage = L10n.choose(
+                simplifiedChinese: "请先至少配置一个机位视频，再执行合规检查。",
+                english: "Assign at least one view video before running compliance check."
+            )
+            flowComplianceFailureDetails = []
+            return
         }
+        let plans = fittingFlowPlanningService.assignedPlans(
+            supportedViews: supportedCyclingViews,
+            sourceVideoURL: { view in sourceVideoURL(for: view) }
+        )
         guard !plans.isEmpty else {
             flowComplianceChecked = false
             flowCompliancePassed = false
             flowComplianceMessage = L10n.choose(
-                simplifiedChinese: "未检测到可用视频，请先导入视频。",
-                english: "No usable video found. Import a video first."
+                simplifiedChinese: "未检测到可用机位视频，请先分配机位。",
+                english: "No usable view video found. Assign view videos first."
             )
             flowComplianceFailureDetails = []
             return
@@ -1884,21 +2071,25 @@ struct VideoDownloaderPageView: View {
         flowComplianceFailureDetails = []
 
         Task {
-            let gate = await preflightQualityGate(plans: plans)
-            let uniqueFailures = gate.failures.reduce(into: [String]()) { partial, item in
-                if !partial.contains(item) {
-                    partial.append(item)
-                }
-            }
+            let gate = await runPreflightQualityGate(plans: plans)
+            let uniqueFailures = fittingFlowPlanningService.uniqueFailures(gate.failures)
             await MainActor.run {
                 isRunningFlowComplianceCheck = false
                 flowComplianceChecked = true
                 flowCompliancePassed = uniqueFailures.isEmpty
                 if uniqueFailures.isEmpty {
-                    flowComplianceMessage = L10n.choose(
-                        simplifiedChinese: "合规通过：可进入后续关节识别与报告流程。",
-                        english: "Compliance passed. Continue to joint recognition and reporting."
-                    )
+                    if missingRequiredCameraViews.isEmpty {
+                        flowComplianceMessage = L10n.choose(
+                            simplifiedChinese: "合规通过：可进入后续关节识别与报告流程。",
+                            english: "Compliance passed. Continue to joint recognition and reporting."
+                        )
+                    } else {
+                        let missingText = missingRequiredCameraViews.map(\.displayName).joined(separator: " / ")
+                        flowComplianceMessage = L10n.choose(
+                            simplifiedChinese: "合规通过（已配置机位）：可继续分析。未配置机位（\(missingText)）将缺少对应结果。",
+                            english: "Compliance passed for assigned views. Continue analysis; unassigned views (\(missingText)) will have no corresponding results."
+                        )
+                    }
                     flowComplianceFailureDetails = []
                     jointAngleErrorText = "-"
                     if jointAngleStatusText == "-" || jointAngleStatusText == L10n.choose(simplifiedChinese: "等待分析", english: "Waiting for analysis") {
@@ -1920,11 +2111,11 @@ struct VideoDownloaderPageView: View {
     private func sourceVideoURL(for view: CyclingCameraView) -> URL? {
         switch view {
         case .front:
-            return frontCameraVideoURL ?? analyzableLocalVideoURL
+            return frontCameraVideoURL
         case .side:
-            return sideCameraVideoURL ?? analyzableLocalVideoURL
+            return sideCameraVideoURL
         case .rear:
-            return rearCameraVideoURL ?? analyzableLocalVideoURL
+            return rearCameraVideoURL
         case .auto:
             return analyzableLocalVideoURL
         }
@@ -1940,9 +2131,6 @@ struct VideoDownloaderPageView: View {
             }
         }() {
             return explicit.lastPathComponent
-        }
-        if analyzableLocalVideoURL != nil {
-            return L10n.choose(simplifiedChinese: "使用当前下载视频", english: "Using current downloaded video")
         }
         return L10n.choose(simplifiedChinese: "未设置", english: "Not set")
     }
@@ -1976,16 +2164,16 @@ struct VideoDownloaderPageView: View {
         switch result {
         case .success(let urls):
             guard let selectedURL = urls.first else { return }
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            do {
+                let persistedURL = try persistImportedVideoToSandbox(from: selectedURL, prefix: "primary")
+                outputLocationText = persistedURL.path
+                configurePlaybackPlayer(with: persistedURL, fallbackMediaURLText: "-")
+            } catch {
                 playbackErrorText = L10n.choose(
-                    simplifiedChinese: "所选文件不可用，请重新选择视频文件。",
-                    english: "Selected file is unavailable. Choose another video file."
+                    simplifiedChinese: "导入视频失败：\(error.localizedDescription)",
+                    english: "Failed to import video: \(error.localizedDescription)"
                 )
-                return
             }
-            outputLocationText = selectedURL.path
-            configurePlaybackPlayer(with: selectedURL, fallbackMediaURLText: "-")
         case .failure(let error):
             playbackErrorText = L10n.choose(
                 simplifiedChinese: "导入视频失败：\(error.localizedDescription)",
@@ -2057,8 +2245,8 @@ struct VideoDownloaderPageView: View {
                 english: "Failed: missing URL"
             )
             errorAlertMessage = L10n.choose(
-                simplifiedChinese: "请先输入可识别的 YouTube 或 Instagram 链接。",
-                english: "Please provide a valid YouTube or Instagram URL first."
+                simplifiedChinese: "请先输入可识别的 YouTube / Instagram 链接，或可直接下载的视频直链。",
+                english: "Provide a valid YouTube/Instagram URL, or a direct downloadable media URL."
             )
             showErrorAlert = true
         case .invalidURL:
@@ -2077,8 +2265,8 @@ struct VideoDownloaderPageView: View {
                 english: "Failed: unsupported platform"
             )
             errorAlertMessage = L10n.choose(
-                simplifiedChinese: "当前仅支持 YouTube / Instagram 链接。",
-                english: "Only YouTube / Instagram links are supported."
+                simplifiedChinese: "当前仅支持 YouTube / Instagram 链接或直链视频地址。",
+                english: "Only YouTube/Instagram links or direct media URLs are supported."
             )
             showErrorAlert = true
         }
@@ -2307,23 +2495,31 @@ struct VideoDownloaderPageView: View {
     }
 
     private func handleAnalyzeJointAnglesTapped() {
-        guard canRunPostComplianceSteps else {
-            jointAngleStatusText = L10n.choose(simplifiedChinese: "流程已阻止", english: "Flow blocked")
-            jointAngleErrorText = L10n.choose(
-                simplifiedChinese: "请先完成并通过“视频合规检查（畸变/骨骼对位）”后再执行识别。",
-                english: "Complete and pass the compliance check (distortion/skeleton alignment) before recognition."
-            )
-            return
-        }
         let requestedView = selectedJointAnalysisView
-        guard let localURL = sourceVideoURL(for: requestedView) else {
-            jointAngleStatusText = L10n.choose(simplifiedChinese: "不可分析", english: "Unavailable")
-            jointAngleErrorText = L10n.choose(
-                simplifiedChinese: "当前视角没有可分析的本地视频文件。",
-                english: "No analyzable local video file is available for the selected view."
-            )
+        let localURL = sourceVideoURL(for: requestedView)
+        if let blocked = VideoFittingFlowGuardPolicy.analyzeSelectedView(
+            canRunPostCompliance: canRunPostComplianceSteps,
+            hasRequestedViewVideo: localURL != nil
+        ) {
+            switch blocked {
+            case .complianceRequired:
+                jointAngleStatusText = L10n.choose(simplifiedChinese: "流程已阻止", english: "Flow blocked")
+                jointAngleErrorText = L10n.choose(
+                    simplifiedChinese: "请先完成并通过“视频合规检查（畸变/骨骼对位）”后再执行识别。",
+                    english: "Complete and pass the compliance check (distortion/skeleton alignment) before recognition."
+                )
+            case .selectedViewVideoMissing:
+                jointAngleStatusText = L10n.choose(simplifiedChinese: "不可分析", english: "Unavailable")
+                jointAngleErrorText = L10n.choose(
+                    simplifiedChinese: "当前视角没有可分析的本地视频文件。",
+                    english: "No analyzable local video file is available for the selected view."
+                )
+            case .assignedViewsMissing, .analysisResultsMissing:
+                break
+            }
             return
         }
+        guard let localURL else { return }
 
         isAnalyzingJointAngles = true
         jointAngleErrorText = "-"
@@ -2331,7 +2527,7 @@ struct VideoDownloaderPageView: View {
         jointAngleResultsByView[requestedView] = nil
 
         Task {
-            let gate = await preflightQualityGate(plans: [(requestedView, localURL)])
+            let gate = await runPreflightQualityGate(plans: [(requestedView, localURL)])
             guard gate.passed.first != nil else {
                 await MainActor.run {
                     isAnalyzingJointAngles = false
@@ -2368,24 +2564,30 @@ struct VideoDownloaderPageView: View {
     }
 
     private func handleAnalyzeAllCameraViewsTapped() {
-        guard canRunPostComplianceSteps else {
-            jointAngleStatusText = L10n.choose(simplifiedChinese: "流程已阻止", english: "Flow blocked")
-            jointAngleErrorText = L10n.choose(
-                simplifiedChinese: "请先完成并通过“视频合规检查（畸变/骨骼对位）”后再分析全部机位。",
-                english: "Complete and pass the compliance check (distortion/skeleton alignment) before all-view analysis."
-            )
-            return
-        }
-        let plans = supportedCyclingViews.compactMap { view -> (CyclingCameraView, URL)? in
-            guard let url = sourceVideoURL(for: view) else { return nil }
-            return (view, url)
-        }
-        guard !plans.isEmpty else {
-            jointAngleStatusText = L10n.choose(simplifiedChinese: "不可分析", english: "Unavailable")
-            jointAngleErrorText = L10n.choose(
-                simplifiedChinese: "请先配置至少一个机位视频文件。",
-                english: "Configure at least one camera view video first."
-            )
+        let plans = fittingFlowPlanningService.assignedPlans(
+            supportedViews: supportedCyclingViews,
+            sourceVideoURL: { view in sourceVideoURL(for: view) }
+        )
+        if let blocked = VideoFittingFlowGuardPolicy.analyzeAllViews(
+            canRunPostCompliance: canRunPostComplianceSteps,
+            hasAnyAssignedViewVideo: !plans.isEmpty
+        ) {
+            switch blocked {
+            case .complianceRequired:
+                jointAngleStatusText = L10n.choose(simplifiedChinese: "流程已阻止", english: "Flow blocked")
+                jointAngleErrorText = L10n.choose(
+                    simplifiedChinese: "请先完成并通过“视频合规检查（畸变/骨骼对位）”后再分析全部机位。",
+                    english: "Complete and pass the compliance check (distortion/skeleton alignment) before all-view analysis."
+                )
+            case .assignedViewsMissing:
+                jointAngleStatusText = L10n.choose(simplifiedChinese: "不可分析", english: "Unavailable")
+                jointAngleErrorText = L10n.choose(
+                    simplifiedChinese: "请先配置至少一个机位视频文件。",
+                    english: "Configure at least one camera view video first."
+                )
+            case .selectedViewVideoMissing, .analysisResultsMissing:
+                break
+            }
             return
         }
 
@@ -2394,7 +2596,7 @@ struct VideoDownloaderPageView: View {
         jointAngleStatusText = L10n.choose(simplifiedChinese: "质量检测中", english: "Quality checking")
 
         Task {
-            let gate = await preflightQualityGate(plans: plans)
+            let gate = await runPreflightQualityGate(plans: plans)
             guard !gate.passed.isEmpty else {
                 await MainActor.run {
                     isAnalyzingJointAngles = false
@@ -2445,22 +2647,28 @@ struct VideoDownloaderPageView: View {
     }
 
     private func handleAutoCaptureAndAnalyzeTapped() {
-        guard canRunPostComplianceSteps else {
-            autoCaptureStatusText = L10n.choose(
-                simplifiedChinese: "合规检查未通过，已阻止自动采集+分析流程。",
-                english: "Compliance check is not passed. Auto capture/analyze is blocked."
-            )
-            return
-        }
-        let plans = supportedCyclingViews.compactMap { view -> (CyclingCameraView, URL)? in
-            guard let url = sourceVideoURL(for: view) else { return nil }
-            return (view, url)
-        }
-        guard !plans.isEmpty else {
-            autoCaptureStatusText = L10n.choose(
-                simplifiedChinese: "没有可用机位视频，无法自动采集。",
-                english: "No source video available for auto capture."
-            )
+        let plans = fittingFlowPlanningService.assignedPlans(
+            supportedViews: supportedCyclingViews,
+            sourceVideoURL: { view in sourceVideoURL(for: view) }
+        )
+        if let blocked = VideoFittingFlowGuardPolicy.autoCaptureAndAnalyze(
+            canRunPostCompliance: canRunPostComplianceSteps,
+            hasAnyAssignedViewVideo: !plans.isEmpty
+        ) {
+            switch blocked {
+            case .complianceRequired:
+                autoCaptureStatusText = L10n.choose(
+                    simplifiedChinese: "合规检查未通过，已阻止自动采集+分析流程。",
+                    english: "Compliance check is not passed. Auto capture/analyze is blocked."
+                )
+            case .assignedViewsMissing:
+                autoCaptureStatusText = L10n.choose(
+                    simplifiedChinese: "没有可用机位视频，无法自动采集。",
+                    english: "No source video available for auto capture."
+                )
+            case .selectedViewVideoMissing, .analysisResultsMissing:
+                break
+            }
             return
         }
 
@@ -2470,7 +2678,7 @@ struct VideoDownloaderPageView: View {
         jointAngleStatusText = L10n.choose(simplifiedChinese: "质量检测中", english: "Quality checking")
 
         Task {
-            let gate = await preflightQualityGate(plans: plans)
+            let gate = await runPreflightQualityGate(plans: plans)
             guard !gate.passed.isEmpty else {
                 await MainActor.run {
                     isAnalyzingJointAngles = false
@@ -2499,7 +2707,7 @@ struct VideoDownloaderPageView: View {
                         requestedView: view,
                         preferredModel: selectedPoseModel
                     )
-                    let captureWindow = suggestedCaptureWindow(
+                    let captureWindow = VideoFittingCaptureWindowPolicy.suggestedCaptureWindow(
                         from: scoutingResult,
                         preferredDuration: autoCaptureDurationSeconds
                     )
@@ -2563,19 +2771,28 @@ struct VideoDownloaderPageView: View {
     }
 
     private func handleExportPDFReportTapped() {
-        guard canRunPostComplianceSteps else {
-            reportExportStatusText = L10n.choose(
-                simplifiedChinese: "合规检查未通过，已阻止报告导出。",
-                english: "Compliance check is not passed. Export is blocked."
-            )
-            return
-        }
-        let exportResults = exportedResultsByView()
-        guard !exportResults.isEmpty else {
-            reportExportStatusText = L10n.choose(
-                simplifiedChinese: "暂无可导出的分析结果。",
-                english: "No analysis result to export."
-            )
+        let exportResults = fittingFlowPlanningService.exportedResultsByView(
+            resultsByView: jointAngleResultsByView,
+            supportedViews: supportedCyclingViews
+        )
+        if let blocked = VideoFittingFlowGuardPolicy.exportPDF(
+            canRunPostCompliance: canRunPostComplianceSteps,
+            hasAnyAnalysisResult: !exportResults.isEmpty
+        ) {
+            switch blocked {
+            case .complianceRequired:
+                reportExportStatusText = L10n.choose(
+                    simplifiedChinese: "合规检查未通过，已阻止报告导出。",
+                    english: "Compliance check is not passed. Export is blocked."
+                )
+            case .analysisResultsMissing:
+                reportExportStatusText = L10n.choose(
+                    simplifiedChinese: "暂无可导出的分析结果。",
+                    english: "No analysis result to export."
+                )
+            case .selectedViewVideoMissing, .assignedViewsMissing:
+                break
+            }
             return
         }
 
@@ -2596,22 +2813,28 @@ struct VideoDownloaderPageView: View {
     }
 
     private func handleExportReportVideosTapped() {
-        guard canRunPostComplianceSteps else {
-            reportExportStatusText = L10n.choose(
-                simplifiedChinese: "合规检查未通过，已阻止报告视频导出。",
-                english: "Compliance check is not passed. Report video export is blocked."
-            )
-            return
-        }
-        let plans = supportedCyclingViews.compactMap { view -> (CyclingCameraView, URL)? in
-            guard let url = sourceVideoURL(for: view) else { return nil }
-            return (view, url)
-        }
-        guard !plans.isEmpty else {
-            reportExportStatusText = L10n.choose(
-                simplifiedChinese: "暂无可导出的视频机位。",
-                english: "No video view available for export."
-            )
+        let plans = fittingFlowPlanningService.assignedPlans(
+            supportedViews: supportedCyclingViews,
+            sourceVideoURL: { view in sourceVideoURL(for: view) }
+        )
+        if let blocked = VideoFittingFlowGuardPolicy.exportReportVideos(
+            canRunPostCompliance: canRunPostComplianceSteps,
+            hasAnyAssignedViewVideo: !plans.isEmpty
+        ) {
+            switch blocked {
+            case .complianceRequired:
+                reportExportStatusText = L10n.choose(
+                    simplifiedChinese: "合规检查未通过，已阻止报告视频导出。",
+                    english: "Compliance check is not passed. Report video export is blocked."
+                )
+            case .assignedViewsMissing:
+                reportExportStatusText = L10n.choose(
+                    simplifiedChinese: "暂无可导出的视频机位。",
+                    english: "No video view available for export."
+                )
+            case .selectedViewVideoMissing, .analysisResultsMissing:
+                break
+            }
             return
         }
 
@@ -2628,7 +2851,7 @@ struct VideoDownloaderPageView: View {
                     if let existing = jointAngleResultsByView[view] {
                         referenceResult = existing
                     } else {
-                        let gate = await preflightQualityGate(plans: [(view, sourceURL)])
+                        let gate = await runPreflightQualityGate(plans: [(view, sourceURL)])
                         guard gate.passed.first != nil else {
                             failures.append(contentsOf: gate.failures)
                             continue
@@ -2640,12 +2863,16 @@ struct VideoDownloaderPageView: View {
                             preferredModel: selectedPoseModel
                         )
                     }
-                    let captureWindow = suggestedCaptureWindow(
+                    let captureWindow = VideoFittingCaptureWindowPolicy.suggestedCaptureWindow(
                         from: referenceResult,
                         preferredDuration: autoCaptureDurationSeconds
                     )
                     let overlayResult: VideoJointAngleAnalysisResult
-                    if analysisResultCoversWindow(referenceResult, start: captureWindow.start, duration: captureWindow.duration) {
+                    if VideoFittingCaptureWindowPolicy.analysisResultCoversWindow(
+                        referenceResult,
+                        start: captureWindow.start,
+                        duration: captureWindow.duration
+                    ) {
                         overlayResult = referenceResult
                     } else {
                         overlayResult = try await jointAngleAnalyzer.analyze(
@@ -2689,38 +2916,6 @@ struct VideoDownloaderPageView: View {
         }
     }
 
-    private func analysisResultCoversWindow(
-        _ result: VideoJointAngleAnalysisResult,
-        start: Double,
-        duration: Double
-    ) -> Bool {
-        let end = start + duration
-        guard result.durationSeconds + 0.35 >= end else { return false }
-        guard !result.samples.isEmpty else { return false }
-        let first = result.samples.first?.timeSeconds ?? 0
-        let last = result.samples.last?.timeSeconds ?? 0
-        return first <= start + 0.5 && last + 0.35 >= end
-    }
-
-    private func suggestedCaptureWindow(
-        from result: VideoJointAngleAnalysisResult,
-        preferredDuration: Double
-    ) -> (start: Double, duration: Double) {
-        let duration = min(max(1.0, preferredDuration), max(1.2, result.durationSeconds))
-        if let cycle = result.cadenceCycles.first {
-            let start = min(max(0, cycle.startTimeSeconds), max(0, result.durationSeconds - duration))
-            return (start, duration)
-        }
-
-        if let phaseSample = result.samples.first(where: { $0.crankPhaseDeg != nil }) {
-            let start = min(max(0, phaseSample.timeSeconds - 0.8), max(0, result.durationSeconds - duration))
-            return (start, duration)
-        }
-
-        let start = max(0, (result.durationSeconds - duration) * 0.35)
-        return (start, duration)
-    }
-
     private func makeAutoCaptureClipURL(view: CyclingCameraView) -> URL {
         let base = makeReportDirectoryURL()
         let stamp = DateFormatter.fricuCompactTimestamp.string(from: Date())
@@ -2734,21 +2929,13 @@ struct VideoDownloaderPageView: View {
     }
 
     private func makeReportDirectoryURL() -> URL {
-        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads", isDirectory: true)
-        let directory = downloads.appendingPathComponent("FricuFittingReports", isDirectory: true)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
-    private func exportedResultsByView() -> [CyclingCameraView: VideoJointAngleAnalysisResult] {
-        var output: [CyclingCameraView: VideoJointAngleAnalysisResult] = [:]
-        for view in supportedCyclingViews {
-            if let result = jointAngleResultsByView[view] {
-                output[view] = result
-            }
+        if let resolved = try? VideoWorkspaceDirectoryResolver().resolve(kind: .fittingReports) {
+            return resolved
         }
-        return output
+        let fallback = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fricu/FricuFittingReports", isDirectory: true)
+        try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
+        return fallback
     }
 
     private func projectedBDCKneeAngle(
@@ -2958,8 +3145,8 @@ struct VideoDownloaderPageView: View {
             )
         case .outputDirectoryUnavailable:
             return L10n.choose(
-                simplifiedChinese: "无法获取系统下载目录，请检查系统权限后重试。",
-                english: "Unable to resolve the system Downloads directory. Check app permissions and retry."
+                simplifiedChinese: "无法获取应用可写输出目录，请检查权限后重试。",
+                english: "Unable to resolve a writable app output directory. Check permissions and retry."
             )
         case .commandFailed(let reason):
             if reason.lowercased().contains("sign in to confirm") || reason.lowercased().contains("not a bot") {
@@ -2992,18 +3179,44 @@ struct VideoDownloaderPageView: View {
                 presentCameraVideoImporter(for: view)
             }
             .buttonStyle(.bordered)
-            .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps)
+            .disabled(isAnalyzingJointAngles)
 
             Button(L10n.choose(simplifiedChinese: "清除", english: "Clear")) {
                 setCameraVideoURL(nil, for: view)
             }
             .buttonStyle(.bordered)
-            .disabled(isAnalyzingJointAngles || !canRunPostComplianceSteps || explicitCameraVideoURL(for: view) == nil)
+            .disabled(isAnalyzingJointAngles || explicitCameraVideoURL(for: view) == nil)
+        }
+    }
+
+    private func missingViewImpactText(for view: CyclingCameraView) -> String {
+        switch view {
+        case .front:
+            return L10n.choose(
+                simplifiedChinese: "前视缺失：无法输出膝/踝/足尖轨迹与关节对位。",
+                english: "Front view missing: knee/ankle/toe trajectories and alignment will be unavailable."
+            )
+        case .side:
+            return L10n.choose(
+                simplifiedChinese: "侧视缺失：无法输出髋/膝角、BDC 与座高建议。",
+                english: "Side view missing: hip/knee angles, BDC, and saddle-height guidance will be unavailable."
+            )
+        case .rear:
+            return L10n.choose(
+                simplifiedChinese: "后视缺失：无法输出盆骨倾斜、重心漂移与顺拐风险。",
+                english: "Rear view missing: pelvic tilt, center-of-mass drift, and crossover-risk analysis will be unavailable."
+            )
+        case .auto:
+            return L10n.choose(
+                simplifiedChinese: "缺少机位视频：对应分析结果不可用。",
+                english: "Missing view video: corresponding analysis output is unavailable."
+            )
         }
     }
 
     private func presentPrimaryFittingVideoImporter() {
         activeVideoImportTarget = .primary
+        isVideoImporterSheetPresented = true
     }
 
     private func presentCameraVideoImporter(for view: CyclingCameraView) {
@@ -3017,10 +3230,14 @@ struct VideoDownloaderPageView: View {
         case .auto:
             break
         }
+        if activeVideoImportTarget != nil {
+            isVideoImporterSheetPresented = true
+        }
     }
 
     private func handleVideoImportResult(_ result: Result<[URL], Error>) {
         let target = activeVideoImportTarget
+        isVideoImporterSheetPresented = false
         activeVideoImportTarget = nil
         guard let target else { return }
         switch target {
@@ -3035,23 +3252,83 @@ struct VideoDownloaderPageView: View {
         switch result {
         case .success(let urls):
             guard let selectedURL = urls.first else { return }
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            do {
+                let persistedURL = try persistImportedVideoToSandbox(from: selectedURL, prefix: view.rawValue)
+                setCameraVideoURL(persistedURL, for: view)
+                jointAngleErrorText = "-"
+                jointAngleStatusText = L10n.choose(simplifiedChinese: "可分析", english: "Ready")
+            } catch {
                 jointAngleErrorText = L10n.choose(
-                    simplifiedChinese: "所选文件不可用，请重新选择视频文件。",
-                    english: "Selected file is unavailable. Choose another video file."
+                    simplifiedChinese: "导入视频失败：\(error.localizedDescription)",
+                    english: "Failed to import video: \(error.localizedDescription)"
                 )
-                return
             }
-            setCameraVideoURL(selectedURL, for: view)
-            jointAngleErrorText = "-"
-            jointAngleStatusText = L10n.choose(simplifiedChinese: "可分析", english: "Ready")
         case .failure(let error):
             jointAngleErrorText = L10n.choose(
                 simplifiedChinese: "导入视频失败：\(error.localizedDescription)",
                 english: "Failed to import video: \(error.localizedDescription)"
             )
         }
+    }
+
+    private func persistImportedVideoToSandbox(from selectedURL: URL, prefix: String) throws -> URL {
+        let fm = FileManager.default
+        #if os(iOS)
+        let hasScopedAccess = selectedURL.startAccessingSecurityScopedResource()
+        defer {
+            if hasScopedAccess {
+                selectedURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        #endif
+
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: selectedURL.path, isDirectory: &isDirectory), !isDirectory.boolValue else {
+            throw NSError(
+                domain: "Fricu.VideoImport",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: L10n.choose(
+                        simplifiedChinese: "所选文件不可用，请重新选择视频文件。",
+                        english: "Selected file is unavailable. Choose another video file."
+                    )
+                ]
+            )
+        }
+
+        let destinationDirectory = try VideoWorkspaceDirectoryResolver().resolve(kind: .imports)
+        let originalName = selectedURL.deletingPathExtension().lastPathComponent
+        let cleanedBase = sanitizeImportedFileName(originalName.isEmpty ? "video" : originalName)
+        let ext = selectedURL.pathExtension.isEmpty ? "mp4" : selectedURL.pathExtension
+        let stamp = DateFormatter.fricuCompactTimestamp.string(from: Date())
+        let destinationURL = destinationDirectory
+            .appendingPathComponent("\(prefix)-\(cleanedBase)-\(stamp).\(ext)", isDirectory: false)
+
+        if fm.fileExists(atPath: destinationURL.path) {
+            try fm.removeItem(at: destinationURL)
+        }
+        do {
+            try fm.copyItem(at: selectedURL, to: destinationURL)
+            return destinationURL
+        } catch {
+            throw NSError(
+                domain: "Fricu.VideoImport",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey: L10n.choose(
+                        simplifiedChinese: "复制视频到 App 目录失败：\(error.localizedDescription)",
+                        english: "Failed to copy video into app directory: \(error.localizedDescription)"
+                    )
+                ]
+            )
+        }
+    }
+
+    private func sanitizeImportedFileName(_ value: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let pieces = value.components(separatedBy: invalid)
+        let normalized = pieces.joined(separator: "_").trimmingCharacters(in: .whitespacesAndNewlines)
+        return normalized.isEmpty ? "video" : normalized
     }
 
     private func explicitCameraVideoURL(for view: CyclingCameraView) -> URL? {
@@ -3082,7 +3359,7 @@ struct VideoDownloaderPageView: View {
         resetFlowComplianceState()
         if let url {
             Task {
-                let guidance = await evaluateCaptureGuidance(for: url)
+                let guidance = await qualityProbeService.evaluateCaptureGuidance(for: url)
                 await MainActor.run {
                     captureGuidanceByView[view] = guidance
                 }
@@ -3984,6 +4261,21 @@ struct VideoDownloaderPageView: View {
         }
     }
 
+    private func uiFlowState(for state: VideoFittingStepState) -> VideoFittingFlowState {
+        switch state {
+        case .pending:
+            return .pending
+        case .running:
+            return .running
+        case .blocked:
+            return .blocked
+        case .ready:
+            return .ready
+        case .done:
+            return .done
+        }
+    }
+
     @ViewBuilder
     private func captureGuidanceRow(for view: CyclingCameraView) -> some View {
         let guidance = captureGuidanceByView[view]
@@ -3999,9 +4291,10 @@ struct VideoDownloaderPageView: View {
                     let occlusionText = $0.occlusionRatio.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
                     let distortionText = $0.distortionRisk.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
                     let alignText = $0.skeletonAlignability.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
+                    let scoreText = String(format: "%.0f", $0.qualityScore * 100)
                     return L10n.choose(
-                        simplifiedChinese: "FPS \(String(format: "%.1f", $0.fps)) · 亮度 \(lumaText) · 清晰 \(sharpnessText) · 遮挡 \(occlusionText) · 畸变风险 \(distortionText) · 对位 \(alignText)",
-                        english: "FPS \(String(format: "%.1f", $0.fps)) · Luma \(lumaText) · Sharpness \(sharpnessText) · Occlusion \(occlusionText) · Distortion \(distortionText) · Align \(alignText)"
+                        simplifiedChinese: "FPS \(String(format: "%.1f", $0.fps)) · 亮度 \(lumaText) · 清晰 \(sharpnessText) · 遮挡 \(occlusionText) · 畸变风险 \(distortionText) · 对位 \(alignText) · 质量 \(scoreText)",
+                        english: "FPS \(String(format: "%.1f", $0.fps)) · Luma \(lumaText) · Sharpness \(sharpnessText) · Occlusion \(occlusionText) · Distortion \(distortionText) · Align \(alignText) · Quality \(scoreText)"
                     )
                 } ?? L10n.choose(simplifiedChinese: "未检测", english: "Not measured")
             )
@@ -4013,8 +4306,8 @@ struct VideoDownloaderPageView: View {
             if let guidance {
                 Label(
                     guidance.qualityGatePass
-                        ? L10n.choose(simplifiedChinese: "通过", english: "Pass")
-                        : L10n.choose(simplifiedChinese: "需优化", english: "Improve"),
+                        ? L10n.choose(simplifiedChinese: "通过·\(guidance.qualityGrade.label)", english: "Pass·\(guidance.qualityGrade.label)")
+                        : L10n.choose(simplifiedChinese: "拒绝·\(guidance.qualityGrade.label)", english: "Rejected·\(guidance.qualityGrade.label)"),
                     systemImage: guidance.qualityGatePass ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
                 )
                 .font(.caption)
@@ -4030,285 +4323,12 @@ struct VideoDownloaderPageView: View {
                 continue
             }
             Task {
-                let guidance = await evaluateCaptureGuidance(for: url)
+                let guidance = await qualityProbeService.evaluateCaptureGuidance(for: url)
                 await MainActor.run {
                     captureGuidanceByView[view] = guidance
                 }
             }
         }
-    }
-
-    private func evaluateCaptureGuidance(for url: URL) async -> VideoCaptureGuidance {
-        await Task.detached(priority: .utility) {
-            let asset = AVURLAsset(url: url)
-            let tracks = (try? await asset.loadTracks(withMediaType: .video)) ?? []
-            let nominalFPS: Double
-            if let firstTrack = tracks.first, let loadedFPS = try? await firstTrack.load(.nominalFrameRate) {
-                nominalFPS = Double(loadedFPS)
-            } else {
-                nominalFPS = 0
-            }
-            let fps = max(1.0, nominalFPS)
-            let durationSeconds = (try? await asset.load(.duration)).map(CMTimeGetSeconds)
-            let frameStats = sampleFrameQualityStats(
-                url: url,
-                durationSeconds: durationSeconds,
-                maxSamples: 7
-            )
-            let poseQuality = estimatePoseTrackingQuality(
-                url: url,
-                durationSeconds: durationSeconds,
-                maxSamples: 7
-            )
-            return VideoCaptureGuidance(
-                fps: fps,
-                luma: frameStats.luma,
-                sharpness: frameStats.sharpness,
-                occlusionRatio: poseQuality.occlusionRatio,
-                distortionRisk: poseQuality.distortionRisk,
-                skeletonAlignability: poseQuality.skeletonAlignability
-            )
-        }.value
-    }
-
-    nonisolated private func sampleFrameQualityStats(
-        url: URL,
-        durationSeconds: Double?,
-        maxSamples: Int
-    ) -> (luma: Double?, sharpness: Double?) {
-        let asset = AVURLAsset(url: url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceAfter = .zero
-        generator.requestedTimeToleranceBefore = .zero
-
-        let context = CIContext(options: [
-            .workingColorSpace: NSNull(),
-            .outputColorSpace: NSNull()
-        ])
-
-        let times = sampleTimes(durationSeconds: durationSeconds, count: max(3, maxSamples))
-        var lumaValues: [Double] = []
-        var sharpnessValues: [Double] = []
-        lumaValues.reserveCapacity(times.count)
-        sharpnessValues.reserveCapacity(times.count)
-
-        for time in times {
-            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
-                continue
-            }
-            let metrics = frameLumaAndSharpness(from: cgImage, context: context)
-            if let luma = metrics.luma {
-                lumaValues.append(luma)
-            }
-            if let sharpness = metrics.sharpness {
-                sharpnessValues.append(sharpness)
-            }
-        }
-
-        let luma = lumaValues.isEmpty ? nil : lumaValues.reduce(0, +) / Double(lumaValues.count)
-        let sharpness = sharpnessValues.isEmpty ? nil : sharpnessValues.reduce(0, +) / Double(sharpnessValues.count)
-        return (luma, sharpness)
-    }
-
-    nonisolated private func estimatePoseTrackingQuality(
-        url: URL,
-        durationSeconds: Double?,
-        maxSamples: Int
-    ) -> (occlusionRatio: Double?, distortionRisk: Double?, skeletonAlignability: Double?) {
-        let asset = AVURLAsset(url: url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceAfter = .zero
-        generator.requestedTimeToleranceBefore = .zero
-
-        let jointNames: [VNHumanBodyPoseObservation.JointName] = [
-            .leftShoulder, .rightShoulder,
-            .leftHip, .rightHip,
-            .leftKnee, .rightKnee,
-            .leftAnkle, .rightAnkle
-        ]
-
-        let times = sampleTimes(durationSeconds: durationSeconds, count: max(3, maxSamples))
-        var visibilityRatios: [Double] = []
-        var alignabilityRatios: [Double] = []
-        var distortionRisks: [Double] = []
-        visibilityRatios.reserveCapacity(times.count)
-        alignabilityRatios.reserveCapacity(times.count)
-        distortionRisks.reserveCapacity(times.count)
-
-        for time in times {
-            guard let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) else {
-                continue
-            }
-            let request = VNDetectHumanBodyPoseRequest()
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            do {
-                try handler.perform([request])
-                guard let observation = request.results?.first,
-                      let points = try? observation.recognizedPoints(.all) else {
-                    visibilityRatios.append(0)
-                    alignabilityRatios.append(0)
-                    distortionRisks.append(1)
-                    continue
-                }
-                let visibleCount = jointNames.reduce(into: 0) { partial, name in
-                    if let point = points[name], point.confidence >= 0.3 {
-                        partial += 1
-                    }
-                }
-                visibilityRatios.append(Double(visibleCount) / Double(jointNames.count))
-                alignabilityRatios.append(poseFrameAlignable(points: points) ? 1 : 0)
-                distortionRisks.append(estimateDistortionRisk(points: points))
-            } catch {
-                visibilityRatios.append(0)
-                alignabilityRatios.append(0)
-                distortionRisks.append(1)
-            }
-        }
-
-        guard !visibilityRatios.isEmpty else {
-            return (nil, nil, nil)
-        }
-        let meanVisibility = visibilityRatios.reduce(0, +) / Double(visibilityRatios.count)
-        let meanAlignability = alignabilityRatios.isEmpty
-            ? nil
-            : alignabilityRatios.reduce(0, +) / Double(alignabilityRatios.count)
-        let meanDistortionRisk = distortionRisks.isEmpty
-            ? nil
-            : distortionRisks.reduce(0, +) / Double(distortionRisks.count)
-        return (
-            occlusionRatio: clamped(1 - meanVisibility, min: 0, max: 1),
-            distortionRisk: meanDistortionRisk,
-            skeletonAlignability: meanAlignability
-        )
-    }
-
-    nonisolated private func poseFrameAlignable(
-        points: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint]
-    ) -> Bool {
-        func confident(_ joint: VNHumanBodyPoseObservation.JointName, minScore: Float = 0.35) -> Bool {
-            guard let point = points[joint] else { return false }
-            return point.confidence >= minScore
-        }
-
-        let leftLeg = confident(.leftHip) && confident(.leftKnee) && confident(.leftAnkle)
-        let rightLeg = confident(.rightHip) && confident(.rightKnee) && confident(.rightAnkle)
-        let leftTrunk = confident(.leftShoulder) && confident(.leftHip)
-        let rightTrunk = confident(.rightShoulder) && confident(.rightHip)
-        return (leftLeg || rightLeg) && (leftTrunk || rightTrunk)
-    }
-
-    nonisolated private func estimateDistortionRisk(
-        points: [VNHumanBodyPoseObservation.JointName: VNRecognizedPoint]
-    ) -> Double {
-        func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
-            let dx = Double(a.x - b.x)
-            let dy = Double(a.y - b.y)
-            return sqrt(dx * dx + dy * dy)
-        }
-
-        func point(_ joint: VNHumanBodyPoseObservation.JointName, minScore: Float = 0.3) -> CGPoint? {
-            guard let recognized = points[joint], recognized.confidence >= minScore else {
-                return nil
-            }
-            return CGPoint(x: CGFloat(recognized.location.x), y: CGFloat(recognized.location.y))
-        }
-
-        let tracked: [CGPoint] = [
-            point(.leftShoulder), point(.rightShoulder),
-            point(.leftHip), point(.rightHip),
-            point(.leftKnee), point(.rightKnee),
-            point(.leftAnkle), point(.rightAnkle)
-        ]
-        .compactMap { $0 }
-
-        guard !tracked.isEmpty else { return 1 }
-
-        let edgeCount = tracked.reduce(into: 0) { partial, point in
-            if point.x < 0.08 || point.x > 0.92 || point.y < 0.05 || point.y > 0.95 {
-                partial += 1
-            }
-        }
-        let edgeRisk = Double(edgeCount) / Double(tracked.count)
-
-        let symmetryRisk: Double = {
-            guard let leftHip = point(.leftHip),
-                  let leftKnee = point(.leftKnee),
-                  let leftAnkle = point(.leftAnkle),
-                  let rightHip = point(.rightHip),
-                  let rightKnee = point(.rightKnee),
-                  let rightAnkle = point(.rightAnkle) else {
-                return 0.18
-            }
-            let leftLeg = distance(leftHip, leftKnee) + distance(leftKnee, leftAnkle)
-            let rightLeg = distance(rightHip, rightKnee) + distance(rightKnee, rightAnkle)
-            let mean = max(0.001, (leftLeg + rightLeg) / 2)
-            let asymmetry = abs(leftLeg - rightLeg) / mean
-            return clamped(asymmetry / 0.55, min: 0, max: 1)
-        }()
-
-        return clamped(edgeRisk * 0.65 + symmetryRisk * 0.35, min: 0, max: 1)
-    }
-
-    nonisolated private func sampleTimes(durationSeconds: Double?, count: Int) -> [CMTime] {
-        let safeCount = max(1, count)
-        let durationSeconds = max(0, durationSeconds ?? 0)
-        if !durationSeconds.isFinite || durationSeconds <= 0.1 {
-            return [CMTime(seconds: 0.5, preferredTimescale: 600)]
-        }
-        let head = min(durationSeconds, 0.6)
-        let tail = min(durationSeconds, max(1.0, durationSeconds * 0.92))
-        if safeCount == 1 {
-            return [CMTime(seconds: head, preferredTimescale: 600)]
-        }
-        let step = max(0.05, (tail - head) / Double(safeCount - 1))
-        return (0..<safeCount).map { index in
-            let second = min(durationSeconds, head + Double(index) * step)
-            return CMTime(seconds: second, preferredTimescale: 600)
-        }
-    }
-
-    nonisolated private func frameLumaAndSharpness(from cgImage: CGImage, context: CIContext) -> (luma: Double?, sharpness: Double?) {
-        let ciImage = CIImage(cgImage: cgImage)
-        let luma = areaAverageLuma(for: ciImage, context: context)
-        let sharpness: Double? = {
-            guard let edgeFilter = CIFilter(name: "CIEdges") else { return nil }
-            edgeFilter.setValue(ciImage, forKey: kCIInputImageKey)
-            edgeFilter.setValue(2.8, forKey: kCIInputIntensityKey)
-            guard let output = edgeFilter.outputImage else { return nil }
-            return areaAverageLuma(for: output, context: context)
-        }()
-        return (luma, sharpness)
-    }
-
-    nonisolated private func areaAverageLuma(for image: CIImage, context: CIContext) -> Double? {
-        guard let filter = CIFilter(name: "CIAreaAverage") else {
-            return nil
-        }
-        filter.setValue(image, forKey: kCIInputImageKey)
-        filter.setValue(CIVector(cgRect: image.extent), forKey: kCIInputExtentKey)
-        guard let output = filter.outputImage else {
-            return nil
-        }
-        var bitmap = [UInt8](repeating: 0, count: 4)
-        context.render(
-            output,
-            toBitmap: &bitmap,
-            rowBytes: 4,
-            bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
-            format: .RGBA8,
-            colorSpace: nil
-        )
-
-        let r = Double(bitmap[0]) / 255.0
-        let g = Double(bitmap[1]) / 255.0
-        let b = Double(bitmap[2]) / 255.0
-        return 0.2126 * r + 0.7152 * g + 0.0722 * b
-    }
-
-    nonisolated private func clamped(_ value: Double, min minValue: Double, max maxValue: Double) -> Double {
-        Swift.max(minValue, Swift.min(maxValue, value))
     }
 
     /// Provides a user-facing validation message with contextual styling.

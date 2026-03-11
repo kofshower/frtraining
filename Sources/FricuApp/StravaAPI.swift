@@ -386,7 +386,7 @@ final class StravaAPIClient {
             mimeType: mimeType,
             caption: caption
         )
-        _ = try await send(req, debugLabel: "POST /api/v3/activities/{id}/photos")
+        _ = try await send(req, debugLabel: "POST /api/v3/activities/\(activityID)/photos")
     }
 
     private func fetchActivityDetail(accessToken: String, activityID: String) async throws -> [String: Any] {

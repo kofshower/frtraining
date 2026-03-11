@@ -25,6 +25,7 @@ final class RemoteHTTPRepositoryActivitiesFallbackTests: XCTestCase {
                 "id": "4EB89DA3-9F30-4B4A-96E2-62A0A6604AC9",
                 "date": "2025-03-01T00:00:00Z",
                 "sport": "cycling",
+                "athleteName": "柴君钧",
                 "durationSec": 3600,
                 "distanceKm": 40,
                 "tss": 80,
@@ -57,6 +58,7 @@ final class RemoteHTTPRepositoryActivitiesFallbackTests: XCTestCase {
                   "id": "8F78A3F6-8A5C-4CD2-9F40-9C18A24540AB",
                   "date": "2025-03-02T00:00:00Z",
                   "sport": "running",
+                  "athleteName": "柴君钧",
                   "durationSec": 1800,
                   "distanceKm": 6,
                   "tss": 45,
@@ -90,15 +92,187 @@ final class RemoteHTTPRepositoryActivitiesFallbackTests: XCTestCase {
         XCTAssertThrowsError(try repository.loadActivities())
     }
 
+    /// Ensures malformed rows do not break the whole activities payload decode.
+    func testLoadActivitiesSkipsMalformedRowsInArrayPayload() throws {
+        RemoteHTTPRepositoryURLProtocolStub.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            let payload = """
+            [
+              {
+                "id": "4EB89DA3-9F30-4B4A-96E2-62A0A6604AC9",
+                "date": "2025-03-01T00:00:00Z",
+                "sport": "cycling",
+                "athleteName": "君钧",
+                "durationSec": 3600,
+                "distanceKm": 40,
+                "tss": 80,
+                "intervals": [],
+                "notes": ""
+              },
+              {
+                "id": "NOT-A-UUID",
+                "date": {},
+                "sport": "cycling",
+                "durationSec": "bad",
+                "distanceKm": "bad",
+                "tss": "bad"
+              }
+            ]
+            """
+            return Self.makeResponse(for: request, statusCode: 200, body: payload)
+        }
+
+        let repository = try makeRepository()
+        let rows = try repository.loadActivities()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.athleteName, "君钧")
+    }
+
+    /// Ensures legacy rows without `athleteName` still decode after schema cleanup.
+    func testLoadActivitiesDecodesLegacyRowWithoutAthleteName() throws {
+        RemoteHTTPRepositoryURLProtocolStub.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            let payload = """
+            [
+              {
+                "id": "214F170B-0B57-4F67-92A9-10A2E08D68CF",
+                "date": "2025-03-01T00:00:00Z",
+                "sport": "ride",
+                "durationSec": 3600,
+                "distanceKm": 40,
+                "tss": 80,
+                "intervals": [],
+                "notes": "legacy row"
+              }
+            ]
+            """
+            return Self.makeResponse(for: request, statusCode: 200, body: payload)
+        }
+
+        let repository = try makeRepository(accountID: "test-account-\(UUID().uuidString.lowercased())")
+        let rows = try repository.loadActivities()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.sport, .cycling)
+        XCTAssertEqual(rows.first?.athleteName, "")
+    }
+
+    /// Ensures repository falls back to account-scoped cache when server becomes unavailable.
+    func testLoadActivitiesFallsBackToCacheWhenServerUnavailable() throws {
+        enum StubError: Error { case offline }
+        var phase = 0
+        RemoteHTTPRepositoryURLProtocolStub.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            if phase == 0 {
+                let payload = """
+                [
+                  {
+                    "id": "48AF3C0E-56CA-4FCA-B65D-56C55DD0664E",
+                    "date": "2025-03-03T00:00:00Z",
+                    "sport": "cycling",
+                    "athleteName": "君钧",
+                    "durationSec": 1800,
+                    "distanceKm": 20,
+                    "tss": 40,
+                    "intervals": [],
+                    "notes": ""
+                  }
+                ]
+                """
+                return Self.makeResponse(for: request, statusCode: 200, body: payload)
+            }
+            throw StubError.offline
+        }
+
+        let accountID = "test-account-\(UUID().uuidString.lowercased())"
+        let repository = try makeRepository(accountID: accountID)
+        let firstLoad = try repository.loadActivities()
+        XCTAssertEqual(firstLoad.count, 1)
+
+        phase = 1
+        let secondLoad = try repository.loadActivities()
+        XCTAssertEqual(secondLoad.count, 1)
+        XCTAssertEqual(secondLoad.first?.id, firstLoad.first?.id)
+    }
+
+    /// Ensures recovery diagnostics report the remote count and account-scoped cache count.
+    func testActivityRecoveryDiagnosticsReportsRemoteAndLocalCounts() throws {
+        RemoteHTTPRepositoryURLProtocolStub.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            let payload = """
+            [
+              {
+                "id": "8C6D4B3D-497F-4FE5-8A9D-760F4D4E988B",
+                "date": "2025-03-03T00:00:00Z",
+                "sport": "cycling",
+                "athleteName": "君钧",
+                "durationSec": 1800,
+                "distanceKm": 20,
+                "tss": 40,
+                "intervals": [],
+                "notes": ""
+              }
+            ]
+            """
+            return Self.makeResponse(for: request, statusCode: 200, body: payload)
+        }
+
+        let repository = try makeRepository()
+        _ = try repository.loadActivities()
+
+        let diagnostics = repository.activityRecoveryDiagnostics()
+        XCTAssertEqual(diagnostics.accountID.isEmpty, false)
+        XCTAssertEqual(diagnostics.endpoint, "http://127.0.0.1:8080")
+        XCTAssertEqual(diagnostics.remoteCount, 1)
+        XCTAssertEqual(diagnostics.localCacheCount, 1)
+        XCTAssertNil(diagnostics.remoteError)
+    }
+
+    /// Ensures recovery diagnostics still expose local cache count when the server is unavailable.
+    func testActivityRecoveryDiagnosticsReportsErrorWhenRemoteUnavailable() throws {
+        enum StubError: Error { case offline }
+        var phase = 0
+        RemoteHTTPRepositoryURLProtocolStub.handler = { request in
+            XCTAssertEqual(request.httpMethod, "GET")
+            if phase == 0 {
+                let payload = """
+                [
+                  {
+                    "id": "34E5F2A0-703A-4F48-B3E0-C6CA8DA08764",
+                    "date": "2025-03-04T00:00:00Z",
+                    "sport": "cycling",
+                    "athleteName": "君钧",
+                    "durationSec": 2400,
+                    "distanceKm": 25,
+                    "tss": 50,
+                    "intervals": [],
+                    "notes": ""
+                  }
+                ]
+                """
+                return Self.makeResponse(for: request, statusCode: 200, body: payload)
+            }
+            throw StubError.offline
+        }
+
+        let repository = try makeRepository()
+        _ = try repository.loadActivities()
+
+        phase = 1
+        let diagnostics = repository.activityRecoveryDiagnostics()
+        XCTAssertNil(diagnostics.remoteCount)
+        XCTAssertEqual(diagnostics.localCacheCount, 1)
+        XCTAssertNotNil(diagnostics.remoteError)
+    }
+
     /// Creates a repository instance backed by URL protocol stubs.
-    private func makeRepository() throws -> RemoteHTTPRepository {
+    private func makeRepository(accountID: String = "test-account-\(UUID().uuidString.lowercased())") throws -> RemoteHTTPRepository {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [RemoteHTTPRepositoryURLProtocolStub.self]
         let session = URLSession(configuration: configuration)
         return try RemoteHTTPRepository(
             baseURL: URL(string: "http://127.0.0.1:8080")!,
             session: session,
-            accountID: "test-account"
+            accountID: accountID
         )
     }
 

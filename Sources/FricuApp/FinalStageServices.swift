@@ -1587,13 +1587,13 @@ func mergeWellnessSamples(_ samples: [WellnessSample]) -> [WellnessSample] {
 
     for sample in samples {
         let day = calendar.startOfDay(for: sample.date)
-        let normalizedAthlete = sample.athleteName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let athleteToken = (normalizedAthlete?.isEmpty == false)
-            ? normalizedAthlete!.lowercased()
+        let normalizedAthlete = sample.athleteName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let athleteToken = !normalizedAthlete.isEmpty
+            ? normalizedAthlete.lowercased()
             : AthletePanel.unknownAthleteToken
         let key = "\(athleteToken)|\(day.timeIntervalSince1970)"
         var merged = dict[key] ?? WellnessSample(date: day, athleteName: sample.athleteName)
-        if merged.athleteName == nil {
+        if merged.athleteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             merged.athleteName = sample.athleteName
         }
         if let hrv = sample.hrv { merged.hrv = hrv }

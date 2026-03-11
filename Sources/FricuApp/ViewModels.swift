@@ -6,9 +6,6 @@ import SwiftUI
 #if canImport(AppKit)
 import AppKit
 #endif
-#if canImport(SQLite3)
-import SQLite3
-#endif
 
 struct TrainerRiderSession: Identifiable {
     let id: UUID
@@ -38,93 +35,18 @@ struct TrainerRiderSession: Identifiable {
 struct TrainerRecordingStatus {
     var isActive: Bool = false
     var elapsedSec: Int = 0
+    var movingSec: Int = 0
     var sampleCount: Int = 0
     var elevationGainMeters: Double = 0
     var lastFitPath: String?
     var lastSyncSummary: String?
 }
 
-struct TrainerFITRecoveryReport {
-    var scannedCount: Int = 0
-    var alreadyLinkedCount: Int = 0
-    var recoveredCount: Int = 0
-    var failedCount: Int = 0
-    var uploadedOrQueuedCount: Int = 0
-    var recoveredFiles: [String] = []
-    var failedFiles: [String] = []
-
-    var summaryLine: String {
-        "Trainer FIT self-heal: scanned \(scannedCount), linked \(alreadyLinkedCount), recovered \(recoveredCount), failed \(failedCount), server-upload/queue \(uploadedOrQueuedCount)."
-    }
-
-    var detailedText: String {
-        var rows = [summaryLine]
-        if !recoveredFiles.isEmpty {
-            rows.append("Recovered files: \(recoveredFiles.joined(separator: ", "))")
-        }
-        if !failedFiles.isEmpty {
-            rows.append("Failed files: \(failedFiles.joined(separator: ", "))")
-        }
-        return rows.joined(separator: "\n")
-    }
-}
-
-private struct TrainerFITExportHint {
-    let athleteName: String
-    let createdAt: Date?
-}
-
-private struct TrainerFITOwnershipRepairReport {
-    var scannedCount: Int = 0
-    var reassignedCount: Int = 0
-    var failedPersist: Bool = false
-
-    var summaryLine: String {
-        var line = "Trainer FIT ownership repair: scanned \(scannedCount), reassigned \(reassignedCount)."
-        if failedPersist {
-            line += " persist failed."
-        }
-        return line
-    }
-}
-
-private struct TrainerFITForceReassignReport {
-    var matchedFiles: [String] = []
-    var reassignedExistingCount: Int = 0
-    var importedMissingCount: Int = 0
-    var failedFiles: [String] = []
-
-    var summaryLine: String {
-        "Trainer FIT force reassignment: matched \(matchedFiles.count), reassigned \(reassignedExistingCount), imported \(importedMissingCount), failed \(failedFiles.count)."
-    }
-
-    var detailedText: String {
-        var rows = [summaryLine]
-        if !matchedFiles.isEmpty {
-            rows.append("Matched files: \(matchedFiles.joined(separator: ", "))")
-        }
-        if !failedFiles.isEmpty {
-            rows.append("Failed files: \(failedFiles.joined(separator: ", "))")
-        }
-        return rows.joined(separator: "\n")
-    }
-}
-
-private struct TrainerFITPowerRepairReport {
-    var scannedCount: Int = 0
-    var repairedCount: Int = 0
-    var warningCount: Int = 0
-    var failedCount: Int = 0
-
-    var summaryLine: String {
-        "Trainer FIT power repair: scanned \(scannedCount), repaired \(repairedCount), warned \(warningCount), failed \(failedCount)."
-    }
-}
-
 private struct TrainerRiderConnectionMemory: Codable {
     var id: UUID
     var name: String
     var preferredTrainerDeviceID: UUID?
+    var preferredTrainerDeviceName: String?
     var preferredHeartRateDeviceID: UUID?
     var preferredPowerMeterDeviceID: UUID?
     var appearance: TrainerRiderAppearance?
@@ -135,20 +57,38 @@ private struct TrainerRiderConnectionStore: Codable {
     var riders: [TrainerRiderConnectionMemory]
 }
 
-struct AthletePanel: Identifiable, Hashable {
-    static let allID = "__athlete_all__"
+enum AthletePanel {
+    static let singleID = "__athlete_single__"
+    static let allID = singleID
     static let unknownAthleteToken = "__default_athlete__"
+}
 
-    let id: String
-    let title: String
-    let count: Int
-    let isAll: Bool
+struct ActivityRecoveryDiagnosticsSnapshot: Equatable {
+    var accountID: String
+    var serverEndpoint: String
+    var remoteCount: Int?
+    var localCacheCount: Int
+    var repositoryLocalCacheCount: Int
+    var remoteError: String?
+    var isLoading: Bool
+    var updatedAt: Date?
+
+    static func initial(accountID: String, serverEndpoint: String) -> ActivityRecoveryDiagnosticsSnapshot {
+        ActivityRecoveryDiagnosticsSnapshot(
+            accountID: accountID,
+            serverEndpoint: serverEndpoint,
+            remoteCount: nil,
+            localCacheCount: 0,
+            repositoryLocalCacheCount: 0,
+            remoteError: nil,
+            isLoading: false,
+            updatedAt: nil
+        )
+    }
 }
 
 @MainActor
 final class AppStore: ObservableObject {
-    private static let singleAccountPanelPrefix = "__account__::"
-
     @Published private(set) var activities: [Activity] = []
     @Published private(set) var dailyMealPlans: [DailyMealPlan] = []
     @Published private(set) var customFoodLibrary: [CustomFoodLibraryItem] = []
@@ -172,7 +112,7 @@ final class AppStore: ObservableObject {
         english: "Anonymous"
     )
 
-    @Published var selectedAthletePanelID: String = "__account__::__anonymous__" {
+    @Published var selectedAthletePanelID: String = AthletePanel.singleID {
         didSet {
             guard selectedAthletePanelID != oldValue else { return }
             applySelectedAthleteProfileIfNeeded()
@@ -200,7 +140,6 @@ final class AppStore: ObservableObject {
     }
     @Published var isSyncing = false
     @Published private(set) var clientLogLines: [String] = []
-    @Published private(set) var athletePanelsCache: [AthletePanel] = []
     @Published private(set) var athleteScopedActivitiesCache: [Activity] = []
     @Published private(set) var athleteScopedDailyMealPlansCache: [DailyMealPlan] = []
     @Published private(set) var athleteScopedPlannedWorkoutsCache: [PlannedWorkout] = []
@@ -226,14 +165,20 @@ final class AppStore: ObservableObject {
     @Published private(set) var refreshingActivityInsightIDs: Set<UUID> = []
     @Published private(set) var trainerRecordingIsActive = false
     @Published private(set) var trainerRecordingElapsedSec = 0
+    @Published private(set) var trainerRecordingMovingSec = 0
     @Published private(set) var trainerRecordingSampleCount = 0
     @Published private(set) var trainerRecordingElevationGainMeters: Double = 0
     @Published private(set) var trainerRecordingLastFitPath: String?
     @Published private(set) var trainerRecordingLastSyncSummary: String?
     @Published private(set) var trainerRecordingStatusBySession: [UUID: TrainerRecordingStatus] = [:]
+    @Published private(set) var activityRecoveryDiagnostics: ActivityRecoveryDiagnosticsSnapshot = .initial(
+        accountID: "__anonymous__",
+        serverEndpoint: "http://127.0.0.1:8080"
+    )
 
     @Published var serverHost: String = "127.0.0.1"
     @Published var serverPort: String = "8080"
+    @Published var connectionWarningMessage: String?
     private var gptRecommendation: AIRecommendation?
     private var didAttemptAICoachBootstrap = false
     private var repository: DataRepository?
@@ -251,23 +196,21 @@ final class AppStore: ObservableObject {
     private var trainerRecordingSessionByRider: [UUID: TrainerRecordingSession] = [:]
     private var isFinalizingTrainerRecordingBySession: Set<UUID> = []
     private var trainerConnectionCancellableBySession: [UUID: AnyCancellable] = [:]
+    private var heartRateConnectionCancellableBySession: [UUID: AnyCancellable] = [:]
+    private var powerMeterConnectionCancellableBySession: [UUID: AnyCancellable] = [:]
     private var trainerPowerCancellableBySession: [UUID: AnyCancellable] = [:]
     private var powerMeterPowerCancellableBySession: [UUID: AnyCancellable] = [:]
     private var trainerRiderConnectionMemoryBySessionID: [UUID: TrainerRiderConnectionMemory] = [:]
+    private var activityRecoveryDiagnosticsRefreshGeneration: UInt64 = 0
     private let trainerRiderConnectionStoreDefaultsKey = "fricu.trainer.rider.connection.store.v1"
-    private let athleteProfileStoreDefaultsKey = "fricu.athlete.profile.store.v1"
-    private let legacySingleAccountPurgeDefaultsKey = "fricu.single.account.cleanup.v1"
     private let serverHostDefaultsKey = "fricu.server.host.v1"
     private let serverPortDefaultsKey = "fricu.server.port.v1"
     private let nutritionUSDAAPIKeyDefaultsKey = "nutrition.usda.apiKey"
     private let stravaPullRecentDaysDefaultsKey = "fricu.strava.pull.recent.days.v1"
-    private var athleteProfilesByPanelID: [String: AthleteProfile] = [:]
-    private var isApplyingAthleteProfile = false
     private var isApplyingServerBackedSettings = false
     private var lastAppSettingsSyncedDigest: UInt64?
     private var lastAppSettingsFailedDigest: UInt64?
     private var lastAppSettingsFailedAt: Date?
-    private let trainerRecordingAutoStopInactivitySec: TimeInterval = 180
     private let trainerRecordingCheckpointWriteIntervalSec: TimeInterval = 5
     private static let clientLogTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -276,25 +219,15 @@ final class AppStore: ObservableObject {
         formatter.dateFormat = "HH:mm:ss"
         return formatter
     }()
-    private static let trainerFITRecoveryFileNameDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return formatter
-    }()
-
-    private var currentAccountPanelID: String {
-        Self.singleAccountPanelPrefix + currentAccountID
-    }
-
     private var isAnonymousAccount: Bool {
         currentAccountID == "__anonymous__"
     }
 
+    private var canonicalCurrentAccountAthleteName: String {
+        AthleteIdentityNormalizer.canonicalName(currentAccountDisplayName) ?? currentAccountDisplayName
+    }
+
     init() {
-        purgeLegacyMultiAthleteStateIfNeeded()
         loadServerEndpointFromDefaults()
         configureRepository()
         configureInitialTrainerSessions()
@@ -302,13 +235,6 @@ final class AppStore: ObservableObject {
         setupDerivedRefreshPipeline()
         setupTrainerRecordingPipeline()
         markDerivedStateDirty()
-    }
-
-    private func purgeLegacyMultiAthleteStateIfNeeded() {
-        let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: legacySingleAccountPurgeDefaultsKey) else { return }
-        defaults.removeObject(forKey: athleteProfileStoreDefaultsKey)
-        defaults.set(true, forKey: legacySingleAccountPurgeDefaultsKey)
     }
 
     func activateAuthenticatedAccount(accountID: String, displayName: String) {
@@ -325,7 +251,7 @@ final class AppStore: ObservableObject {
         let changed = currentAccountID != normalizedID
         currentAccountID = normalizedID
         currentAccountDisplayName = resolvedDisplayName
-        selectedAthletePanelID = currentAccountPanelID
+        selectedAthletePanelID = AthletePanel.singleID
         clearClientLogs()
         lastError = nil
         syncStatus = nil
@@ -405,6 +331,87 @@ final class AppStore: ObservableObject {
         return "\(message) [domain=\(domain) code=\(code)]"
     }
 
+    private var resolvedServerEndpointText: String {
+        let host = serverHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let port = serverPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        if host.isEmpty || port.isEmpty {
+            return "-"
+        }
+        return "http://\(host):\(port)"
+    }
+
+    private func localActivitiesCacheCount(for accountID: String) -> Int {
+        do {
+            let url = try Self.activitiesLocalCacheURL(for: accountID, createDirectory: false)
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                return 0
+            }
+            let data = try Data(contentsOf: url)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let rows = try decoder.decode([Activity].self, from: data)
+            return rows.count
+        } catch {
+            appendClientLog(
+                level: "WARN",
+                message: "Failed to read local activity cache count for diagnostics: \(detailedErrorDescription(error))"
+            )
+            return 0
+        }
+    }
+
+    func refreshActivityRecoveryDiagnostics() {
+        activityRecoveryDiagnosticsRefreshGeneration &+= 1
+        let generation = activityRecoveryDiagnosticsRefreshGeneration
+        let snapshotAccountID = currentAccountID
+        let snapshotEndpoint = resolvedServerEndpointText
+        let appLocalCacheCount = localActivitiesCacheCount(for: snapshotAccountID)
+
+        activityRecoveryDiagnostics = ActivityRecoveryDiagnosticsSnapshot(
+            accountID: snapshotAccountID,
+            serverEndpoint: snapshotEndpoint,
+            remoteCount: nil,
+            localCacheCount: appLocalCacheCount,
+            repositoryLocalCacheCount: 0,
+            remoteError: nil,
+            isLoading: true,
+            updatedAt: nil
+        )
+
+        guard let remoteRepository = repository as? RemoteHTTPRepository else {
+            activityRecoveryDiagnostics = ActivityRecoveryDiagnosticsSnapshot(
+                accountID: snapshotAccountID,
+                serverEndpoint: snapshotEndpoint,
+                remoteCount: nil,
+                localCacheCount: appLocalCacheCount,
+                repositoryLocalCacheCount: 0,
+                remoteError: "Repository unavailable",
+                isLoading: false,
+                updatedAt: Date()
+            )
+            return
+        }
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let repositoryDiagnostics = remoteRepository.activityRecoveryDiagnostics()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                guard generation == self.activityRecoveryDiagnosticsRefreshGeneration else { return }
+                let latestLocalCount = self.localActivitiesCacheCount(for: snapshotAccountID)
+                self.activityRecoveryDiagnostics = ActivityRecoveryDiagnosticsSnapshot(
+                    accountID: snapshotAccountID,
+                    serverEndpoint: repositoryDiagnostics.endpoint,
+                    remoteCount: repositoryDiagnostics.remoteCount,
+                    localCacheCount: latestLocalCount,
+                    repositoryLocalCacheCount: repositoryDiagnostics.localCacheCount,
+                    remoteError: repositoryDiagnostics.remoteError,
+                    isLoading: false,
+                    updatedAt: Date()
+                )
+            }
+        }
+    }
+
     private func currentAppSettingsSnapshot() -> AppSettingsSnapshot {
         let defaults = UserDefaults.standard
         let normalizedHost = defaults.string(forKey: serverHostDefaultsKey)?
@@ -441,9 +448,9 @@ final class AppStore: ObservableObject {
 
         return AppSettingsSnapshot(
             trainerRiderConnectionStoreData: defaults.data(forKey: trainerRiderConnectionStoreDefaultsKey),
-            athleteProfileStoreData: nil,
             appLanguageRawValue: defaults.string(forKey: AppLanguageOption.storageKey),
             chartDisplayModeRawValue: defaults.string(forKey: AppChartDisplayMode.storageKey),
+            chartDisplayModesByStorageKey: currentPerChartDisplayModeSnapshot(defaults: defaults),
             nutritionUSDAAPIKey: defaults.string(forKey: nutritionUSDAAPIKeyDefaultsKey),
             stravaPullRecentDays: snapshotStravaPullRecentDays,
             serverHost: snapshotHost,
@@ -464,12 +471,14 @@ final class AppStore: ObservableObject {
             defaults.set(data, forKey: trainerRiderConnectionStoreDefaultsKey)
             shouldReloadTrainerSessions = true
         }
-        _ = snapshot.athleteProfileStoreData
         if let appLanguageRawValue = snapshot.appLanguageRawValue {
             defaults.set(appLanguageRawValue, forKey: AppLanguageOption.storageKey)
         }
         if let chartDisplayModeRawValue = snapshot.chartDisplayModeRawValue {
             defaults.set(chartDisplayModeRawValue, forKey: AppChartDisplayMode.storageKey)
+        }
+        if let chartDisplayModesByStorageKey = snapshot.chartDisplayModesByStorageKey {
+            applyPerChartDisplayModeSnapshot(chartDisplayModesByStorageKey, defaults: defaults)
         }
         if let nutritionUSDAAPIKey = snapshot.nutritionUSDAAPIKey {
             defaults.set(nutritionUSDAAPIKey, forKey: nutritionUSDAAPIKeyDefaultsKey)
@@ -504,6 +513,25 @@ final class AppStore: ObservableObject {
         }
         if shouldReconfigureEndpoint {
             configureRepository()
+        }
+    }
+
+    private func currentPerChartDisplayModeSnapshot(defaults: UserDefaults) -> [String: String]? {
+        let entries = defaults.dictionaryRepresentation().reduce(into: [String: String]()) { partial, entry in
+            guard PersistedChartDisplayModeKeys.isPersistedKey(entry.key) else { return }
+            guard let rawValue = entry.value as? String, !rawValue.isEmpty else { return }
+            partial[entry.key] = rawValue
+        }
+        return entries.isEmpty ? nil : entries
+    }
+
+    private func applyPerChartDisplayModeSnapshot(_ snapshot: [String: String], defaults: UserDefaults) {
+        let existingKeys = defaults.dictionaryRepresentation().keys.filter(PersistedChartDisplayModeKeys.isPersistedKey)
+        for key in existingKeys {
+            defaults.removeObject(forKey: key)
+        }
+        for (key, rawValue) in snapshot where PersistedChartDisplayModeKeys.isPersistedKey(key) && !rawValue.isEmpty {
+            defaults.set(rawValue, forKey: key)
         }
     }
 
@@ -609,9 +637,20 @@ final class AppStore: ObservableObject {
                 level: "INFO",
                 message: "Configured server repository: \(base) account=\(currentAccountID)"
             )
+            refreshActivityRecoveryDiagnostics()
         } catch {
             self.repository = nil
             self.lastError = "Failed to initialize repository: \(error.localizedDescription)"
+            self.activityRecoveryDiagnostics = ActivityRecoveryDiagnosticsSnapshot(
+                accountID: currentAccountID,
+                serverEndpoint: resolvedServerEndpointText,
+                remoteCount: nil,
+                localCacheCount: localActivitiesCacheCount(for: currentAccountID),
+                repositoryLocalCacheCount: 0,
+                remoteError: detailedErrorDescription(error),
+                isLoading: false,
+                updatedAt: Date()
+            )
         }
     }
 
@@ -632,7 +671,7 @@ final class AppStore: ObservableObject {
         UserDefaults.standard.set(parsedPort, forKey: serverPortDefaultsKey)
         configureRepository()
         persistAppSettingsToRepository(reason: "updateServerEndpoint")
-        bootstrap(runTrainerFITSelfHeal: false)
+        bootstrap()
         syncStatus = "Server endpoint updated to \(normalizedHost):\(parsedPort)"
     }
 
@@ -640,44 +679,28 @@ final class AppStore: ObservableObject {
         let restoredStore = loadTrainerRiderConnectionStore()
         let restoredRiders = (restoredStore?.riders ?? [])
             .filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let preferredPrimaryID = resolvedPrimarySessionID(in: restoredRiders, preferred: restoredStore?.primarySessionID)
+        var primary = restoredRiders.first(where: { $0.id == preferredPrimaryID }) ?? restoredRiders.first ?? TrainerRiderConnectionMemory(
+            id: UUID(),
+            name: currentAccountDisplayName,
+            preferredTrainerDeviceID: nil,
+            preferredTrainerDeviceName: nil,
+            preferredHeartRateDeviceID: nil,
+            preferredPowerMeterDeviceID: nil,
+            appearance: .default
+        )
+        primary.name = canonicalCurrentAccountAthleteName
 
-        if restoredRiders.isEmpty {
-            let primary = TrainerRiderConnectionMemory(
-                id: UUID(),
-                name: currentAccountDisplayName,
-                preferredTrainerDeviceID: nil,
-                preferredHeartRateDeviceID: nil,
-                preferredPowerMeterDeviceID: nil,
-                appearance: .default
-            )
-            trainerRiderConnectionMemoryBySessionID = [primary.id: primary]
-            trainerRiderSessions = [makeTrainerRiderSession(from: primary, useSharedManagers: true)]
-            primaryTrainerSessionID = primary.id
-        } else {
-            let primaryID = resolvedPrimarySessionID(in: restoredRiders, preferred: restoredStore?.primarySessionID)
-            guard let picked = restoredRiders.first(where: { $0.id == primaryID }) ?? restoredRiders.first else {
-                trainerRiderConnectionMemoryBySessionID = [:]
-                trainerRiderSessions = []
-                primaryTrainerSessionID = nil
-                trainerRecordingStatusBySession = [:]
-                refreshPrimaryTrainerRecordingSnapshot()
-                setupTrainerRecordingPipeline()
-                return
-            }
-            var single = picked
-            single.name = currentAccountDisplayName
-            trainerRiderConnectionMemoryBySessionID = Dictionary(
-                uniqueKeysWithValues: [(single.id, single)]
-            )
-            trainerRiderSessions = [makeTrainerRiderSession(from: single, useSharedManagers: true)]
-            primaryTrainerSessionID = single.id
-        }
+        trainerRiderConnectionMemoryBySessionID = [primary.id: primary]
+        trainerRiderSessions = [makeTrainerRiderSession(from: primary, useSharedManagers: true)]
+        primaryTrainerSessionID = primary.id
 
         trainerRecordingStatusBySession = Dictionary(
             uniqueKeysWithValues: trainerRiderSessions.map { ($0.id, TrainerRecordingStatus()) }
         )
         refreshPrimaryTrainerRecordingSnapshot()
         setupTrainerRecordingPipeline()
+        persistTrainerRiderConnectionStore()
     }
 
     private func makeTrainerRiderSession(
@@ -699,15 +722,16 @@ final class AppStore: ObservableObject {
 
     private func applyDevicePreferences(memory: TrainerRiderConnectionMemory, to session: TrainerRiderSession) {
         session.trainer.setPreferredAutoConnectDeviceID(memory.preferredTrainerDeviceID)
+        session.trainer.setPreferredAutoConnectDeviceName(memory.preferredTrainerDeviceName)
         session.heartRateMonitor.setPreferredAutoConnectDeviceID(memory.preferredHeartRateDeviceID)
         session.powerMeter.setPreferredAutoConnectDeviceID(memory.preferredPowerMeterDeviceID)
     }
 
     private func installConnectionPersistenceCallbacks(for session: TrainerRiderSession) {
         let sessionID = session.id
-        session.trainer.onConnectedDeviceChanged = { [weak self] deviceID, _ in
+        session.trainer.onConnectedDeviceChanged = { [weak self] deviceID, deviceName in
             Task { @MainActor in
-                self?.rememberConnectedTrainerDevice(sessionID: sessionID, deviceID: deviceID)
+                self?.rememberConnectedTrainerDevice(sessionID: sessionID, deviceID: deviceID, deviceName: deviceName)
             }
         }
         session.heartRateMonitor.onConnectedDeviceChanged = { [weak self] deviceID, _ in
@@ -745,22 +769,25 @@ final class AppStore: ObservableObject {
     }
 
     private func persistTrainerRiderConnectionStore() {
-        let riders = trainerRiderSessions.map { session in
-            var memory = trainerRiderConnectionMemoryBySessionID[session.id]
+        guard let session = trainerRiderSessions.first else {
+            return
+        }
+        var memory = trainerRiderConnectionMemoryBySessionID[session.id]
             ?? TrainerRiderConnectionMemory(
                 id: session.id,
                 name: session.name,
                 preferredTrainerDeviceID: nil,
+                preferredTrainerDeviceName: nil,
                 preferredHeartRateDeviceID: nil,
                 preferredPowerMeterDeviceID: nil,
                 appearance: .default
             )
-            memory.name = session.name
-            if memory.appearance == nil {
-                memory.appearance = .default
-            }
-            return memory
+        memory.name = canonicalCurrentAccountAthleteName
+        if memory.appearance == nil {
+            memory.appearance = .default
         }
+        trainerRiderConnectionMemoryBySessionID = [session.id: memory]
+        let riders = [memory]
         let payload = TrainerRiderConnectionStore(primarySessionID: primaryTrainerSessionID, riders: riders)
         do {
             let data = try JSONEncoder().encode(payload)
@@ -782,16 +809,20 @@ final class AppStore: ObservableObject {
             id: sessionID,
             name: fallbackName,
             preferredTrainerDeviceID: nil,
+            preferredTrainerDeviceName: nil,
             preferredHeartRateDeviceID: nil,
             preferredPowerMeterDeviceID: nil,
             appearance: .default
         )
     }
 
-    private func rememberConnectedTrainerDevice(sessionID: UUID, deviceID: UUID) {
+    private func rememberConnectedTrainerDevice(sessionID: UUID, deviceID: UUID, deviceName: String?) {
         var memory = baseConnectionMemory(for: sessionID)
         memory.name = trainerRiderSession(id: sessionID)?.name ?? memory.name
         memory.preferredTrainerDeviceID = deviceID
+        if let normalizedName = normalizedNonEmptyString(deviceName) {
+            memory.preferredTrainerDeviceName = normalizedName
+        }
         trainerRiderConnectionMemoryBySessionID[sessionID] = memory
         persistTrainerRiderConnectionStore()
     }
@@ -813,38 +844,10 @@ final class AppStore: ObservableObject {
     }
 
     func ensureTrainerRiderAutoReconnect() {
-        for session in trainerRiderSessions {
-            session.trainer.startAutoConnectIfPossible()
-            session.heartRateMonitor.startAutoConnectIfPossible()
-            session.powerMeter.startAutoConnectIfPossible()
-        }
-    }
-
-    private var nextTrainerSessionName: String {
-        "Athlete \(trainerRiderSessions.count + 1)"
-    }
-
-    func addTrainerRiderSession(named preferredName: String? = nil) {
-        _ = preferredName
-        _ = nextTrainerSessionName
-        lastError = L10n.choose(
-            simplifiedChinese: "单账号模式下不支持新增运动员面板。",
-            english: "Single-account mode does not support adding athlete panels."
-        )
-    }
-
-    func renameTrainerRiderSession(id: UUID, to newName: String) {
-        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard let index = trainerRiderSessions.firstIndex(where: { $0.id == id }) else { return }
-        guard trainerRiderSessions[index].name != trimmed else { return }
-        trainerRiderSessions[index].name = trimmed
-        currentAccountDisplayName = trimmed
-        var memory = baseConnectionMemory(for: id)
-        memory.name = trimmed
-        trainerRiderConnectionMemoryBySessionID[id] = memory
-        persistTrainerRiderConnectionStore()
-        refreshAthletePanelsAndSelection(preferSpecificSelection: false)
+        guard let session = trainerRiderSessions.first else { return }
+        session.trainer.startAutoConnectIfPossible()
+        session.heartRateMonitor.startAutoConnectIfPossible()
+        session.powerMeter.startAutoConnectIfPossible()
     }
 
     func trainerRiderAppearance(for sessionID: UUID) -> TrainerRiderAppearance {
@@ -859,29 +862,8 @@ final class AppStore: ObservableObject {
         persistTrainerRiderConnectionStore()
     }
 
-    func removeTrainerRiderSession(id: UUID) {
-        _ = id
-        lastError = L10n.choose(
-            simplifiedChinese: "单账号模式下不支持删除运动员面板。",
-            english: "Single-account mode does not support deleting athlete panels."
-        )
-    }
-
     private func trainerRiderSession(id: UUID) -> TrainerRiderSession? {
         trainerRiderSessions.first { $0.id == id }
-    }
-
-    private var primaryTrainerRiderName: String? {
-        if let primaryID = primaryTrainerSessionID,
-           let primarySession = trainerRiderSession(id: primaryID),
-           let normalized = normalizedNonEmptyString(primarySession.name) {
-            return normalized
-        }
-        if let first = trainerRiderSessions.first,
-           let normalized = normalizedNonEmptyString(first.name) {
-            return normalized
-        }
-        return nil
     }
 
     func trainerRecordingStatus(for sessionID: UUID) -> TrainerRecordingStatus {
@@ -899,6 +881,7 @@ final class AppStore: ObservableObject {
         guard let primaryID = primaryTrainerSessionID else {
             trainerRecordingIsActive = false
             trainerRecordingElapsedSec = 0
+            trainerRecordingMovingSec = 0
             trainerRecordingSampleCount = 0
             trainerRecordingElevationGainMeters = 0
             trainerRecordingLastFitPath = nil
@@ -908,203 +891,30 @@ final class AppStore: ObservableObject {
         let status = trainerRecordingStatus(for: primaryID)
         trainerRecordingIsActive = status.isActive
         trainerRecordingElapsedSec = status.elapsedSec
+        trainerRecordingMovingSec = status.movingSec
         trainerRecordingSampleCount = status.sampleCount
         trainerRecordingElevationGainMeters = status.elevationGainMeters
         trainerRecordingLastFitPath = status.lastFitPath
         trainerRecordingLastSyncSummary = status.lastSyncSummary
     }
 
-    private var fallbackAthleteName: String {
-        if let primary = primaryTrainerRiderName {
-            return primary
-        }
-        return currentAccountDisplayName
-    }
-
-    private func loadAthleteProfileStoreIfNeeded(fallback: AthleteProfile) {
-        athleteProfilesByPanelID = [currentAccountPanelID: fallback]
-    }
-
-    private func persistAthleteProfileStore() {
-        do {
-            let data = try JSONEncoder().encode(athleteProfilesByPanelID)
-            guard saveDefaultsDataIfChanged(data, forKey: athleteProfileStoreDefaultsKey) else {
-                return
-            }
-            persistAppSettingsToRepository(reason: "persistAthleteProfileStore")
-        } catch {
-            lastError = "Failed to save athlete profile store: \(error.localizedDescription)"
-        }
-    }
-
     private func cacheProfileForSelectedAthlete() {
-        guard !isApplyingAthleteProfile else { return }
-        athleteProfilesByPanelID[currentAccountPanelID] = profile
-        persistAthleteProfileStore()
+        persistAppSettingsToRepository(reason: "profileChanged")
     }
 
     private func applySelectedAthleteProfileIfNeeded() {
-        let chosen = athleteProfilesByPanelID[currentAccountPanelID] ?? profile
-        athleteProfilesByPanelID[currentAccountPanelID] = chosen
-        persistAthleteProfileStore()
-        guard derivedProfileFingerprint(profile) != derivedProfileFingerprint(chosen) else { return }
-        isApplyingAthleteProfile = true
-        profile = chosen
-        isApplyingAthleteProfile = false
+        // Single-athlete mode: profile is account-scoped.
     }
 
     private func refreshAthletePanelsAndSelection(preferSpecificSelection: Bool) {
         _ = preferSpecificSelection
-        let panelID = currentAccountPanelID
-        athletePanelsCache = [
-            AthletePanel(
-                id: panelID,
-                title: currentAccountDisplayName,
-                count: activities.count,
-                isAll: false
-            )
-        ]
-        if selectedAthletePanelID != panelID {
-            selectedAthletePanelID = panelID
+        if selectedAthletePanelID != AthletePanel.singleID {
+            selectedAthletePanelID = AthletePanel.singleID
         }
-        athleteProfilesByPanelID = [panelID: profile]
-        persistAthleteProfileStore()
     }
 
-    private func isDisposablePlaceholderAthleteName(_ name: String) -> Bool {
-        guard let normalized = normalizedNonEmptyString(name) else { return false }
-        let lower = normalized.lowercased()
-        guard lower.hasPrefix("athlete ") else { return false }
-        let suffix = lower.dropFirst("athlete ".count).trimmingCharacters(in: .whitespacesAndNewlines)
-        return !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
-    }
-
-    private func migrateLegacyAthleteNamesIfNeeded() {
-        let defaultName = fallbackAthleteName
-
-        var activitiesUpdated = activities
-        var activitiesChanged = false
-        for index in activitiesUpdated.indices {
-            let current = activitiesUpdated[index]
-            if normalizedNonEmptyString(current.athleteName) == nil {
-                let resolved = parseAthleteNameFromLegacyNotes(current.notes) ?? defaultName
-                activitiesUpdated[index].athleteName = resolved
-                activitiesChanged = true
-            }
-        }
-
-        var workoutsUpdated = plannedWorkouts
-        var workoutsChanged = false
-        for index in workoutsUpdated.indices where normalizedNonEmptyString(workoutsUpdated[index].athleteName) == nil {
-            workoutsUpdated[index].athleteName = defaultName
-            workoutsChanged = true
-        }
-
-        var mealPlansUpdated = dailyMealPlans
-        var mealPlansChanged = false
-        for index in mealPlansUpdated.indices where normalizedNonEmptyString(mealPlansUpdated[index].athleteName) == nil {
-            mealPlansUpdated[index].athleteName = defaultName
-            mealPlansChanged = true
-        }
-
-        var wellnessUpdated = wellnessSamples
-        var wellnessChanged = false
-        for index in wellnessUpdated.indices where normalizedNonEmptyString(wellnessUpdated[index].athleteName) == nil {
-            wellnessUpdated[index].athleteName = defaultName
-            wellnessChanged = true
-        }
-
-        var eventsUpdated = intervalsCalendarEvents
-        var eventsChanged = false
-        for index in eventsUpdated.indices where normalizedNonEmptyString(eventsUpdated[index].athleteName) == nil {
-            eventsUpdated[index].athleteName = defaultName
-            eventsChanged = true
-        }
-
-        if activitiesChanged { activities = activitiesUpdated }
-        if mealPlansChanged { dailyMealPlans = mealPlansUpdated }
-        if workoutsChanged { plannedWorkouts = workoutsUpdated }
-        if wellnessChanged { wellnessSamples = wellnessUpdated }
-        if eventsChanged { intervalsCalendarEvents = eventsUpdated }
-
+    func bootstrap() {
         do {
-            if let repository {
-                if activitiesChanged { try repository.saveActivities(activitiesUpdated) }
-                if mealPlansChanged { try repository.saveDailyMealPlans(mealPlansUpdated) }
-                if workoutsChanged { try repository.saveWorkouts(workoutsUpdated) }
-                if wellnessChanged { try repository.saveWellnessSamples(wellnessUpdated) }
-                if eventsChanged { try repository.saveCalendarEvents(eventsUpdated) }
-                if activitiesChanged || mealPlansChanged || workoutsChanged || wellnessChanged || eventsChanged {
-                    try repository.saveProfile(profile)
-                }
-            }
-        } catch {
-            lastError = "Failed to migrate athlete ownership: \(error.localizedDescription)"
-        }
-    }
-
-    private func migrateAthleteIdentity(from oldName: String, to newName: String) {
-        let oldKey = athletePanelID(forName: oldName)
-        let newKey = athletePanelID(forName: newName)
-        guard oldKey != newKey else { return }
-
-        var updatedActivities = activities
-        var updatedMealPlans = dailyMealPlans
-        var updatedWorkouts = plannedWorkouts
-        var updatedWellness = wellnessSamples
-        var updatedEvents = intervalsCalendarEvents
-
-        var touched = false
-
-        for index in updatedActivities.indices where athletePanelID(forName: updatedActivities[index].athleteName) == oldKey {
-            updatedActivities[index].athleteName = newName
-            touched = true
-        }
-        for index in updatedWorkouts.indices where athletePanelID(forName: updatedWorkouts[index].athleteName) == oldKey {
-            updatedWorkouts[index].athleteName = newName
-            touched = true
-        }
-        for index in updatedMealPlans.indices where athletePanelID(forName: updatedMealPlans[index].athleteName) == oldKey {
-            updatedMealPlans[index].athleteName = newName
-            touched = true
-        }
-        for index in updatedWellness.indices where athletePanelID(forName: updatedWellness[index].athleteName) == oldKey {
-            updatedWellness[index].athleteName = newName
-            touched = true
-        }
-        for index in updatedEvents.indices where athletePanelID(forName: updatedEvents[index].athleteName) == oldKey {
-            updatedEvents[index].athleteName = newName
-            touched = true
-        }
-
-        if touched {
-            activities = updatedActivities
-            dailyMealPlans = updatedMealPlans
-            plannedWorkouts = updatedWorkouts
-            wellnessSamples = updatedWellness
-            intervalsCalendarEvents = updatedEvents
-            do {
-                if let repository {
-                    try repository.saveActivities(updatedActivities)
-                    try repository.saveDailyMealPlans(updatedMealPlans)
-                    try repository.saveWorkouts(updatedWorkouts)
-                    try repository.saveWellnessSamples(updatedWellness)
-                    try repository.saveCalendarEvents(updatedEvents)
-                }
-            } catch {
-                lastError = "Failed to persist renamed athlete data: \(error.localizedDescription)"
-            }
-        }
-
-        if let cached = athleteProfilesByPanelID.removeValue(forKey: oldKey) {
-            athleteProfilesByPanelID[newKey] = cached
-        }
-        persistAthleteProfileStore()
-    }
-
-    func bootstrap(runTrainerFITSelfHeal: Bool = false) {
-        do {
-            _ = runTrainerFITSelfHeal
             let startedAt = Date()
             appendClientLog(level: "INFO", message: "Bootstrap started: loading settings and repository data.")
             hydrateAppSettingsFromRepository()
@@ -1154,6 +964,14 @@ final class AppStore: ObservableObject {
                             )
                         }
                     }
+                    if self.activities.isEmpty {
+                        appendClientLog(
+                            level: "WARN",
+                            message: "Remote activities empty for account=\(currentAccountID). If server should have data, verify login account/session matches stored account scope."
+                        )
+                    }
+                    self.activities = deduplicateActivities(self.activities)
+                    persistActivitiesToLocalCache(self.activities)
                     self.dailyMealPlans = try repository.loadDailyMealPlans()
                     self.customFoodLibrary = try repository.loadCustomFoods()
                     self.plannedWorkouts = try repository.loadWorkouts()
@@ -1177,7 +995,6 @@ final class AppStore: ObservableObject {
             }
 
             self.profile = loadedProfile
-            loadAthleteProfileStoreIfNeeded(fallback: loadedProfile)
             refreshAthletePanelsAndSelection(preferSpecificSelection: true)
             applySelectedAthleteProfileIfNeeded()
             pruneActivityMetricInsights()
@@ -1188,267 +1005,11 @@ final class AppStore: ObservableObject {
                 level: "INFO",
                 message: "Bootstrap complete in \(elapsedText)s (activities \(activities.count), workouts \(plannedWorkouts.count), wellness \(wellnessSamples.count))."
             )
+            refreshActivityRecoveryDiagnostics()
         } catch {
             self.lastError = "Failed to load server data: \(error.localizedDescription)"
+            refreshActivityRecoveryDiagnostics()
         }
-    }
-
-    @discardableResult
-    func runOneTimeTrainerFITBackfill(includeInProgress: Bool = true) -> String {
-        let recovery = recoverUnlinkedTrainerFITActivities(
-            includeInProgress: includeInProgress,
-            trigger: "manual_tool"
-        )
-        let ownershipRepair = repairTrainerFITOwnershipFromExportedHints(trigger: "manual_tool")
-        let powerRepair = repairTrainerActivitiesMissingPower(trigger: "manual_tool")
-        if recovery.recoveredCount > 0 || ownershipRepair.reassignedCount > 0 || powerRepair.repairedCount > 0 {
-            refreshAthletePanelsAndSelection(preferSpecificSelection: false)
-            markDerivedStateDirty()
-        }
-        let text = [recovery.detailedText, ownershipRepair.summaryLine, powerRepair.summaryLine].joined(separator: "\n")
-        syncStatus = [recovery.summaryLine, ownershipRepair.summaryLine, powerRepair.summaryLine].joined(separator: " ")
-        return text
-    }
-
-    @discardableResult
-    func forceReassignTrainerFITSnapshots(
-        athleteName: String,
-        dateToken: String?,
-        fileNames: [String]
-    ) -> String {
-        guard let targetAthlete = normalizedNonEmptyString(athleteName) else {
-            return "Trainer FIT force reassignment skipped: athlete name is empty."
-        }
-        let normalizedDateToken = normalizedTrainerFITDateToken(dateToken)
-        let targetFiles = Set(
-            fileNames.compactMap { normalizedNonEmptyString($0)?.lowercased() }
-        )
-
-        var report = TrainerFITForceReassignReport()
-        var updatedActivities = activities
-        var activityIndexBySourceFile: [String: Int] = [:]
-        for idx in updatedActivities.indices {
-            if let lower = normalizedNonEmptyString(updatedActivities[idx].sourceFileName)?.lowercased() {
-                activityIndexBySourceFile[lower] = idx
-            }
-        }
-
-        let exportedHintsByFileName = trainerFITExportHintsByFileName()
-        let matchedFITURLs = discoverTrainerFITRecoveryCandidates(includeInProgress: true).filter { url in
-            let lower = url.lastPathComponent.lowercased()
-            if !targetFiles.isEmpty {
-                return targetFiles.contains(lower)
-            }
-            guard let normalizedDateToken else {
-                return false
-            }
-            guard let fileToken = trainerFITDateTokenForMatching(lowerFileName: lower) else {
-                return false
-            }
-            return fileToken == normalizedDateToken
-        }
-
-        if matchedFITURLs.isEmpty {
-            return "Trainer FIT force reassignment skipped: no matched files."
-        }
-
-        for fitURL in matchedFITURLs {
-            let fitFileName = fitURL.lastPathComponent
-            let fitFileNameLower = fitFileName.lowercased()
-            let exportedHint = exportedHintsByFileName[fitFileNameLower]
-            report.matchedFiles.append(fitFileName)
-
-            if let existingIndex = activityIndexBySourceFile[fitFileNameLower] {
-                do {
-                    let fileData = try Data(contentsOf: fitURL)
-                    guard !fileData.isEmpty else {
-                        throw NSError(
-                            domain: "Fricu.TrainerForceReassign",
-                            code: 2,
-                            userInfo: [NSLocalizedDescriptionKey: "FIT file is empty"]
-                        )
-                    }
-
-                    let fallbackDate = fallbackDateForTrainerFITImport(at: fitURL)
-                    let imported = try ActivityFileImporter.importFile(
-                        at: fitURL,
-                        profile: profile,
-                        fitFallbackDate: fallbackDate ?? exportedHint?.createdAt
-                    )
-
-                    var updated = updatedActivities[existingIndex]
-                    updated.date = imported.date
-                    updated.sport = imported.sport
-                    updated.durationSec = imported.durationSec
-                    updated.distanceKm = imported.distanceKm
-                    updated.tss = imported.tss
-                    updated.normalizedPower = imported.normalizedPower
-                    updated.avgHeartRate = imported.avgHeartRate
-                    updated.intervals = imported.intervals
-                    updated.athleteName = targetAthlete
-                    updated.notes = "\(targetAthlete) · Forced trainer FIT reassignment · \(IntervalsDateFormatter.dateTimeLocal.string(from: updated.date))"
-                    updated.sourceFileName = fitFileName
-                    updated.sourceFileType = "fit"
-                    updated.sourceFileBase64 = fileData.base64EncodedString()
-
-                    updatedActivities[existingIndex] = updated
-                    report.reassignedExistingCount += 1
-                } catch {
-                    report.failedFiles.append(fitFileName)
-                    appendClientLog(
-                        level: "WARN",
-                        message: "Trainer FIT force reassignment failed to refresh existing \(fitFileName): \(detailedErrorDescription(error))"
-                    )
-                }
-                continue
-            }
-
-            do {
-                let fileData = try Data(contentsOf: fitURL)
-                guard !fileData.isEmpty else {
-                    throw NSError(
-                        domain: "Fricu.TrainerForceReassign",
-                        code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "FIT file is empty"]
-                    )
-                }
-
-                let fallbackDate = fallbackDateForTrainerFITImport(at: fitURL)
-                var imported = try ActivityFileImporter.importFile(
-                    at: fitURL,
-                    profile: profile,
-                    fitFallbackDate: fallbackDate ?? exportedHint?.createdAt
-                )
-                imported.athleteName = targetAthlete
-                let unixDate = Int(imported.date.timeIntervalSince1970)
-                if let sessionID = trainerSessionIDFromInProgressFITFileName(fitFileName) {
-                    imported.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):forced"
-                } else if let sessionID = trainerSessionIDFromFinalizedFITFileName(fitFileName) {
-                    imported.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):forced"
-                } else {
-                    let token = fitFileNameLower.replacingOccurrences(of: " ", with: "_")
-                    let athleteToken = athletePanelID(forName: targetAthlete)
-                    imported.externalID = "fricu:trainer-forced:\(athleteToken):\(token):\(unixDate)"
-                }
-                imported.notes = "\(targetAthlete) · Forced trainer FIT reassignment · \(IntervalsDateFormatter.dateTimeLocal.string(from: imported.date))"
-                imported.sourceFileName = fitFileName
-                imported.sourceFileType = "fit"
-                imported.sourceFileBase64 = fileData.base64EncodedString()
-
-                updatedActivities.append(imported)
-                activityIndexBySourceFile[fitFileNameLower] = updatedActivities.count - 1
-                report.importedMissingCount += 1
-            } catch {
-                report.failedFiles.append(fitFileName)
-                appendClientLog(
-                    level: "WARN",
-                    message: "Trainer FIT force reassignment failed for \(fitFileName): \(detailedErrorDescription(error))"
-                )
-            }
-        }
-
-        if report.reassignedExistingCount > 0 || report.importedMissingCount > 0 {
-            do {
-                let merged = deduplicateActivities(updatedActivities)
-                try persistActivities(merged)
-                refreshAthletePanelsAndSelection(preferSpecificSelection: false)
-                markDerivedStateDirty()
-                syncStatus = report.summaryLine
-            } catch {
-                appendClientLog(
-                    level: "ERROR",
-                    message: "Trainer FIT force reassignment persist failed: \(detailedErrorDescription(error))"
-                )
-                return report.detailedText + "\nPersist failed: \(error.localizedDescription)"
-            }
-        }
-
-        return report.detailedText
-    }
-
-    @discardableResult
-    private func repairTrainerActivitiesMissingPower(trigger: String) -> TrainerFITPowerRepairReport {
-        var report = TrainerFITPowerRepairReport()
-        var updatedActivities = activities
-
-        for index in updatedActivities.indices {
-            var activity = updatedActivities[index]
-            let fileName = activity.sourceFileName?.lowercased() ?? ""
-            let fileType = activity.sourceFileType?.lowercased() ?? ""
-            let externalID = activity.externalID?.lowercased() ?? ""
-            let isTrainer = fileName.hasPrefix("trainer-")
-                || fileName.hasPrefix("in-progress-")
-                || externalID.contains("fricu:trainer")
-            guard isTrainer, fileType == "fit" else { continue }
-
-            report.scannedCount += 1
-            guard activity.normalizedPower == nil else { continue }
-            guard let encoded = activity.sourceFileBase64,
-                  let data = Data(base64Encoded: encoded),
-                  !data.isEmpty else {
-                report.warningCount += 1
-                if !activity.notes.contains("WARNING: missing power telemetry") {
-                    activity.notes += (activity.notes.isEmpty ? "" : " · ") + "WARNING: missing power telemetry"
-                    updatedActivities[index] = activity
-                }
-                continue
-            }
-
-            do {
-                let summary = try FITActivityParser.parse(data: data, fallbackDate: activity.date)
-                if let repairedPower = summary.normalizedPower ?? summary.avgPower {
-                    activity.date = summary.date
-                    activity.sport = summary.sport
-                    activity.durationSec = max(1, summary.durationSec)
-                    activity.distanceKm = max(0, summary.distanceKm)
-                    activity.normalizedPower = repairedPower
-                    activity.avgHeartRate = summary.avgHeartRate ?? activity.avgHeartRate
-                    activity.tss = TSSEstimator.estimate(
-                        durationSec: activity.durationSec,
-                        sport: activity.sport,
-                        avgPower: summary.avgPower,
-                        normalizedPower: activity.normalizedPower,
-                        avgHeartRate: activity.avgHeartRate,
-                        profile: profile,
-                        date: activity.date
-                    )
-                    updatedActivities[index] = activity
-                    report.repairedCount += 1
-                } else {
-                    report.warningCount += 1
-                    if !activity.notes.contains("WARNING: missing power telemetry") {
-                        activity.notes += (activity.notes.isEmpty ? "" : " · ") + "WARNING: missing power telemetry"
-                        updatedActivities[index] = activity
-                    }
-                }
-            } catch {
-                report.failedCount += 1
-                appendClientLog(
-                    level: "WARN",
-                    message: "Trainer FIT power repair (\(trigger)) failed for \(activity.sourceFileName ?? activity.id.uuidString): \(detailedErrorDescription(error))"
-                )
-            }
-        }
-
-        if report.repairedCount > 0 || report.warningCount > 0 {
-            do {
-                try persistActivities(updatedActivities)
-                refreshAthletePanelsAndSelection(preferSpecificSelection: false)
-                markDerivedStateDirty()
-            } catch {
-                appendClientLog(
-                    level: "WARN",
-                    message: "Trainer FIT power repair (\(trigger)) persist failed: \(detailedErrorDescription(error))"
-                )
-                report.failedCount += 1
-            }
-        }
-
-        appendClientLog(
-            level: report.failedCount > 0 ? "WARN" : "INFO",
-            message: report.summaryLine
-        )
-        return report
     }
 
     func addLactateHistoryRecord(type: LactateTestType, points: [LactateSamplePoint]) {
@@ -1485,10 +1046,6 @@ final class AppStore: ObservableObject {
         filteredActivitiesCache
     }
 
-    var athletePanels: [AthletePanel] {
-        athletePanelsCache
-    }
-
     var athleteScopedActivities: [Activity] {
         athleteScopedActivitiesCache
     }
@@ -1510,27 +1067,34 @@ final class AppStore: ObservableObject {
     }
 
     var trainerRiderSessionsForSelectedAthlete: [TrainerRiderSession] {
-        trainerRiderSessions
+        guard let primaryID = primaryTrainerSessionID,
+              let session = trainerRiderSessions.first(where: { $0.id == primaryID }) else {
+            return trainerRiderSessions.isEmpty ? [] : [trainerRiderSessions[0]]
+        }
+        return [session]
     }
 
     var selectedAthleteTitle: String {
-        currentAccountDisplayName
-    }
-
-    var isAllAthletesSelected: Bool {
-        false
+        canonicalCurrentAccountAthleteName
     }
 
     var selectedAthleteNameForWrite: String {
-        currentAccountDisplayName
+        canonicalCurrentAccountAthleteName
+    }
+
+    var selectedAthleteNameForFilter: String? {
+        canonicalCurrentAccountAthleteName
     }
 
     func profileForAthlete(named athleteName: String?) -> AthleteProfile {
-        let panelID = athletePanelID(forName: athleteName)
-        return athleteProfilesByPanelID[panelID] ?? profile
+        _ = athleteName
+        return profile
     }
 
     func activitiesForAthlete(named athleteName: String?) -> [Activity] {
+        guard let athleteName = normalizedNonEmptyString(athleteName) else {
+            return activities.sorted { $0.date > $1.date }
+        }
         let panelID = athletePanelID(forName: athleteName)
         return activities
             .filter { athletePanelID(for: $0) == panelID }
@@ -1538,6 +1102,9 @@ final class AppStore: ObservableObject {
     }
 
     func workoutsForAthlete(named athleteName: String?) -> [PlannedWorkout] {
+        guard let athleteName = normalizedNonEmptyString(athleteName) else {
+            return plannedWorkouts.sorted { $0.createdAt > $1.createdAt }
+        }
         let panelID = athletePanelID(forName: athleteName)
         return plannedWorkouts
             .filter { athletePanelID(forName: $0.athleteName) == panelID }
@@ -1545,6 +1112,9 @@ final class AppStore: ObservableObject {
     }
 
     func mealPlansForAthlete(named athleteName: String?) -> [DailyMealPlan] {
+        guard let athleteName = normalizedNonEmptyString(athleteName) else {
+            return dailyMealPlans.sorted { $0.date > $1.date }
+        }
         let panelID = athletePanelID(forName: athleteName)
         return dailyMealPlans
             .filter { athletePanelID(forName: $0.athleteName) == panelID }
@@ -1552,6 +1122,9 @@ final class AppStore: ObservableObject {
     }
 
     func wellnessSamplesForAthlete(named athleteName: String?) -> [WellnessSample] {
+        guard let athleteName = normalizedNonEmptyString(athleteName) else {
+            return wellnessSamples.sorted { $0.date > $1.date }
+        }
         let panelID = athletePanelID(forName: athleteName)
         return wellnessSamples
             .filter { athletePanelID(forName: $0.athleteName) == panelID }
@@ -1767,7 +1340,7 @@ final class AppStore: ObservableObject {
     private struct TrainerRecordingSession {
         var startedAt: Date
         var lastSampleAt: Date
-        var lastMotionAt: Date
+        var movingDurationSec: TimeInterval
         var lastCheckpointWriteAt: Date?
         var samples: [LiveRideSample]
         var cumulativeDistanceMeters: Double
@@ -1775,6 +1348,7 @@ final class AppStore: ObservableObject {
     }
 
     private struct RideDistanceDelta {
+        var elapsedSec: TimeInterval
         var distanceMeters: Double
         var elevationGainMeters: Double
     }
@@ -1811,26 +1385,97 @@ final class AppStore: ObservableObject {
     private func setupTrainerRecordingPipeline() {
         for session in trainerRiderSessions {
             observeTrainerConnection(for: session)
+            observeHeartRateConnection(for: session)
+            observePowerMeterConnection(for: session)
             observeTrainerPower(for: session)
             observePowerMeterPower(for: session)
         }
     }
 
+    private func emitConnectionDropWarning(
+        for session: TrainerRiderSession,
+        deviceName: String,
+        reconnectAction: @escaping () -> Void
+    ) {
+        let riderName = session.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? currentAccountDisplayName
+            : session.name
+        let message = L10n.choose(
+            simplifiedChinese: "\(riderName) 的\(deviceName)已断开，正在自动重连。",
+            english: "\(deviceName) disconnected for \(riderName). Auto-reconnecting."
+        )
+        connectionWarningMessage = message
+        appendClientLog(level: "WARN", message: message)
+        reconnectAction()
+    }
+
     private func observeTrainerConnection(for session: TrainerRiderSession) {
         let sessionID = session.id
         trainerConnectionCancellableBySession[sessionID]?.cancel()
+        var previousConnected = session.trainer.isConnected
         trainerConnectionCancellableBySession[sessionID] = session.trainer.$isConnected
             .removeDuplicates()
             .sink { [weak self] connected in
                 guard let self else { return }
+                defer { previousConnected = connected }
+                if !previousConnected && connected {
+                    self.connectionWarningMessage = nil
+                    self.appendClientLog(level: "INFO", message: "骑行台已恢复连接。")
+                }
+                if previousConnected && !connected {
+                    self.emitConnectionDropWarning(for: session, deviceName: "骑行台") {
+                        session.trainer.startAutoConnectIfPossible()
+                        if !session.trainer.isConnected && !session.trainer.isScanning {
+                            session.trainer.startScan()
+                        }
+                    }
+                }
+            }
+    }
 
-                if connected {
-                    self.trainerRecordingFinalizationTaskBySession[sessionID]?.cancel()
-                    self.trainerRecordingFinalizationTaskBySession[sessionID] = nil
-                } else {
-                    self.trainerRecordingFinalizationTaskBySession[sessionID]?.cancel()
-                    self.trainerRecordingFinalizationTaskBySession[sessionID] = Task { [weak self] in
-                        await self?.finalizeTrainerRecording(for: sessionID, reason: "Trainer disconnected")
+    private func observeHeartRateConnection(for session: TrainerRiderSession) {
+        let sessionID = session.id
+        heartRateConnectionCancellableBySession[sessionID]?.cancel()
+        var previousConnected = session.heartRateMonitor.isConnected
+        heartRateConnectionCancellableBySession[sessionID] = session.heartRateMonitor.$isConnected
+            .removeDuplicates()
+            .sink { [weak self] connected in
+                guard let self else { return }
+                defer { previousConnected = connected }
+                if !previousConnected && connected {
+                    self.connectionWarningMessage = nil
+                    self.appendClientLog(level: "INFO", message: "心率带已恢复连接。")
+                }
+                if previousConnected && !connected {
+                    self.emitConnectionDropWarning(for: session, deviceName: "心率带") {
+                        session.heartRateMonitor.startAutoConnectIfPossible()
+                        if !session.heartRateMonitor.isConnected && !session.heartRateMonitor.isScanning {
+                            session.heartRateMonitor.startScan()
+                        }
+                    }
+                }
+            }
+    }
+
+    private func observePowerMeterConnection(for session: TrainerRiderSession) {
+        let sessionID = session.id
+        powerMeterConnectionCancellableBySession[sessionID]?.cancel()
+        var previousConnected = session.powerMeter.isConnected
+        powerMeterConnectionCancellableBySession[sessionID] = session.powerMeter.$isConnected
+            .removeDuplicates()
+            .sink { [weak self] connected in
+                guard let self else { return }
+                defer { previousConnected = connected }
+                if !previousConnected && connected {
+                    self.connectionWarningMessage = nil
+                    self.appendClientLog(level: "INFO", message: "功率计已恢复连接。")
+                }
+                if previousConnected && !connected {
+                    self.emitConnectionDropWarning(for: session, deviceName: "功率计") {
+                        session.powerMeter.startAutoConnectIfPossible()
+                        if !session.powerMeter.isConnected && !session.powerMeter.isScanning {
+                            session.powerMeter.startScan()
+                        }
                     }
                 }
             }
@@ -1875,7 +1520,7 @@ final class AppStore: ObservableObject {
         trainerRecordingSessionByRider[sessionID] = TrainerRecordingSession(
             startedAt: now,
             lastSampleAt: now,
-            lastMotionAt: now,
+            movingDurationSec: 0,
             lastCheckpointWriteAt: nil,
             samples: [],
             cumulativeDistanceMeters: 0,
@@ -1886,6 +1531,7 @@ final class AppStore: ObservableObject {
         var status = trainerRecordingStatus(for: sessionID)
         status.isActive = true
         status.elapsedSec = 0
+        status.movingSec = 0
         status.sampleCount = 0
         status.elevationGainMeters = 0
         status.lastFitPath = nil
@@ -1910,10 +1556,10 @@ final class AppStore: ObservableObject {
     ) -> RideDistanceDelta {
         let dt = max(0, timestamp.timeIntervalSince(previousTimestamp))
         guard dt > 0, let rider = trainerRiderSession(id: sessionID) else {
-            return RideDistanceDelta(distanceMeters: 0, elevationGainMeters: 0)
+            return RideDistanceDelta(elapsedSec: 0, distanceMeters: 0, elevationGainMeters: 0)
         }
         guard let speedKPH = rider.trainer.liveSpeedKPH, speedKPH > 0 else {
-            return RideDistanceDelta(distanceMeters: 0, elevationGainMeters: 0)
+            return RideDistanceDelta(elapsedSec: dt, distanceMeters: 0, elevationGainMeters: 0)
         }
 
         let distanceMeters = (speedKPH / 3.6) * dt
@@ -1923,7 +1569,7 @@ final class AppStore: ObservableObject {
         } else {
             elevationGainMeters = 0
         }
-        return RideDistanceDelta(distanceMeters: distanceMeters, elevationGainMeters: elevationGainMeters)
+        return RideDistanceDelta(elapsedSec: dt, distanceMeters: distanceMeters, elevationGainMeters: elevationGainMeters)
     }
 
     private func makeLiveRideSample(
@@ -1944,10 +1590,7 @@ final class AppStore: ObservableObject {
             )
         }
         let sampledPower = rider.trainer.livePowerWatts ?? rider.powerMeter.livePowerWatts
-        let trainerFallbackPower = rider.trainer.ergTargetWatts
-        let effectivePower = [sampledPower, trainerFallbackPower]
-            .compactMap { $0 }
-            .first(where: { $0 > 0 })
+        let effectivePower = sampledPower.flatMap { $0 > 0 ? $0 : nil }
         return LiveRideSample(
             timestamp: timestamp,
             powerWatts: effectivePower,
@@ -1970,41 +1613,17 @@ final class AppStore: ObservableObject {
         session.cumulativeElevationGainMeters += delta.elevationGainMeters
         let sample = makeLiveRideSample(for: sessionID, at: timestamp, distanceMeters: session.cumulativeDistanceMeters)
         session.samples.append(sample)
-        if isTrainerRideMotion(sample: sample) {
-            session.lastMotionAt = timestamp
+        if isTrainerRideMoving(sample: sample) {
+            session.movingDurationSec += delta.elapsedSec
         }
         session.lastSampleAt = timestamp
     }
 
-    private func isTrainerRideMotion(sample: LiveRideSample) -> Bool {
-        if let power = sample.powerWatts, power > 0 {
-            return true
-        }
-        if let speed = sample.speedKPH, speed > 0.2 {
-            return true
-        }
-        if let cadence = sample.cadenceRPM, cadence > 4 {
-            return true
+    private func isTrainerRideMoving(sample: LiveRideSample) -> Bool {
+        if let power = sample.powerWatts {
+            return power > 0
         }
         return false
-    }
-
-    private func maybeFinalizeTrainerRecordingForInactivity(
-        sessionID: UUID,
-        session: TrainerRecordingSession,
-        now timestamp: Date
-    ) {
-        guard trainerRecordingStatus(for: sessionID).isActive else { return }
-        guard !isFinalizingTrainerRecordingBySession.contains(sessionID) else { return }
-        guard trainerRecordingFinalizationTaskBySession[sessionID] == nil else { return }
-        guard session.samples.count >= 5 else { return }
-        guard timestamp.timeIntervalSince(session.lastMotionAt) >= trainerRecordingAutoStopInactivitySec else { return }
-        trainerRecordingFinalizationTaskBySession[sessionID] = Task { [weak self] in
-            await self?.finalizeTrainerRecording(
-                for: sessionID,
-                reason: "Auto stop (\(Int(self?.trainerRecordingAutoStopInactivitySec ?? 0))s inactivity)"
-            )
-        }
     }
 
     private func trainerRecordingCheckpointURL(for sessionID: UUID) throws -> URL {
@@ -2037,12 +1656,13 @@ final class AppStore: ObservableObject {
         let avgHeartRate = hrValues.isEmpty ? nil : Int((Double(hrValues.reduce(0, +)) / Double(hrValues.count)).rounded())
         let maxHeartRate = hrValues.max()
         let elapsedSec = max(1, Int(timestamp.timeIntervalSince(session.startedAt).rounded()))
+        let movingSec = max(0, Int(session.movingDurationSec.rounded()))
         let summary = LiveRideSummary(
             startDate: session.startedAt,
             endDate: timestamp,
             sport: .cycling,
             totalElapsedSec: elapsedSec,
-            totalTimerSec: elapsedSec,
+            totalTimerSec: movingSec,
             totalDistanceMeters: max(0, session.cumulativeDistanceMeters),
             averageHeartRate: avgHeartRate,
             maxHeartRate: maxHeartRate,
@@ -2074,10 +1694,10 @@ final class AppStore: ObservableObject {
 
         var status = trainerRecordingStatus(for: sessionID)
         status.elapsedSec = max(0, Int(timestamp.timeIntervalSince(session.startedAt).rounded()))
+        status.movingSec = max(0, Int(session.movingDurationSec.rounded()))
         status.sampleCount = session.samples.count
         status.elevationGainMeters = max(0, session.cumulativeElevationGainMeters)
         updateTrainerRecordingStatus(status, for: sessionID)
-        maybeFinalizeTrainerRecordingForInactivity(sessionID: sessionID, session: session, now: timestamp)
     }
 
     private func finalizeTrainerRecording(for sessionID: UUID, reason: String) async {
@@ -2085,6 +1705,7 @@ final class AppStore: ObservableObject {
             var status = trainerRecordingStatus(for: sessionID)
             status.isActive = false
             status.elapsedSec = 0
+            status.movingSec = 0
             status.sampleCount = 0
             status.elevationGainMeters = 0
             updateTrainerRecordingStatus(status, for: sessionID)
@@ -2106,6 +1727,7 @@ final class AppStore: ObservableObject {
             var status = trainerRecordingStatus(for: sessionID)
             status.isActive = false
             status.elapsedSec = 0
+            status.movingSec = 0
             status.sampleCount = 0
             status.elevationGainMeters = 0
             updateTrainerRecordingStatus(status, for: sessionID)
@@ -2120,10 +1742,12 @@ final class AppStore: ObservableObject {
 
         var inProgressStatus = trainerRecordingStatus(for: sessionID)
         inProgressStatus.elevationGainMeters = max(0, session.cumulativeElevationGainMeters)
+        inProgressStatus.movingSec = max(0, Int(session.movingDurationSec.rounded()))
         updateTrainerRecordingStatus(inProgressStatus, for: sessionID)
 
         let samples = session.samples.sorted { $0.timestamp < $1.timestamp }
         let elapsedSec = max(1, Int(end.timeIntervalSince(session.startedAt).rounded()))
+        let movingSec = max(0, Int(session.movingDurationSec.rounded()))
         let totalDistanceMeters = max(0, session.cumulativeDistanceMeters)
 
         let powerValues = samples.compactMap { $0.powerWatts }.filter { $0 > 0 }
@@ -2140,7 +1764,7 @@ final class AppStore: ObservableObject {
             endDate: end,
             sport: .cycling,
             totalElapsedSec: elapsedSec,
-            totalTimerSec: elapsedSec,
+            totalTimerSec: movingSec,
             totalDistanceMeters: totalDistanceMeters,
             averageHeartRate: avgHeartRate,
             maxHeartRate: maxHeartRate,
@@ -2167,7 +1791,8 @@ final class AppStore: ObservableObject {
                 riderName: riderName,
                 startDate: session.startedAt,
                 endDate: end,
-                elapsedSec: elapsedSec
+                elapsedSec: elapsedSec,
+                movingSec: movingSec
             )
             let fitUploadedToServer = uploadExportedFileToRepository(
                 category: "trainer_fit",
@@ -2252,7 +1877,7 @@ final class AppStore: ObservableObject {
                     message: "Trainer recording finalized without power telemetry (\(riderName), file=\(fitURL.lastPathComponent))."
                 )
             }
-            let finalSummary = "\(riderName) · \(reason)。已保存 FIT：\(fitURL.lastPathComponent)。\(persistenceResult.summary)。\(snapshotSummary)。\(uploadSummary)。\(syncSummary)\(powerWarningSummary.isEmpty ? "" : "。\(powerWarningSummary)")"
+            let finalSummary = "\(riderName) · \(reason)。总时长 \(elapsedSec)s，移动时长 \(movingSec)s。已保存 FIT：\(fitURL.lastPathComponent)。\(persistenceResult.summary)。\(snapshotSummary)。\(uploadSummary)。\(syncSummary)\(powerWarningSummary.isEmpty ? "" : "。\(powerWarningSummary)")"
 
             var status = trainerRecordingStatus(for: sessionID)
             status.lastFitPath = fitURL.path
@@ -2360,7 +1985,8 @@ final class AppStore: ObservableObject {
         riderName: String,
         startDate: Date,
         endDate: Date,
-        elapsedSec: Int
+        elapsedSec: Int,
+        movingSec: Int
     ) async throws -> TrainerBikeComputerSnapshot? {
         #if canImport(SwiftUI) && canImport(AppKit)
         let sortedSamples = samples.sorted { $0.timestamp < $1.timestamp }
@@ -2432,6 +2058,7 @@ final class AppStore: ObservableObject {
             startDate: startDate,
             endDate: endDate,
             elapsedSec: elapsedSec,
+            movingSec: movingSec,
             latestPower: sortedSamples.last?.powerWatts,
             maxPower: maxPower,
             latestHeartRate: sortedSamples.last?.heartRateBPM,
@@ -2605,523 +2232,18 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private func recoverUnlinkedTrainerFITActivities(
-        includeInProgress: Bool,
-        trigger: String
-    ) -> TrainerFITRecoveryReport {
-        var report = TrainerFITRecoveryReport()
-        let exportedHintsByFileName = trainerFITExportHintsByFileName()
-        var linkedSourceFileNames = Set(
-            activities.compactMap { activity -> String? in
-                guard let name = normalizedNonEmptyString(activity.sourceFileName) else { return nil }
-                return name.lowercased()
-            }
-        )
-        linkedSourceFileNames.formUnion(exportedHintsByFileName.keys)
-
-        let candidates = discoverTrainerFITRecoveryCandidates(includeInProgress: includeInProgress)
-        report.scannedCount = candidates.count
-        if candidates.isEmpty {
-            return report
-        }
-
-        for fitURL in candidates {
-            let fitFileName = fitURL.lastPathComponent
-            let fitFileNameLower = fitFileName.lowercased()
-            if linkedSourceFileNames.contains(fitFileNameLower) {
-                report.alreadyLinkedCount += 1
-                continue
-            }
-
-            do {
-                let fileData = try Data(contentsOf: fitURL)
-                guard !fileData.isEmpty else {
-                    throw NSError(
-                        domain: "Fricu.TrainerRecovery",
-                        code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "FIT file is empty"]
-                    )
-                }
-
-                let fallbackDate = fallbackDateForTrainerFITImport(at: fitURL)
-                let exportedHint = exportedHintsByFileName[fitFileNameLower]
-                var activity = try ActivityFileImporter.importFile(
-                    at: fitURL,
-                    profile: profile,
-                    fitFallbackDate: fallbackDate ?? exportedHint?.createdAt
-                )
-                let isInProgress = isInProgressTrainerFITFileName(fitFileNameLower)
-                let athlete = inferredAthleteNameForRecoveredTrainerFIT(
-                    fileName: fitFileName,
-                    inProgress: isInProgress,
-                    exportedHint: exportedHint
-                )
-                activity.athleteName = athlete
-                let unixDate = Int(activity.date.timeIntervalSince1970)
-                if let sessionID = trainerSessionIDFromInProgressFITFileName(fitFileName) {
-                    activity.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):recovered"
-                } else if let sessionID = trainerSessionIDFromFinalizedFITFileName(fitFileName) {
-                    activity.externalID = "fricu:trainer:\(sessionID.uuidString.uppercased()):\(unixDate):recovered"
-                } else {
-                    let token = fitFileNameLower.replacingOccurrences(of: " ", with: "_")
-                    let athleteToken = athletePanelID(forName: athlete)
-                    activity.externalID = "fricu:trainer-recovered:\(athleteToken):\(token):\(unixDate)"
-                }
-                let recoveryTag = isInProgress ? "Recovered in-progress trainer FIT" : "Recovered trainer FIT"
-                activity.notes = "\(athlete) · \(recoveryTag) · \(IntervalsDateFormatter.dateTimeLocal.string(from: activity.date))"
-                activity.sourceFileName = fitFileName
-                activity.sourceFileType = "fit"
-                activity.sourceFileBase64 = fileData.base64EncodedString()
-
-                let persisted = try persistTrainerActivityWithServerFallback(
-                    activity,
-                    fitFileName: fitFileName
-                )
-                let uploadedOrQueued = uploadExportedFileToRepository(
-                    category: "trainer_fit",
-                    athleteName: persisted.activity.athleteName ?? athlete,
-                    fileName: fitFileName,
-                    mimeType: "application/fit",
-                    sourcePath: fitURL.path,
-                    payload: fileData,
-                    createdAt: persisted.activity.date
-                )
-                if uploadedOrQueued {
-                    report.uploadedOrQueuedCount += 1
-                }
-                report.recoveredCount += 1
-                report.recoveredFiles.append(fitFileName)
-                linkedSourceFileNames.insert(fitFileNameLower)
-            } catch {
-                report.failedCount += 1
-                report.failedFiles.append(fitFileName)
-                appendClientLog(
-                    level: "WARN",
-                    message: "Trainer FIT self-heal (\(trigger)) failed for \(fitFileName): \(detailedErrorDescription(error))"
-                )
-            }
-        }
-
-        do {
-            try repository?.flushPendingWrites()
-        } catch {
-            appendClientLog(
-                level: "WARN",
-                message: "Trainer FIT self-heal (\(trigger)) flush pending writes failed: \(detailedErrorDescription(error))"
-            )
-        }
-
-        return report
-    }
-
-    private func discoverTrainerFITRecoveryCandidates(includeInProgress: Bool) -> [URL] {
-        let fm = FileManager.default
-        var firstSeenByLowerName: [String: URL] = [:]
-
-        for directory in trainerRecordingDirectoryCandidates() {
-            var isDirectory: ObjCBool = false
-            guard fm.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-                continue
-            }
-            guard let rows = try? fm.contentsOfDirectory(
-                at: directory,
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-            ) else {
-                continue
-            }
-            for row in rows where row.pathExtension.lowercased() == "fit" {
-                let lower = row.lastPathComponent.lowercased()
-                guard isRecoverableTrainerFITFileName(lower, includeInProgress: includeInProgress) else { continue }
-                if firstSeenByLowerName[lower] == nil {
-                    firstSeenByLowerName[lower] = row
-                }
-            }
-        }
-
-        return firstSeenByLowerName.values.sorted { lhs, rhs in
-            let leftDate = ((try? lhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate)
-                ?? Date.distantPast
-            let rightDate = ((try? rhs.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate)
-                ?? Date.distantPast
-            if leftDate != rightDate {
-                return leftDate < rightDate
-            }
-            return lhs.lastPathComponent.localizedCaseInsensitiveCompare(rhs.lastPathComponent) == .orderedAscending
-        }
-    }
-
-    private func trainerRecordingDirectoryCandidates() -> [URL] {
-        let fm = FileManager.default
-        var roots: [URL] = []
-        roots.append(URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
-        if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
-            roots.append(documents.appendingPathComponent("Fricu", isDirectory: true))
-        }
-        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-            roots.append(appSupport.appendingPathComponent("Fricu", isDirectory: true))
-        }
-        roots.append(fm.temporaryDirectory.appendingPathComponent("fricu", isDirectory: true))
-
-        var deduped: [URL] = []
-        var seen: Set<String> = []
-        for root in roots {
-            let path = root.standardizedFileURL.path
-            if seen.insert(path).inserted {
-                deduped.append(root.appendingPathComponent("dist/recordings", isDirectory: true))
-            }
-        }
-        return deduped
-    }
-
-    private func isRecoverableTrainerFITFileName(_ lowerFileName: String, includeInProgress: Bool) -> Bool {
-        guard lowerFileName.hasSuffix(".fit") else { return false }
-        if lowerFileName.hasPrefix("trainer-") {
-            return true
-        }
-        if includeInProgress && isInProgressTrainerFITFileName(lowerFileName) {
-            return true
-        }
-        return false
-    }
-
-    private func fallbackDateForTrainerFITImport(at url: URL) -> Date? {
-        if let fromName = trainerFITDateFromFileName(url.lastPathComponent) {
-            return fromName
-        }
-        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .creationDateKey]
-        guard let values = try? url.resourceValues(forKeys: keys) else {
-            return nil
-        }
-        if let modified = values.contentModificationDate {
-            return modified
-        }
-        return values.creationDate
-    }
-
-    private func trainerFITDateFromFileName(_ fileName: String) -> Date? {
-        let lower = fileName.lowercased()
-        guard lower.hasPrefix("trainer-"), lower.hasSuffix(".fit") else { return nil }
-        let stem = String(lower.dropLast(4))
-        let parts = stem.split(separator: "-")
-        // Accept `trainer-YYYYMMDD-HHMMSS.fit` and suffixed variants like `trainer-YYYYMMDD-HHMMSS-1.fit`.
-        guard parts.count >= 3, parts[0] == "trainer" else { return nil }
-        let token = String(parts[1]) + "-" + String(parts[2])
-        guard token.count == 15 else { return nil }
-        return Self.trainerFITRecoveryFileNameDateFormatter.date(from: token)
-    }
-
-    private func trainerFITDateTokenForMatching(lowerFileName: String) -> String? {
-        guard lowerFileName.hasPrefix("trainer-"), lowerFileName.hasSuffix(".fit") else { return nil }
-        let stem = String(lowerFileName.dropLast(4))
-        let parts = stem.split(separator: "-")
-        guard parts.count >= 3 else { return nil }
-        let dateToken = String(parts[1])
-        guard dateToken.count == 8 else { return nil }
-        return dateToken
-    }
-
-    private func normalizedTrainerFITDateToken(_ raw: String?) -> String? {
-        guard let raw = normalizedNonEmptyString(raw) else { return nil }
-        let normalized = raw.replacingOccurrences(of: "-", with: "")
-        guard normalized.count == 8, normalized.allSatisfy(\.isNumber) else { return nil }
-        return normalized
-    }
-
-    private func isInProgressTrainerFITFileName(_ lowerFileName: String) -> Bool {
-        lowerFileName.hasPrefix("in-progress-") && lowerFileName.hasSuffix(".fit")
-    }
-
-    private func trainerSessionIDFromInProgressFITFileName(_ fileName: String) -> UUID? {
-        let lower = fileName.lowercased()
-        guard lower.hasPrefix("in-progress-"), lower.hasSuffix(".fit") else { return nil }
-        let tokenStart = lower.index(lower.startIndex, offsetBy: "in-progress-".count)
-        let tokenEnd = lower.index(lower.endIndex, offsetBy: -4)
-        let token = String(lower[tokenStart..<tokenEnd])
-        return UUID(uuidString: token)
-    }
-
-    private func trainerSessionIDFromFinalizedFITFileName(_ fileName: String) -> UUID? {
-        let lower = fileName.lowercased()
-        guard lower.hasPrefix("trainer-"), lower.hasSuffix(".fit") else { return nil }
-        let stem = String(lower.dropLast(4))
-        let parts = stem.split(separator: "-")
-        guard parts.count >= 4 else { return nil }
-        for part in parts.dropFirst(3) {
-            let raw = String(part)
-            let token: String
-            if raw.hasPrefix("s"), raw.count > 1 {
-                token = String(raw.dropFirst())
-            } else {
-                token = raw
-            }
-            if let id = UUID(uuidString: token) {
-                return id
-            }
-        }
-        return nil
-    }
-
-    private func inferredAthleteNameForRecoveredTrainerFIT(
-        fileName: String,
-        inProgress: Bool,
-        exportedHint: TrainerFITExportHint?
-    ) -> String {
-        if let hinted = exportedHint?.athleteName,
-           let normalizedHint = normalizedNonEmptyString(hinted) {
-            return normalizedHint
-        }
-
-        if inProgress, let sessionID = trainerSessionIDFromInProgressFITFileName(fileName) {
-            if let session = trainerRiderSession(id: sessionID),
-               let sessionName = normalizedNonEmptyString(session.name) {
-                return sessionName
-            }
-            let sessionToken = sessionID.uuidString.uppercased()
-            if let matched = activities.first(where: { ($0.externalID ?? "").uppercased().contains(sessionToken) }),
-               let known = normalizedNonEmptyString(matched.athleteName) {
-                return known
-            }
-        }
-
-        if let sessionID = trainerSessionIDFromFinalizedFITFileName(fileName),
-           let session = trainerRiderSession(id: sessionID),
-           let sessionName = normalizedNonEmptyString(session.name) {
-            return sessionName
-        }
-
-        if let primaryName = primaryTrainerRiderName,
-           let normalizedPrimary = normalizedNonEmptyString(primaryName) {
-            return normalizedPrimary
-        }
-        return selectedAthleteNameForWrite
-    }
-
-    private func repairTrainerFITOwnershipFromExportedHints(trigger: String) -> TrainerFITOwnershipRepairReport {
-        let hintsByFileName = trainerFITExportHintsByFileName()
-        guard !hintsByFileName.isEmpty else { return TrainerFITOwnershipRepairReport() }
-
-        var report = TrainerFITOwnershipRepairReport()
-        var updated = activities
-        for index in updated.indices {
-            guard let fileName = normalizedNonEmptyString(updated[index].sourceFileName)?.lowercased() else { continue }
-            guard isRecoverableTrainerFITFileName(fileName, includeInProgress: true) else { continue }
-            guard let hint = hintsByFileName[fileName] else { continue }
-
-            report.scannedCount += 1
-
-            let currentAthletePanelID = athletePanelID(for: updated[index])
-            let hintedPanelID = athletePanelID(forName: hint.athleteName)
-            guard currentAthletePanelID != hintedPanelID else { continue }
-
-            updated[index].athleteName = hint.athleteName
-            if updated[index].notes.contains("Recovered trainer FIT") ||
-                updated[index].notes.contains("Recovered in-progress trainer FIT") {
-                let recoveryTag = isInProgressTrainerFITFileName(fileName)
-                    ? "Recovered in-progress trainer FIT"
-                    : "Recovered trainer FIT"
-                updated[index].notes = "\(hint.athleteName) · \(recoveryTag) · \(IntervalsDateFormatter.dateTimeLocal.string(from: updated[index].date))"
-            }
-            report.reassignedCount += 1
-        }
-
-        guard report.reassignedCount > 0 else { return report }
-
-        do {
-            try persistActivities(updated)
-            appendClientLog(
-                level: "INFO",
-                message: "Trainer FIT ownership repaired (\(trigger)): reassigned \(report.reassignedCount) activities by exported-file hints."
-            )
-        } catch {
-            report.failedPersist = true
-            appendClientLog(
-                level: "WARN",
-                message: "Trainer FIT ownership repair failed to persist (\(trigger)): \(detailedErrorDescription(error))"
-            )
-        }
-
-        return report
-    }
-
-    private struct TrainerExportedFileRow {
-        let category: String
-        let fileName: String
-        let athleteName: String
-        let createdAt: Date?
-    }
-
-    private func trainerFITExportHintsByFileName() -> [String: TrainerFITExportHint] {
-        let rows = loadTrainerExportedFileRowsFromLocalServerDB()
-        guard !rows.isEmpty else { return [:] }
-
-        var fitHintsByFileName: [String: TrainerFITExportHint] = [:]
-        var screenshotHintsByTimestamp: [String: TrainerFITExportHint] = [:]
-
-        for row in rows {
-            switch row.category {
-            case "trainer_fit":
-                let normalizedFileName = row.fileName.lowercased()
-                if fitHintsByFileName[normalizedFileName] == nil {
-                    fitHintsByFileName[normalizedFileName] = TrainerFITExportHint(
-                        athleteName: row.athleteName,
-                        createdAt: row.createdAt
-                    )
-                }
-            case "bike_computer_screenshot":
-                guard let token = bikeComputerScreenshotTimestampToken(from: row.fileName) else { continue }
-                if screenshotHintsByTimestamp[token] == nil {
-                    screenshotHintsByTimestamp[token] = TrainerFITExportHint(
-                        athleteName: row.athleteName,
-                        createdAt: row.createdAt
-                    )
-                }
-            default:
-                continue
-            }
-        }
-
-        for (fileName, hint) in fitHintsByFileName {
-            guard let token = trainerFITTimestampToken(from: fileName) else { continue }
-            if let screenshotHint = screenshotHintsByTimestamp[token] {
-                fitHintsByFileName[fileName] = TrainerFITExportHint(
-                    athleteName: screenshotHint.athleteName,
-                    createdAt: hint.createdAt ?? screenshotHint.createdAt
-                )
-            }
-        }
-
-        return fitHintsByFileName
-    }
-
-    private func trainerFITTimestampToken(from fileName: String) -> String? {
-        let lower = fileName.lowercased()
-        guard lower.hasPrefix("trainer-"), lower.hasSuffix(".fit") else { return nil }
-        let stem = String(lower.dropLast(4))
-        let parts = stem.split(separator: "-")
-        guard parts.count >= 3 else { return nil }
-        let token = String(parts[1]) + "-" + String(parts[2])
-        return token.count == 15 ? token : nil
-    }
-
-    private func bikeComputerScreenshotTimestampToken(from fileName: String) -> String? {
-        let lower = fileName.lowercased()
-        guard lower.hasPrefix("bike-computer-"), lower.hasSuffix(".png") else { return nil }
-        let stem = String(lower.dropLast(4))
-        let parts = stem.split(separator: "-")
-        guard parts.count >= 4 else { return nil }
-        let token = String(parts[2]) + "-" + String(parts[3])
-        return token.count == 15 ? token : nil
-    }
-
-    private func loadTrainerExportedFileRowsFromLocalServerDB() -> [TrainerExportedFileRow] {
-        #if canImport(SQLite3)
-        func candidates() -> [String] {
-            let fm = FileManager.default
-            var paths: [String] = []
-            if let envPath = ProcessInfo.processInfo.environment["FRICU_DB_PATH"],
-               !envPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                paths.append(envPath)
-            }
-            let cwd = fm.currentDirectoryPath
-            paths.append(URL(fileURLWithPath: cwd).appendingPathComponent("fricu_server.db").path)
-            paths.append(URL(fileURLWithPath: cwd).appendingPathComponent("server/data/fricu.db").path)
-            var deduped: [String] = []
-            var seen: Set<String> = []
-            for path in paths {
-                let normalized = URL(fileURLWithPath: path).standardizedFileURL.path
-                guard seen.insert(normalized).inserted else { continue }
-                guard fm.fileExists(atPath: normalized) else { continue }
-                deduped.append(normalized)
-            }
-            return deduped
-        }
-
-        for dbPath in candidates() {
-            if let rows = loadTrainerExportedFileRowsFromSQLite(dbPath: dbPath), !rows.isEmpty {
-                return rows
-            }
-        }
-        #endif
-        return []
-    }
-
-    #if canImport(SQLite3)
-    private func loadTrainerExportedFileRowsFromSQLite(dbPath: String) -> [TrainerExportedFileRow]? {
-        var db: OpaquePointer?
-        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else {
-            if let db {
-                sqlite3_close(db)
-            }
-            return nil
-        }
-        defer { sqlite3_close(db) }
-
-        let sql = """
-        SELECT
-            json_extract(data_value, '$.category') AS category,
-            json_extract(data_value, '$.fileName') AS file_name,
-            json_extract(data_value, '$.athleteName') AS athlete_name,
-            json_extract(data_value, '$.createdAt') AS created_at
-        FROM kv_store
-        WHERE data_key LIKE 'exported_file_%'
-          AND json_extract(data_value, '$.category') IN ('trainer_fit', 'bike_computer_screenshot')
-        ORDER BY COALESCE(json_extract(data_value, '$.createdAt'), ''), data_key;
-        """
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-            return nil
-        }
-        defer { sqlite3_finalize(statement) }
-
-        var rows: [TrainerExportedFileRow] = []
-        rows.reserveCapacity(64)
-
-        while true {
-            let rc = sqlite3_step(statement)
-            if rc == SQLITE_ROW {
-                guard
-                    let categoryCString = sqlite3_column_text(statement, 0),
-                    let fileNameCString = sqlite3_column_text(statement, 1),
-                    let athleteCString = sqlite3_column_text(statement, 2)
-                else {
-                    continue
-                }
-                let category = String(cString: categoryCString)
-                let fileName = String(cString: fileNameCString).trimmingCharacters(in: .whitespacesAndNewlines)
-                let athleteName = String(cString: athleteCString).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !fileName.isEmpty, !athleteName.isEmpty else { continue }
-                let createdAt: Date?
-                if let createdAtCString = sqlite3_column_text(statement, 3) {
-                    createdAt = DateParsers.parseISO8601(String(cString: createdAtCString))
-                } else {
-                    createdAt = nil
-                }
-                rows.append(
-                    TrainerExportedFileRow(
-                        category: category,
-                        fileName: fileName,
-                        athleteName: athleteName,
-                        createdAt: createdAt
-                    )
-                )
-                continue
-            }
-            if rc == SQLITE_DONE {
-                break
-            }
-            return nil
-        }
-
-        return rows
-    }
-    #endif
-
     private func resolveWritableTrainerRecordingDirectory() throws -> URL {
         let fm = FileManager.default
 
         var roots: [URL] = []
+        #if os(iOS)
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            roots.append(appSupport.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            roots.append(documents.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        #else
         roots.append(URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
         if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
             roots.append(documents.appendingPathComponent("Fricu", isDirectory: true))
@@ -3129,6 +2251,7 @@ final class AppStore: ObservableObject {
         if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
             roots.append(appSupport.appendingPathComponent("Fricu", isDirectory: true))
         }
+        #endif
 
         var attemptNotes: [String] = []
         for root in roots {
@@ -3185,6 +2308,14 @@ final class AppStore: ObservableObject {
     private func resolveWritableActivitiesExportDirectory() throws -> URL {
         let fm = FileManager.default
         var roots: [URL] = []
+        #if os(iOS)
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            roots.append(appSupport.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            roots.append(documents.appendingPathComponent("Fricu", isDirectory: true))
+        }
+        #else
         roots.append(URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true))
         if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
             roots.append(documents.appendingPathComponent("Fricu", isDirectory: true))
@@ -3192,6 +2323,7 @@ final class AppStore: ObservableObject {
         if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
             roots.append(appSupport.appendingPathComponent("Fricu", isDirectory: true))
         }
+        #endif
 
         var attemptNotes: [String] = []
         for root in roots {
@@ -3425,26 +2557,52 @@ final class AppStore: ObservableObject {
         mimeType: String,
         caption: String
     ) async throws {
-        do {
-            try await client.uploadActivityPhoto(
-                accessToken: auth.accessToken,
-                activityID: activityID,
-                photoData: screenshotData,
-                fileName: fileName,
-                mimeType: mimeType,
-                caption: caption
-            )
-        } catch let StravaAPIError.requestFailed(code, _) where code == 401 {
-            auth = try await client.forceRefreshAccessToken(profile: profile)
-            applyStravaAuthUpdate(auth)
-            try await client.uploadActivityPhoto(
-                accessToken: auth.accessToken,
-                activityID: activityID,
-                photoData: screenshotData,
-                fileName: fileName,
-                mimeType: mimeType,
-                caption: caption
-            )
+        var didRefreshAuth = false
+        var retry404Count = 0
+
+        while true {
+            do {
+                try await client.uploadActivityPhoto(
+                    accessToken: auth.accessToken,
+                    activityID: activityID,
+                    photoData: screenshotData,
+                    fileName: fileName,
+                    mimeType: mimeType,
+                    caption: caption
+                )
+                return
+            } catch let StravaAPIError.requestFailed(code, _) where code == 401 && !didRefreshAuth {
+                auth = try await client.forceRefreshAccessToken(profile: profile)
+                applyStravaAuthUpdate(auth)
+                didRefreshAuth = true
+                continue
+            } catch let StravaAPIError.requestFailed(code, body) where code == 404 && retry404Count < 3 {
+                let lowered = body.lowercased()
+                if (lowered.contains("invalid") && lowered.contains("path")) || lowered.contains("record not found") {
+                    appendClientLog(
+                        level: "WARN",
+                        message: "Strava activity \(activityID) uploaded, but screenshot endpoint is unavailable for this app/token. Skipped photo upload. body=\(body)"
+                    )
+                    return
+                }
+                retry404Count += 1
+                appendClientLog(
+                    level: "WARN",
+                    message: "Strava photo upload pending for activity \(activityID) (attempt \(retry404Count)): \(body)"
+                )
+                let waitSec = UInt64(2 * retry404Count)
+                try await Task.sleep(nanoseconds: waitSec * 1_000_000_000)
+                continue
+            } catch let StravaAPIError.requestFailed(code, body)
+                where code == 400 || code == 404 || code == 409 || code == 422 {
+                appendClientLog(
+                    level: "WARN",
+                    message: "Strava activity \(activityID) uploaded, but screenshot upload was skipped (\(code)): \(body)"
+                )
+                return
+            } catch {
+                throw error
+            }
         }
     }
 
@@ -3779,59 +2937,16 @@ final class AppStore: ObservableObject {
     }
 
     func clearAllActivities() {
-        let activityPanels = athletePanelsCache.filter { !$0.isAll && $0.count > 0 }
-        if isAllAthletesSelected, activityPanels.count > 1 {
-            lastError = L10n.choose(
-                simplifiedChinese: "当前处于“全部运动员”视图。请先选择具体运动员面板，再清空该运动员活动。",
-                english: "You are in All Athletes view. Select a specific athlete panel first, then clear that athlete's activities."
-            )
-            return
-        }
-
-        let updated: [Activity]
-        let removedCount: Int
-        if isAllAthletesSelected {
-            updated = []
-            removedCount = activities.count
-        } else {
-            updated = activities.filter { activity in
-                !matchesSelectedAthlete(panelID: athletePanelID(for: activity))
-            }
-            removedCount = activities.count - updated.count
-        }
+        let updated = [Activity]()
+        let removedCount = activities.count
 
         do {
             try persistActivities(updated)
-            if isAllAthletesSelected {
-                self.syncStatus = "Cleared all activities."
-            } else {
-                self.syncStatus = "Cleared \(removedCount) activities for \(selectedAthleteTitle)."
-            }
+            self.syncStatus = "Cleared \(removedCount) activities for \(selectedAthleteTitle)."
             self.lastError = nil
         } catch {
             self.lastError = "Failed to clear activities: \(error.localizedDescription)"
         }
-    }
-
-    func isPrimaryTrainerAthletePanel(panelID: String) -> Bool {
-        guard panelID != AthletePanel.allID else { return false }
-        guard let primaryID = primaryTrainerSessionID,
-              let session = trainerRiderSessions.first(where: { $0.id == primaryID })
-        else { return false }
-        return athletePanelID(forName: session.name) == panelID
-    }
-
-    func canDeleteAthletePanel(panelID: String) -> Bool {
-        _ = panelID
-        return false
-    }
-
-    func deleteAthletePanelAndAssociatedData(panelID: String) {
-        _ = panelID
-        lastError = L10n.choose(
-            simplifiedChinese: "单账号模式下不支持删除运动员面板。",
-            english: "Single-account mode does not support deleting athlete panels."
-        )
     }
 
     func deleteActivities(ids: Set<UUID>) {
@@ -4020,9 +3135,7 @@ final class AppStore: ObservableObject {
             let client = try self.makeIntervalsClient()
             var updated = self.activities
             var pushedCount = 0
-            let targetIndexes = updated.indices.filter { index in
-                self.isAllAthletesSelected || self.matchesSelectedAthlete(panelID: self.athletePanelID(for: updated[index]))
-            }
+            let targetIndexes = Array(updated.indices)
 
             for index in targetIndexes {
                 if updated[index].externalID?.hasPrefix("intervals:") == true {
@@ -4035,11 +3148,7 @@ final class AppStore: ObservableObject {
             }
 
             try self.persistActivities(updated)
-            if self.isAllAthletesSelected {
-                self.syncStatus = "Pushed \(pushedCount) activities to Intervals.icu."
-            } else {
-                self.syncStatus = "Pushed \(pushedCount) activities to Intervals.icu for \(self.selectedAthleteTitle)."
-            }
+            self.syncStatus = "Pushed \(pushedCount) activities to Intervals.icu for \(self.selectedAthleteTitle)."
         }
     }
 
@@ -4384,7 +3493,7 @@ final class AppStore: ObservableObject {
             replace: { existing, remote in
                 var replacement = remote
                 replacement.id = existing.id
-                replacement.athleteName = self.firstNonEmpty(replacement.athleteName, existing.athleteName)
+                replacement.athleteName = self.firstNonEmptyRequired(replacement.athleteName, existing.athleteName)
                 replacement.sourceFileName = self.firstNonEmpty(replacement.sourceFileName, existing.sourceFileName)
                 replacement.sourceFileType = self.firstNonEmpty(replacement.sourceFileType, existing.sourceFileType)
                 if replacement.sourceFileBase64 == nil {
@@ -4430,11 +3539,119 @@ final class AppStore: ObservableObject {
     }
 
     private func loadActivitiesFromLocalCache() -> [Activity]? {
-        nil
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let fm = FileManager.default
+
+        if let accountURL = try? activitiesLocalCacheURL(),
+           fm.fileExists(atPath: accountURL.path) {
+            do {
+                let data = try Data(contentsOf: accountURL)
+                return try decoder.decode([Activity].self, from: data)
+            } catch {
+                appendClientLog(
+                    level: "WARN",
+                    message: "Failed to decode account activity cache: \(detailedErrorDescription(error)) path=\(accountURL.path)"
+                )
+            }
+        }
+
+        for legacyURL in legacyActivitiesCacheCandidateURLs() where fm.fileExists(atPath: legacyURL.path) {
+            do {
+                let data = try Data(contentsOf: legacyURL)
+                let decoded = try decoder.decode([Activity].self, from: data)
+                guard !decoded.isEmpty else { continue }
+                appendClientLog(
+                    level: "WARN",
+                    message: "Recovered \(decoded.count) activities from legacy cache path \(legacyURL.path)."
+                )
+                persistActivitiesToLocalCache(decoded)
+                return decoded
+            } catch {
+                appendClientLog(
+                    level: "WARN",
+                    message: "Failed to decode legacy activity cache: \(detailedErrorDescription(error)) path=\(legacyURL.path)"
+                )
+            }
+        }
+        return nil
     }
 
     private func persistActivitiesToLocalCache(_ rows: [Activity]) {
-        _ = rows
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys]
+
+        do {
+            let targetURL = try activitiesLocalCacheURL()
+            let data = try encoder.encode(rows.sorted { $0.date > $1.date })
+            try data.write(to: targetURL, options: .atomic)
+        } catch {
+            appendClientLog(
+                level: "WARN",
+                message: "Failed to persist local activity cache: \(detailedErrorDescription(error))"
+            )
+        }
+    }
+
+    private func activitiesLocalCacheURL() throws -> URL {
+        try Self.activitiesLocalCacheURL(for: currentAccountID, createDirectory: true)
+    }
+
+    private static func activitiesLocalCacheURL(for accountID: String, createDirectory: Bool) throws -> URL {
+        let fm = FileManager.default
+        let appSupport = try fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let accountDir = appSupport
+            .appendingPathComponent("fricu", isDirectory: true)
+            .appendingPathComponent("accounts", isDirectory: true)
+            .appendingPathComponent(Self.sanitizeAccountIDForPath(accountID), isDirectory: true)
+        if createDirectory, !fm.fileExists(atPath: accountDir.path) {
+            try fm.createDirectory(at: accountDir, withIntermediateDirectories: true)
+        }
+        return accountDir.appendingPathComponent("activities-cache.json")
+    }
+
+    private func legacyActivitiesCacheCandidateURLs() -> [URL] {
+        let fm = FileManager.default
+        var urls: [URL] = []
+        if let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
+            urls.append(
+                appSupport
+                    .appendingPathComponent("Fricu", isDirectory: true)
+                    .appendingPathComponent("activities.json")
+            )
+            urls.append(
+                appSupport
+                    .appendingPathComponent("fricu", isDirectory: true)
+                    .appendingPathComponent("activities.json")
+            )
+        }
+        #if os(iOS)
+        if let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            urls.append(
+                documents
+                    .appendingPathComponent("Fricu", isDirectory: true)
+                    .appendingPathComponent("activities.json")
+            )
+        }
+        #endif
+        return urls
+    }
+
+    private static func sanitizeAccountIDForPath(_ accountID: String) -> String {
+        let mapped = accountID.map { character -> Character in
+            if character.isASCII && (character.isLetter || character.isNumber || character == "-" || character == "_") {
+                return character
+            }
+            return "_"
+        }
+        let text = String(mapped)
+        return text.isEmpty ? "account" : text
     }
 
     private func deduplicateActivities(_ rows: [Activity]) -> [Activity] {
@@ -4525,32 +3742,17 @@ final class AppStore: ObservableObject {
         normalizedNonEmptyString(preferred) ?? normalizedNonEmptyString(fallback)
     }
 
-    private func parseAthleteNameFromLegacyNotes(_ notes: String) -> String? {
-        _ = notes
-        return nil
-    }
-
-    private func athleteDisplayName(for activity: Activity) -> String {
-        _ = activity
-        return currentAccountDisplayName
+    private func firstNonEmptyRequired(_ preferred: String, _ fallback: String) -> String {
+        firstNonEmpty(preferred, fallback) ?? ""
     }
 
     private func athletePanelID(forName name: String?) -> String {
         _ = name
-        return currentAccountPanelID
+        return AthletePanel.singleID
     }
 
     private func athletePanelID(for activity: Activity) -> String {
-        athletePanelID(forName: athleteDisplayName(for: activity))
-    }
-
-    private func matchesSelectedAthlete(panelID: String) -> Bool {
-        _ = panelID
-        return true
-    }
-
-    private func matchesSelectedAthlete(name: String?) -> Bool {
-        matchesSelectedAthlete(panelID: athletePanelID(forName: name))
+        athletePanelID(forName: activity.athleteName)
     }
 
     private func dedupBucket(for activity: Activity) -> ActivityDedupBucket {
@@ -4671,7 +3873,7 @@ final class AppStore: ObservableObject {
         }
 
         var merged = preferred
-        merged.athleteName = firstNonEmpty(preferred.athleteName, fallback.athleteName)
+        merged.athleteName = firstNonEmptyRequired(preferred.athleteName, fallback.athleteName)
         merged.externalID = firstNonEmpty(preferred.externalID, fallback.externalID)
         merged.sourceFileName = firstNonEmpty(preferred.sourceFileName, fallback.sourceFileName)
         merged.sourceFileType = firstNonEmpty(preferred.sourceFileType, fallback.sourceFileType)
@@ -4765,7 +3967,7 @@ final class AppStore: ObservableObject {
             replace: { existing, remote in
                 var replacement = remote
                 replacement.id = existing.id
-                replacement.athleteName = self.firstNonEmpty(replacement.athleteName, existing.athleteName)
+                replacement.athleteName = self.firstNonEmptyRequired(replacement.athleteName, existing.athleteName)
                 return replacement
             }
         )
@@ -4812,7 +4014,7 @@ final class AppStore: ObservableObject {
         }
         try persistWellnessSamples(normalized)
 
-        let scoped = normalized.filter { matchesSelectedAthlete(name: $0.athleteName) }
+        let scoped = normalized
         if let latestHRV = scoped.first(where: { $0.hrv != nil })?.hrv {
             self.profile.hrvToday = latestHRV
         }
@@ -4836,7 +4038,7 @@ final class AppStore: ObservableObject {
             replace: { existing, remote in
                 var replacement = remote
                 replacement.id = existing.id
-                replacement.athleteName = self.firstNonEmpty(replacement.athleteName, existing.athleteName)
+                replacement.athleteName = self.firstNonEmptyRequired(replacement.athleteName, existing.athleteName)
                 return replacement
             }
         )
@@ -5467,10 +4669,10 @@ final class AppStore: ObservableObject {
         let plannedWorkouts: [PlannedWorkout]
         let wellnessSamples: [WellnessSample]
         let intervalsCalendarEvents: [CalendarEvent]
+        let selectedAthletePanelID: String
         let selectedSportFilter: SportType?
         let selectedScenario: TrainingScenario
         let selectedEnduranceFocus: EnduranceFocus
-        let selectedAthletePanelID: String
         let profile: AthleteProfile
         let recommendation: AIRecommendation?
     }
@@ -5488,36 +4690,6 @@ final class AppStore: ObservableObject {
         let scenarioMetricPack: ScenarioMetricPack
     }
 
-    nonisolated private static func normalizedNonEmptyStringForCompute(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return normalized.isEmpty ? nil : normalized
-    }
-
-    nonisolated private static func parseAthleteNameFromLegacyNotesForCompute(_ notes: String) -> String? {
-        _ = notes
-        return nil
-    }
-
-    nonisolated private static func athletePanelIDForCompute(name: String?) -> String {
-        _ = name
-        return "__single_account__"
-    }
-
-    nonisolated private static func athletePanelIDForCompute(activity: Activity) -> String {
-        _ = activity
-        return "__single_account__"
-    }
-
-    nonisolated private static func matchesSelectedAthleteForCompute(
-        panelID: String,
-        selectedAthletePanelID: String
-    ) -> Bool {
-        _ = panelID
-        _ = selectedAthletePanelID
-        return true
-    }
-
     nonisolated private static func dynamicLoadSeriesDaysForCompute(for activities: [Activity]) -> Int {
         guard let oldest = activities.map(\.date).min() else { return 120 }
         let span = Calendar.current.dateComponents([.day], from: oldest, to: Date()).day ?? 120
@@ -5527,49 +4699,25 @@ final class AppStore: ObservableObject {
     nonisolated private static func buildDerivedComputationResult(
         from snapshot: DerivedComputationSnapshot
     ) -> DerivedComputationResult {
+        let filterByAthlete = snapshot.selectedAthletePanelID != AthletePanel.allID
         let athleteScopedActivities = snapshot.activities
-            .filter { activity in
-                matchesSelectedAthleteForCompute(
-                    panelID: athletePanelIDForCompute(activity: activity),
-                    selectedAthletePanelID: snapshot.selectedAthletePanelID
-                )
-            }
+            .filter { !filterByAthlete || AthleteIdentityNormalizer.panelID(from: $0.athleteName) == snapshot.selectedAthletePanelID }
             .sorted { $0.date > $1.date }
 
         let athleteScopedDailyMealPlans = snapshot.dailyMealPlans
-            .filter { plan in
-                matchesSelectedAthleteForCompute(
-                    panelID: athletePanelIDForCompute(name: plan.athleteName),
-                    selectedAthletePanelID: snapshot.selectedAthletePanelID
-                )
-            }
+            .filter { !filterByAthlete || AthleteIdentityNormalizer.panelID(from: $0.athleteName) == snapshot.selectedAthletePanelID }
             .sorted { $0.date > $1.date }
 
         let athleteScopedPlannedWorkouts = snapshot.plannedWorkouts
-            .filter { workout in
-                matchesSelectedAthleteForCompute(
-                    panelID: athletePanelIDForCompute(name: workout.athleteName),
-                    selectedAthletePanelID: snapshot.selectedAthletePanelID
-                )
-            }
+            .filter { !filterByAthlete || AthleteIdentityNormalizer.panelID(from: $0.athleteName) == snapshot.selectedAthletePanelID }
             .sorted { $0.createdAt > $1.createdAt }
 
         let athleteScopedWellnessSamples = snapshot.wellnessSamples
-            .filter { sample in
-                matchesSelectedAthleteForCompute(
-                    panelID: athletePanelIDForCompute(name: sample.athleteName),
-                    selectedAthletePanelID: snapshot.selectedAthletePanelID
-                )
-            }
+            .filter { !filterByAthlete || AthleteIdentityNormalizer.panelID(from: $0.athleteName) == snapshot.selectedAthletePanelID }
             .sorted { $0.date > $1.date }
 
         let athleteScopedCalendarEvents = snapshot.intervalsCalendarEvents
-            .filter { event in
-                matchesSelectedAthleteForCompute(
-                    panelID: athletePanelIDForCompute(name: event.athleteName),
-                    selectedAthletePanelID: snapshot.selectedAthletePanelID
-                )
-            }
+            .filter { !filterByAthlete || AthleteIdentityNormalizer.panelID(from: $0.athleteName) == snapshot.selectedAthletePanelID }
             .sorted { $0.startDate > $1.startDate }
 
         let filteredActivities: [Activity]
@@ -5656,10 +4804,10 @@ final class AppStore: ObservableObject {
             plannedWorkouts: plannedWorkouts,
             wellnessSamples: wellnessSamples,
             intervalsCalendarEvents: intervalsCalendarEvents,
+            selectedAthletePanelID: selectedAthletePanelID,
             selectedSportFilter: selectedSportFilter,
             selectedScenario: selectedScenario,
             selectedEnduranceFocus: selectedEnduranceFocus,
-            selectedAthletePanelID: selectedAthletePanelID,
             profile: profile,
             recommendation: gptRecommendation
         )
@@ -5694,6 +4842,7 @@ struct TrainerBikeComputerSnapshotPayload {
     let startDate: Date
     let endDate: Date
     let elapsedSec: Int
+    let movingSec: Int
     let latestPower: Int?
     let maxPower: Int?
     let latestHeartRate: Int?
@@ -5726,208 +4875,15 @@ struct TrainerBikeComputerSnapshotPayload {
 private struct TrainerBikeComputerSnapshotView: View {
     let payload: TrainerBikeComputerSnapshotPayload
 
-    private var durationText: String {
-        let total = max(0, payload.elapsedSec)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        let s = total % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s)
-        }
-        return String(format: "%02d:%02d", m, s)
-    }
-
-    private func powerText(_ value: Double?) -> String {
-        value.map { String(format: "%.0f W", $0) } ?? "--"
-    }
-
-    private func speedText(_ value: Double?) -> String {
-        value.map { String(format: "%.1f km/h", $0) } ?? "--"
-    }
-
-    private var balanceText: String {
-        guard let left = payload.balanceLeftPercent, let right = payload.balanceRightPercent else { return "--" }
-        return String(format: "L%.1f%% / R%.1f%%", left, right)
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Fricu 实时码表截图")
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.white)
-                    Text("\(payload.riderName) · \(IntervalsDateFormatter.dateTimeLocal.string(from: payload.startDate))")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("时长 \(durationText)")
-                        .font(.system(size: 19, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white)
-                    Text("距离 \(String(format: "%.2f km", payload.distanceKm))")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.82))
-                    Text("热量 \(payload.estimatedCaloriesKCal.map { String(format: "%.0f kcal", $0) } ?? "--")")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.82))
-                }
-            }
-
-            HStack(spacing: 10) {
-                snapshotMetricCard(
-                    title: "功率",
-                    latest: payload.latestPower.map { "\($0) W" } ?? "--",
-                    avg: payload.averagePower.map { "\($0) W" } ?? "--",
-                    extra: "Max \(payload.maxPower.map { "\($0) W" } ?? "--") · NP \(payload.normalizedPower.map { "\($0) W" } ?? "--")",
-                    color: .orange
-                )
-                snapshotMetricCard(
-                    title: "心率",
-                    latest: payload.latestHeartRate.map { "\($0) bpm" } ?? "--",
-                    avg: payload.averageHeartRate.map { "\($0) bpm" } ?? "--",
-                    extra: "Max \(payload.maxHeartRate.map { "\($0) bpm" } ?? "--") · MaxHR区间 \(payload.maxHeartRateForZones) bpm",
-                    color: .red
-                )
-                snapshotMetricCard(
-                    title: "踏频/速度/平衡",
-                    latest: payload.latestCadence.map { "\($0) rpm" } ?? "--",
-                    avg: payload.averageCadence.map { "\($0) rpm" } ?? "--",
-                    extra: "Speed \(speedText(payload.latestSpeedKPH)) / \(speedText(payload.averageSpeedKPH)) · \(balanceText)",
-                    color: .green
-                )
-            }
-
-            HStack(spacing: 10) {
-                snapshotMetricCard(
-                    title: "功率窗口",
-                    latest: "5s \(powerText(payload.power5s))",
-                    avg: "30s \(powerText(payload.power30s))",
-                    extra: "1m \(powerText(payload.power1m)) · 20m \(powerText(payload.power20m)) · 60m \(powerText(payload.power60m))",
-                    color: .pink
-                )
-                snapshotZoneCard(
-                    title: "功率分区",
-                    rows: payload.powerZoneSec,
-                    tint: .orange
-                )
-                snapshotZoneCard(
-                    title: "心率分区",
-                    rows: payload.heartRateZoneSec,
-                    tint: .red
-                )
-            }
-
-            HStack(spacing: 10) {
-                snapshotSparkline(title: "Power", points: payload.powerTrace, color: .orange)
-                snapshotSparkline(title: "Heart Rate", points: payload.heartRateTrace, color: .red)
-                snapshotSparkline(title: "Cadence", points: payload.cadenceTrace, color: .green)
-            }
-        }
-        .padding(22)
-        .frame(width: 1280, height: 720, alignment: .topLeading)
-        .background(
-            LinearGradient(colors: [Color(red: 0.11, green: 0.12, blue: 0.16), Color(red: 0.08, green: 0.09, blue: 0.12)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        BikeComputerLightDashboardView(
+            model: payload.lightDashboardModel(
+                title: "Fricu 实时码表截图",
+                subtitle: "\(payload.riderName) · \(IntervalsDateFormatter.dateTimeLocal.string(from: payload.startDate))",
+                alerts: []
+            )
         )
-    }
-
-    @ViewBuilder
-    private func snapshotMetricCard(title: String, latest: String, avg: String, extra: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
-            Text(latest)
-                .font(.system(size: 28, weight: .heavy, design: .rounded))
-                .foregroundStyle(.white)
-            Text("均值 \(avg)")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.white.opacity(0.75))
-            Text(extra)
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(color.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(color.opacity(0.55), lineWidth: 1))
-    }
-
-    @ViewBuilder
-    private func snapshotZoneCard(title: String, rows: [Int], tint: Color) -> some View {
-        let total = max(1, rows.reduce(0, +))
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
-            ForEach(Array(rows.enumerated()), id: \.offset) { index, sec in
-                let ratio = Double(sec) / Double(total)
-                HStack(spacing: 6) {
-                    Text("Z\(index + 1)")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .frame(width: 26, alignment: .leading)
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.white.opacity(0.08))
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(tint.opacity(0.75))
-                                .frame(width: geo.size.width * ratio)
-                        }
-                    }
-                    .frame(height: 8)
-                    Text("\(sec.asDuration)")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .frame(width: 48, alignment: .trailing)
-                }
-                .frame(height: 16)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(tint.opacity(0.16), in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.50), lineWidth: 1))
-    }
-
-    @ViewBuilder
-    private func snapshotSparkline(title: String, points: [Double], color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.85))
-            SnapshotSparkline(points: points)
-                .stroke(color, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                .frame(height: 96)
-                .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-private struct SnapshotSparkline: Shape {
-    let points: [Double]
-
-    func path(in rect: CGRect) -> Path {
-        guard points.count >= 2 else { return Path() }
-        let minValue = points.min() ?? 0
-        let maxValue = points.max() ?? 1
-        let span = max(1e-6, maxValue - minValue)
-        var path = Path()
-        for (index, value) in points.enumerated() {
-            let x = rect.minX + (CGFloat(index) / CGFloat(max(points.count - 1, 1))) * rect.width
-            let normalized = (value - minValue) / span
-            let y = rect.maxY - CGFloat(normalized) * rect.height
-            if index == 0 {
-                path.move(to: CGPoint(x: x, y: y))
-            } else {
-                path.addLine(to: CGPoint(x: x, y: y))
-            }
-        }
-        return path
+        .frame(width: 1280, height: 720, alignment: .topLeading)
     }
 }
 

@@ -57,21 +57,11 @@ struct ActivityLibraryView: View {
         allActivitiesInCurrentSportScope
     }
 
-    private var isAllAthletesPanelSelected: Bool {
-        store.isAllAthletesSelected
-    }
-
     private var canClearSelectedAthleteActivities: Bool {
-        !store.isAllAthletesSelected && !store.athleteScopedActivities.isEmpty
+        !store.athleteScopedActivities.isEmpty
     }
 
     private var clearActivitiesButtonTitle: String {
-        if store.isAllAthletesSelected {
-            return L10n.choose(
-                simplifiedChinese: "先选择运动员再清空",
-                english: "Select Athlete to Clear"
-            )
-        }
         return L10n.choose(
             simplifiedChinese: "清空当前运动员活动",
             english: "Clear Athlete Activities"
@@ -92,19 +82,8 @@ struct ActivityLibraryView: View {
     private func athleteDisplayName(for activity: Activity) -> String {
         AthleteIdentityNormalizer.displayName(
             rawName: activity.athleteName,
-            notes: activity.notes,
             fallback: L10n.choose(simplifiedChinese: "默认运动员", english: "Default Athlete")
         )
-    }
-
-    private func normalizedNonEmpty(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
-    }
-
-    private func parseAthleteNameFromLegacyNotes(_ notes: String) -> String? {
-        AthleteIdentityNormalizer.extractName(fromLegacyText: notes)
     }
 
     private var activitiesByDay: [Date: [Activity]] {
@@ -167,12 +146,20 @@ struct ActivityLibraryView: View {
     private var summaryRows: [Activity] {
         let base = searchFilteredActivities
         let calendar = Calendar.current
-        if let selectedCalendarDay {
-            return base.filter { calendar.isDate($0.date, inSameDayAs: selectedCalendarDay) }
-        }
         let days = visibleCalendarDays
         guard !days.isEmpty else { return base }
         return base.filter { days.contains(calendar.startOfDay(for: $0.date)) }
+    }
+
+    private var summaryScopeSubtitle: String {
+        switch calendarScope {
+        case .week:
+            return L10n.choose(simplifiedChinese: "当前周范围", english: "Current week range")
+        case .month:
+            return L10n.choose(simplifiedChinese: "当前月范围", english: "Current month range")
+        case .year:
+            return L10n.choose(simplifiedChinese: "当前年范围", english: "Current year range")
+        }
     }
 
     private var activities: [Activity] {
@@ -209,7 +196,7 @@ struct ActivityLibraryView: View {
                 id: "count",
                 title: L10n.choose(simplifiedChinese: "活动数量", english: "Activities"),
                 value: "\(rows.count)",
-                subtitle: L10n.choose(simplifiedChinese: "当前日历范围", english: "Current calendar range"),
+                subtitle: summaryScopeSubtitle,
                 tint: .blue,
                 emphasis: clampLevel(Double(rows.count) / 240.0)
             ),
@@ -256,6 +243,97 @@ struct ActivityLibraryView: View {
         ]
     }
 
+    private var diagnosticsRefreshKey: String {
+        [
+            store.currentAccountID,
+            store.serverHost,
+            store.serverPort,
+            String(store.athleteScopedActivities.count)
+        ].joined(separator: "|")
+    }
+
+    private var activityRecoveryDiagnosticsBar: some View {
+        let diagnostics = store.activityRecoveryDiagnostics
+        let remoteValue: String = {
+            if diagnostics.isLoading {
+                return L10n.choose(simplifiedChinese: "检查中…", english: "Checking...")
+            }
+            if let remoteCount = diagnostics.remoteCount {
+                return "\(remoteCount)"
+            }
+            return L10n.choose(simplifiedChinese: "读取失败", english: "Failed")
+        }()
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Label(
+                    L10n.choose(simplifiedChinese: "活动恢复诊断条", english: "Activity Recovery Diagnostics"),
+                    systemImage: "stethoscope"
+                )
+                .font(.subheadline.weight(.semibold))
+                Spacer()
+                if let updatedAt = diagnostics.updatedAt {
+                    Text(updatedAt.formatted(date: .omitted, time: .shortened))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Button(L10n.choose(simplifiedChinese: "刷新", english: "Refresh")) {
+                    store.refreshActivityRecoveryDiagnostics()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 220), spacing: 10, alignment: .leading)],
+                alignment: .leading,
+                spacing: 8
+            ) {
+                ActivityRecoveryDiagnosticItem(
+                    label: L10n.choose(simplifiedChinese: "Account ID", english: "Account ID"),
+                    value: diagnostics.accountID
+                )
+                ActivityRecoveryDiagnosticItem(
+                    label: L10n.choose(simplifiedChinese: "Server Endpoint", english: "Server Endpoint"),
+                    value: diagnostics.serverEndpoint
+                )
+                ActivityRecoveryDiagnosticItem(
+                    label: L10n.choose(simplifiedChinese: "远端条数", english: "Remote Count"),
+                    value: remoteValue,
+                    tint: diagnostics.remoteCount == nil ? .orange : .green
+                )
+                ActivityRecoveryDiagnosticItem(
+                    label: L10n.choose(simplifiedChinese: "本地缓存条数", english: "Local Cache Count"),
+                    value: "\(diagnostics.localCacheCount)"
+                )
+            }
+
+            if diagnostics.repositoryLocalCacheCount != diagnostics.localCacheCount {
+                Text(
+                    L10n.choose(
+                        simplifiedChinese: "仓库缓存条数 \(diagnostics.repositoryLocalCacheCount)，与本地缓存不一致。",
+                        english: "Repository cache count \(diagnostics.repositoryLocalCacheCount) differs from local cache."
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+
+            if let remoteError = diagnostics.remoteError, !remoteError.isEmpty {
+                Text(
+                    L10n.choose(
+                        simplifiedChinese: "远端读取异常：\(remoteError)",
+                        english: "Remote read error: \(remoteError)"
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(.orange)
+            }
+        }
+        .padding(12)
+        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -271,6 +349,8 @@ struct ActivityLibraryView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 }
+
+                activityRecoveryDiagnosticsBar
 
                 LazyVGrid(
                     columns: [
@@ -307,17 +387,6 @@ struct ActivityLibraryView: View {
                         .foregroundStyle(.secondary)
                         .font(.caption)
                 }
-                if store.isAllAthletesSelected {
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "已禁用全库清空。请先在顶部下拉框选择某个运动员，再清空该运动员活动。",
-                            english: "Global clear is disabled. Select an athlete from the top dropdown first, then clear only that athlete's activities."
-                        )
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-
                 ActivityCalendarPanel(
                     activitiesByDay: activitiesByDay,
                     scope: $calendarScope,
@@ -353,14 +422,6 @@ struct ActivityLibraryView: View {
                                     HStack {
                                         Text(activity.sport.label)
                                             .font(.headline)
-                                        if isAllAthletesPanelSelected {
-                                            Text(athleteDisplayName(for: activity))
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                                .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
-                                                .background(Color.secondary.opacity(0.12), in: Capsule())
-                                        }
                                         Spacer()
                                         Text(activity.date, style: .date)
                                             .foregroundStyle(.secondary)
@@ -402,7 +463,10 @@ struct ActivityLibraryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(24)
-        .onChange(of: store.athletePanels.map(\.id)) { _, _ in
+        .task(id: diagnosticsRefreshKey) {
+            store.refreshActivityRecoveryDiagnostics()
+        }
+        .onChange(of: store.selectedAthletePanelID) { _, _ in
             guard let selectedCalendarDay else { return }
             let selected = Calendar.current.startOfDay(for: selectedCalendarDay)
             if activitiesByDay[selected] == nil {
@@ -435,21 +499,12 @@ struct ActivityLibraryView: View {
                 store.clearAllActivities()
             }
         } message: {
-            if store.isAllAthletesSelected {
-                Text(
-                    L10n.choose(
-                        simplifiedChinese: "这将从本地存储永久移除全部活动。",
-                        english: "This will permanently remove all activities from local storage."
-                    )
+            Text(
+                L10n.choose(
+                    simplifiedChinese: "这将从本地存储永久移除 \(store.selectedAthleteTitle) 的全部活动。",
+                    english: "This will permanently remove activities for \(store.selectedAthleteTitle) from local storage."
                 )
-            } else {
-                Text(
-                    L10n.choose(
-                        simplifiedChinese: "这将从本地存储永久移除 \(store.selectedAthleteTitle) 的全部活动。",
-                        english: "This will permanently remove activities for \(store.selectedAthleteTitle) from local storage."
-                    )
-                )
-            }
+            )
         }
         .sheet(item: $selectedActivity) { activity in
             ActivityDetailSheet(
@@ -458,6 +513,26 @@ struct ActivityLibraryView: View {
                 loadSeries: store.loadSeries
             )
             .frame(minWidth: 820, minHeight: 620)
+        }
+    }
+}
+
+private struct ActivityRecoveryDiagnosticItem: View {
+    let label: String
+    let value: String
+    var tint: Color = .primary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
         }
     }
 }
@@ -1237,14 +1312,14 @@ private struct ActivityDetailSheet: View {
     }
 
     private var powerDistributionBins: [ActivityDistributionBin] {
-        distributionBins(from: powerTracePoints, binCount: 12, unit: "W")
+        distributionBins(from: powerTracePoints, binCount: 12)
     }
 
     private var heartRateDistributionBins: [ActivityDistributionBin] {
-        distributionBins(from: heartRateTracePoints, binCount: 12, unit: "bpm")
+        distributionBins(from: heartRateTracePoints, binCount: 12)
     }
 
-    private func distributionBins(from points: [ActivityTracePoint], binCount: Int, unit: String) -> [ActivityDistributionBin] {
+    private func distributionBins(from points: [ActivityTracePoint], binCount: Int) -> [ActivityDistributionBin] {
         let values = points.map(\.value).filter { $0.isFinite && $0 > 0 }
         guard values.count >= 2 else { return [] }
         let minValue = values.min() ?? 0
@@ -1264,9 +1339,13 @@ private struct ActivityDetailSheet: View {
         return counts.enumerated().map { idx, count in
             let lower = minValue + Double(idx) * binWidth
             let upper = idx == safeBinCount - 1 ? maxValue : lower + binWidth
+            let lowerInt = Int(lower.rounded())
+            let upperInt = Int(upper.rounded())
             return ActivityDistributionBin(
                 id: idx,
-                rangeLabel: "\(Int(lower.rounded()))-\(Int(upper.rounded())) \(unit)",
+                lowerBound: lowerInt,
+                upperBound: upperInt,
+                rangeLabel: "\(lowerInt)-\(upperInt)",
                 valueMidpoint: (lower + upper) * 0.5,
                 sampleCount: count,
                 fraction: Double(count) / Double(total)
@@ -2989,6 +3068,8 @@ private struct ActivityPowerZoneBand: Identifiable {
 
 private struct ActivityDistributionBin: Identifiable {
     let id: Int
+    let lowerBound: Int
+    let upperBound: Int
     let rangeLabel: String
     let valueMidpoint: Double
     let sampleCount: Int
@@ -3013,6 +3094,17 @@ private struct ActivityDistributionCard: View {
     let color: Color
     let bins: [ActivityDistributionBin]
 
+    private var xAxisTickIndices: [Int] {
+        guard !bins.isEmpty else { return [] }
+        let desiredTickCount = min(6, bins.count)
+        let step = max(1, Int(ceil(Double(bins.count) / Double(desiredTickCount))))
+        var ticks = Array(stride(from: 0, to: bins.count, by: step))
+        if let last = bins.indices.last, ticks.last != last {
+            ticks.append(last)
+        }
+        return ticks
+    }
+
     var body: some View {
         let mode = chartModeStore.mode(for: title, fallback: chartDisplayMode)
         GroupBox(title) {
@@ -3026,46 +3118,67 @@ private struct ActivityDistributionCard: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Chart(bins) { bin in
-                        switch mode {
-                        case .line:
-                            LineMark(
-                                x: .value("Range", bin.rangeLabel),
-                                y: .value("Samples", bin.sampleCount)
-                            )
-                            .foregroundStyle(color)
-                            .interpolationMethod(.linear)
-                        case .bar:
-                            BarMark(
-                                x: .value("Range", bin.rangeLabel),
-                                y: .value("Samples", bin.sampleCount)
-                            )
-                            .foregroundStyle(color.gradient)
-                        case .pie:
+                    if mode == .pie {
+                        Chart(bins) { bin in
                             SectorMark(
                                 angle: .value("Samples", max(0, bin.sampleCount)),
                                 innerRadius: .ratio(0.56),
                                 angularInset: 1
                             )
                             .foregroundStyle(color.opacity(0.8))
-                        case .flame:
-                            BarMark(
-                                x: .value("Range", bin.rangeLabel),
-                                y: .value("Samples", max(0, bin.sampleCount))
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.yellow, .orange, color],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
                         }
+                        .frame(height: 150)
+                    } else {
+                        Chart(bins) { bin in
+                            switch mode {
+                            case .line:
+                                LineMark(
+                                    x: .value("Bin", bin.id),
+                                    y: .value("Samples", bin.sampleCount)
+                                )
+                                .foregroundStyle(color)
+                                .interpolationMethod(.linear)
+                            case .bar:
+                                BarMark(
+                                    x: .value("Bin", bin.id),
+                                    y: .value("Samples", bin.sampleCount)
+                                )
+                                .foregroundStyle(color.gradient)
+                            case .flame:
+                                BarMark(
+                                    x: .value("Bin", bin.id),
+                                    y: .value("Samples", max(0, bin.sampleCount))
+                                )
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        colors: [.yellow, .orange, color],
+                                        startPoint: .bottom,
+                                        endPoint: .top
+                                    )
+                                )
+                            case .pie:
+                                BarMark(
+                                    x: .value("Bin", bin.id),
+                                    y: .value("Samples", bin.sampleCount)
+                                )
+                                .foregroundStyle(color.gradient)
+                            }
+                        }
+                        .chartXAxis {
+                            AxisMarks(values: xAxisTickIndices) { value in
+                                AxisGridLine()
+                                AxisTick()
+                                AxisValueLabel {
+                                    if let idx = value.as(Int.self), bins.indices.contains(idx) {
+                                        let bin = bins[idx]
+                                        Text("\(bin.lowerBound)-\(bin.upperBound)")
+                                            .font(.caption2.monospacedDigit())
+                                    }
+                                }
+                            }
+                        }
+                        .frame(height: 150)
                     }
-                    .chartXAxis {
-                        AxisMarks(values: .automatic(desiredCount: 4))
-                    }
-                    .frame(height: 120)
 
                     HStack {
                         Text("Peak: \(Int((bins.max(by: { $0.sampleCount < $1.sampleCount })?.valueMidpoint ?? 0).rounded())) \(unitLabel)")

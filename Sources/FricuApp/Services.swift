@@ -69,9 +69,9 @@ extension DataRepository {
 
 struct AppSettingsSnapshot: Codable {
     var trainerRiderConnectionStoreData: Data?
-    var athleteProfileStoreData: Data?
     var appLanguageRawValue: String?
     var chartDisplayModeRawValue: String?
+    var chartDisplayModesByStorageKey: [String: String]?
     var nutritionUSDAAPIKey: String?
     var stravaPullRecentDays: Int?
     var serverHost: String?
@@ -80,9 +80,9 @@ struct AppSettingsSnapshot: Codable {
 
     var isEmpty: Bool {
         trainerRiderConnectionStoreData == nil &&
-            athleteProfileStoreData == nil &&
             appLanguageRawValue == nil &&
             chartDisplayModeRawValue == nil &&
+            (chartDisplayModesByStorageKey?.isEmpty != false) &&
             nutritionUSDAAPIKey == nil &&
             stravaPullRecentDays == nil &&
             serverHost == nil &&
@@ -110,7 +110,15 @@ enum RepositoryError: Error {
     case noResponse
 }
 
-final class RemoteHTTPRepository: DataRepository {
+struct ActivityRecoveryRepositoryDiagnostics: Equatable {
+    var accountID: String
+    var endpoint: String
+    var remoteCount: Int?
+    var localCacheCount: Int
+    var remoteError: String?
+}
+
+final class RemoteHTTPRepository: DataRepository, @unchecked Sendable {
     static let serverURLDefaultsKey = "fricu.server.baseURL"
     static let fallbackServerURLString = "http://127.0.0.1:8080"
 
@@ -120,6 +128,8 @@ final class RemoteHTTPRepository: DataRepository {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private let pendingWritesURL: URL
+    private let profileCacheURL: URL
+    private let activitiesCacheURL: URL
 
     init(baseURL: URL? = nil, session: URLSession? = nil, accountID: String) throws {
         let normalizedAccountID = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -156,6 +166,8 @@ final class RemoteHTTPRepository: DataRepository {
             .appendingPathComponent(Self.sanitizeAccountIDForPath(normalizedAccountID), isDirectory: true)
         try FileManager.default.createDirectory(at: pendingDir, withIntermediateDirectories: true)
         self.pendingWritesURL = pendingDir.appendingPathComponent("remote_pending_writes.json")
+        self.profileCacheURL = pendingDir.appendingPathComponent("profile_cache.json")
+        self.activitiesCacheURL = pendingDir.appendingPathComponent("activities_cache.json")
 
         if let session {
             self.session = session
@@ -186,6 +198,48 @@ final class RemoteHTTPRepository: DataRepository {
     /// Compatibility wrapper for deployments that expose activities inside a snapshot object.
     private struct ActivitiesSnapshotEnvelope: Decodable {
         let activities: [Activity]
+    }
+
+    /// Lossy array decoder that keeps valid rows and skips malformed rows.
+    private struct LossyDecodableArray<Element: Decodable>: Decodable {
+        let values: [Element]
+
+        init(from decoder: Decoder) throws {
+            var container = try decoder.unkeyedContainer()
+            var parsed: [Element] = []
+            parsed.reserveCapacity(container.count ?? 0)
+            while !container.isAtEnd {
+                if let element = try? container.decode(Element.self) {
+                    parsed.append(element)
+                    continue
+                }
+                // Consume one malformed element to keep forward progress.
+                _ = try? container.decode(JSONDiscardValue.self)
+            }
+            values = parsed
+        }
+    }
+
+    private struct JSONDiscardValue: Decodable {}
+
+    /// Compatibility wrapper for snapshot envelopes with lossy `activities` decoding.
+    private struct LossyActivitiesSnapshotEnvelope: Decodable {
+        let activities: [Activity]
+
+        private enum CodingKeys: String, CodingKey {
+            case activities
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if let strict = try? container.decode([Activity].self, forKey: .activities) {
+                activities = strict
+            } else if let lossy = try? container.decode(LossyDecodableArray<Activity>.self, forKey: .activities) {
+                activities = lossy.values
+            } else {
+                activities = []
+            }
+        }
     }
 
     private static func sanitizeAccountIDForPath(_ accountID: String) -> String {
@@ -295,6 +349,119 @@ final class RemoteHTTPRepository: DataRepository {
         baseURL.appendingPathComponent("v1/data/\(key)")
     }
 
+    private func saveProfileCache(_ profile: AthleteProfile) {
+        do {
+            let data = try encoder.encode(profile)
+            try writeDataDurably(data, to: profileCacheURL)
+        } catch {
+            // Keep remote operations non-blocking if cache write fails.
+        }
+    }
+
+    private func loadProfileCache() -> AthleteProfile? {
+        guard FileManager.default.fileExists(atPath: profileCacheURL.path) else {
+            return nil
+        }
+        do {
+            let data = try Data(contentsOf: profileCacheURL)
+            return try decoder.decode(AthleteProfile.self, from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    private func loadPendingProfileWrite() -> AthleteProfile? {
+        do {
+            let writes = try loadPendingWrites()
+                .filter { $0.key == "profile" }
+                .sorted { $0.createdAt > $1.createdAt }
+            guard let latest = writes.first else {
+                return nil
+            }
+            return try decoder.decode(AthleteProfile.self, from: latest.payload)
+        } catch {
+            return nil
+        }
+    }
+
+    private func saveActivitiesCache(_ activities: [Activity]) {
+        do {
+            let rows = activities.sorted { $0.date > $1.date }
+            let data = try encoder.encode(rows)
+            try writeDataDurably(data, to: activitiesCacheURL)
+        } catch {
+            // Keep remote operations non-blocking if cache write fails.
+        }
+    }
+
+    private func loadActivitiesCache() -> [Activity]? {
+        guard FileManager.default.fileExists(atPath: activitiesCacheURL.path) else {
+            return nil
+        }
+        do {
+            let data = try Data(contentsOf: activitiesCacheURL)
+            return try decoder.decode([Activity].self, from: data).sorted { $0.date > $1.date }
+        } catch {
+            return nil
+        }
+    }
+
+    private func loadPendingActivitiesWrite() -> [Activity]? {
+        do {
+            let writes = try loadPendingWrites()
+                .filter { $0.key == "activities" }
+                .sorted { $0.createdAt > $1.createdAt }
+            guard let latest = writes.first else {
+                return nil
+            }
+            return try decoder.decode([Activity].self, from: latest.payload)
+                .sorted { $0.date > $1.date }
+        } catch {
+            return nil
+        }
+    }
+
+    private func decodeActivitiesPayload(_ data: Data) throws -> [Activity] {
+        if let rows = try? decoder.decode([Activity].self, from: data) {
+            return rows.sorted { $0.date > $1.date }
+        }
+
+        // Backward/interop safety: accept `{ "activities": [...] }` payloads.
+        if let envelope = try? decoder.decode(ActivitiesSnapshotEnvelope.self, from: data) {
+            return envelope.activities.sorted { $0.date > $1.date }
+        }
+
+        // Lossy fallback: keep valid rows even if historical payload contains malformed entries.
+        if let lossyRows = try? decoder.decode(LossyDecodableArray<Activity>.self, from: data),
+           !lossyRows.values.isEmpty {
+            return lossyRows.values.sorted { $0.date > $1.date }
+        }
+        if let lossyEnvelope = try? decoder.decode(LossyActivitiesSnapshotEnvelope.self, from: data),
+           !lossyEnvelope.activities.isEmpty {
+            return lossyEnvelope.activities.sorted { $0.date > $1.date }
+        }
+
+        return try decoder.decode([Activity].self, from: data).sorted { $0.date > $1.date }
+    }
+
+    private func describeError(_ error: Error) -> String {
+        if let repositoryError = error as? RepositoryError {
+            switch repositoryError {
+            case .httpError(let statusCode):
+                return "HTTP \(statusCode)"
+            case .noResponse:
+                return "No response"
+            case .invalidServerURL:
+                return "Invalid server URL"
+            case .invalidAccountID:
+                return "Invalid account ID"
+            case .appSupportUnavailable:
+                return "Application Support unavailable"
+            }
+        }
+        return (error as NSError).localizedDescription
+    }
+
     private func fetch<T: Decodable>(_ key: String, as type: T.Type) throws -> T {
         var req = URLRequest(url: endpoint(key))
         req.httpMethod = "GET"
@@ -379,24 +546,56 @@ final class RemoteHTTPRepository: DataRepository {
     }
 
     func loadActivities() throws -> [Activity] {
-        var req = URLRequest(url: endpoint("activities"))
-        req.httpMethod = "GET"
-        applyAccountHeader(request: &req)
-        let data = try execute(req)
-        if let rows = try? decoder.decode([Activity].self, from: data) {
-            return rows.sorted { $0.date > $1.date }
+        do {
+            var req = URLRequest(url: endpoint("activities"))
+            req.httpMethod = "GET"
+            applyAccountHeader(request: &req)
+            let data = try execute(req)
+            let rows = try decodeActivitiesPayload(data)
+            saveActivitiesCache(rows)
+            return rows
+        } catch {
+            if let cached = loadActivitiesCache(), !cached.isEmpty {
+                return cached
+            }
+            if let pending = loadPendingActivitiesWrite(), !pending.isEmpty {
+                saveActivitiesCache(pending)
+                return pending
+            }
+            throw error
         }
+    }
 
-        // Backward/interop safety: accept `{ "activities": [...] }` payloads.
-        if let envelope = try? decoder.decode(ActivitiesSnapshotEnvelope.self, from: data) {
-            return envelope.activities.sorted { $0.date > $1.date }
+    func activityRecoveryDiagnostics() -> ActivityRecoveryRepositoryDiagnostics {
+        let localCacheCount = loadActivitiesCache()?.count ?? 0
+        do {
+            var req = URLRequest(url: endpoint("activities"))
+            req.httpMethod = "GET"
+            applyAccountHeader(request: &req)
+            let data = try execute(req)
+            let rows = try decodeActivitiesPayload(data)
+            return ActivityRecoveryRepositoryDiagnostics(
+                accountID: accountID,
+                endpoint: baseURL.absoluteString,
+                remoteCount: rows.count,
+                localCacheCount: localCacheCount,
+                remoteError: nil
+            )
+        } catch {
+            return ActivityRecoveryRepositoryDiagnostics(
+                accountID: accountID,
+                endpoint: baseURL.absoluteString,
+                remoteCount: nil,
+                localCacheCount: localCacheCount,
+                remoteError: describeError(error)
+            )
         }
-
-        return try decoder.decode([Activity].self, from: data).sorted { $0.date > $1.date }
     }
 
     func saveActivities(_ activities: [Activity]) throws {
-        try push("activities", value: activities)
+        let sorted = activities.sorted { $0.date > $1.date }
+        saveActivitiesCache(sorted)
+        try push("activities", value: sorted)
     }
 
     func loadActivityMetricInsights() throws -> [ActivityMetricInsight] {
@@ -450,13 +649,34 @@ final class RemoteHTTPRepository: DataRepository {
 
     func loadProfile() throws -> AthleteProfile {
         do {
-            return try fetch("profile", as: AthleteProfile.self)
+            let profile = try fetch("profile", as: AthleteProfile.self)
+            saveProfileCache(profile)
+            return profile
+        } catch RepositoryError.httpError(404) {
+            if let cached = loadProfileCache() {
+                return cached
+            }
+            if let pending = loadPendingProfileWrite() {
+                return pending
+            }
+            let fallback = AthleteProfile.default
+            saveProfileCache(fallback)
+            return fallback
         } catch {
-            return .default
+            if let cached = loadProfileCache() {
+                return cached
+            }
+            if let pending = loadPendingProfileWrite() {
+                return pending
+            }
+            let fallback = AthleteProfile.default
+            saveProfileCache(fallback)
+            return fallback
         }
     }
 
     func saveProfile(_ profile: AthleteProfile) throws {
+        saveProfileCache(profile)
         try push("profile", value: profile)
     }
 

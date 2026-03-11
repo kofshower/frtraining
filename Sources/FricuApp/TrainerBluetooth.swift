@@ -74,6 +74,7 @@ final class SmartTrainerManager: NSObject, ObservableObject {
     private var rssiByPeripheral: [UUID: Int] = [:]
     private var pendingScanRequest = false
     private var preferredAutoConnectDeviceID: UUID?
+    private var preferredAutoConnectDeviceName: String?
     private var didAttemptAutoConnectForCurrentScan = false
 
     private var connectedPeripheral: CBPeripheral?
@@ -149,6 +150,8 @@ final class SmartTrainerManager: NSObject, ObservableObject {
     func connect(deviceID: UUID) {
         guard let central = ensureCentralManager() else { return }
         guard let peripheral = peripherals[deviceID] else { return }
+        preferredAutoConnectDeviceID = deviceID
+        preferredAutoConnectDeviceName = normalizedDeviceName(peripheral.name)
         stopScan()
         lastMessage = "Connecting to \(peripheral.name ?? "Trainer")..."
         central.connect(peripheral, options: nil)
@@ -163,9 +166,25 @@ final class SmartTrainerManager: NSObject, ObservableObject {
         preferredAutoConnectDeviceID = deviceID
     }
 
+    func setPreferredAutoConnectDeviceName(_ deviceName: String?) {
+        preferredAutoConnectDeviceName = normalizedDeviceName(deviceName)
+    }
+
     func startAutoConnectIfPossible() {
-        guard preferredAutoConnectDeviceID != nil else { return }
+        guard preferredAutoConnectDeviceID != nil || preferredAutoConnectDeviceName != nil else { return }
         guard !isConnected else { return }
+        if let central = ensureCentralManager(),
+           central.state == .poweredOn,
+           let preferredID = preferredAutoConnectDeviceID {
+            let retrieved = central.retrievePeripherals(withIdentifiers: [preferredID])
+            if let peripheral = retrieved.first {
+                peripherals[peripheral.identifier] = peripheral
+                rssiByPeripheral[peripheral.identifier] = rssiByPeripheral[peripheral.identifier] ?? -99
+                lastMessage = "Reconnecting preferred trainer..."
+                central.connect(peripheral, options: nil)
+                return
+            }
+        }
         if !isScanning {
             startScan()
         }
@@ -204,13 +223,30 @@ final class SmartTrainerManager: NSObject, ObservableObject {
         lastMessage = "Scanning Wahoo / Garmin / FTMS trainers..."
     }
 
-    private func attemptAutoConnectIfNeeded(for peripheralID: UUID) {
-        guard let targetID = preferredAutoConnectDeviceID else { return }
+    private func normalizedDeviceName(_ raw: String?) -> String? {
+        guard let raw else { return nil }
+        let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
+    }
+
+    private func attemptAutoConnectIfNeeded(for peripheralID: UUID, advertisedName: String?) {
         guard !didAttemptAutoConnectForCurrentScan else { return }
         guard !isConnected else { return }
-        guard peripheralID == targetID else { return }
+        let byID = preferredAutoConnectDeviceID == peripheralID
+        let discoveredName = normalizedDeviceName(advertisedName)
+        let byName = {
+            guard let preferredName = preferredAutoConnectDeviceName,
+                  let discoveredName else { return false }
+            return preferredName == discoveredName
+        }()
+        let singleVisibleFallback = preferredAutoConnectDeviceID != nil
+            && preferredAutoConnectDeviceName == nil
+            && peripherals.count == 1
+        guard byID || byName || singleVisibleFallback else { return }
         didAttemptAutoConnectForCurrentScan = true
-        lastMessage = "Found preferred trainer, auto-connecting..."
+        lastMessage = singleVisibleFallback
+            ? "Preferred trainer UUID not found; auto-connecting single discovered trainer."
+            : "Found preferred trainer, auto-connecting..."
         connect(deviceID: peripheralID)
     }
 
@@ -820,13 +856,14 @@ extension SmartTrainerManager: CBCentralManagerDelegate {
         rssiByPeripheral[peripheral.identifier] = RSSI.intValue
         mergeCapability(peripheralID: peripheral.identifier, name: advName, serviceUUIDs: serviceUUIDs)
         refreshDiscoveredDevices()
-        attemptAutoConnectIfNeeded(for: peripheral.identifier)
+        attemptAutoConnectIfNeeded(for: peripheral.identifier, advertisedName: advName)
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
         connectedPeripheral = peripheral
         isConnected = true
         preferredAutoConnectDeviceID = peripheral.identifier
+        preferredAutoConnectDeviceName = normalizedDeviceName(peripheral.name)
         connectedDeviceName = peripheral.name ?? "Trainer"
         connectedVendor = capabilityByPeripheral[peripheral.identifier]?.vendor ?? detectVendor(name: connectedDeviceName ?? "")
         peripheral.delegate = self

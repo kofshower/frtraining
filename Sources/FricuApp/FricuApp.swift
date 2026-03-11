@@ -58,7 +58,6 @@ enum AppSection: String, CaseIterable, Identifiable {
     case videoDownloader
     case videoFitting
     case proSuite
-    case nutrition
     case fatLossAssistant
     case workoutBuilder
     case library
@@ -75,7 +74,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .videoDownloader: return "app.section.videoDownloader"
         case .videoFitting: return "app.section.videoFitting"
         case .proSuite: return "app.section.prosuite"
-        case .nutrition: return "app.section.nutrition"
         case .fatLossAssistant: return "app.section.fatLossAssistant"
         case .workoutBuilder: return "app.section.workoutBuilder"
         case .library: return "app.section.library"
@@ -98,8 +96,6 @@ enum AppSection: String, CaseIterable, Identifiable {
             return L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting")
         case .proSuite:
             return L10n.choose(simplifiedChinese: "专业套件", english: "Pro Suite")
-        case .nutrition:
-            return L10n.choose(simplifiedChinese: "饮食", english: "Nutrition")
         case .fatLossAssistant:
             return L10n.choose(simplifiedChinese: "减脂助手", english: "Fat-loss Assistant")
         case .workoutBuilder:
@@ -121,7 +117,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .videoDownloader: return "square.and.arrow.down"
         case .videoFitting: return "figure.cooldown"
         case .proSuite: return "square.grid.3x3"
-        case .nutrition: return "fork.knife"
         case .fatLossAssistant: return "figure.run"
         case .workoutBuilder: return "pencil.and.ruler"
         case .library: return "calendar"
@@ -150,8 +145,6 @@ struct RootView: View {
                 VideoFittingPageView()
             case .proSuite:
                 ProSuiteView()
-            case .nutrition:
-                NutritionPageView()
             case .fatLossAssistant:
                 FatLossAssistantPageView()
             case .workoutBuilder:
@@ -191,6 +184,23 @@ struct RootView: View {
         #if os(macOS)
             .frame(minWidth: 1180, minHeight: 760)
         #endif
+        .alert(
+            L10n.choose(simplifiedChinese: "设备连接警告", english: "Device Connection Warning"),
+            isPresented: Binding(
+                get: { store.connectionWarningMessage != nil },
+                set: { presented in
+                    if !presented {
+                        store.connectionWarningMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button(L10n.choose(simplifiedChinese: "知道了", english: "OK"), role: .cancel) {
+                store.connectionWarningMessage = nil
+            }
+        } message: {
+            Text(store.connectionWarningMessage ?? "")
+        }
     }
 }
 
@@ -453,6 +463,28 @@ private struct ThresholdRangeEditorRow: Identifiable {
 }
 
 struct SettingsView: View {
+    private enum SettingsTab: String, CaseIterable, Identifiable {
+        case profile
+        case performance
+        case integrations
+        case sync
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .profile:
+                return L10n.choose(simplifiedChinese: "资料", english: "Profile")
+            case .performance:
+                return L10n.choose(simplifiedChinese: "阈值", english: "Performance")
+            case .integrations:
+                return L10n.choose(simplifiedChinese: "连接", english: "Integrations")
+            case .sync:
+                return L10n.choose(simplifiedChinese: "同步与日志", english: "Sync & Logs")
+            }
+        }
+    }
+
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var auth: AuthController
@@ -497,6 +529,7 @@ struct SettingsView: View {
     @State private var estimateStatus: String?
     @State private var thresholdRangeEditorRows: [ThresholdRangeEditorRow] = []
     @State private var thresholdRangeValidationMessage: String?
+    @State private var selectedTab: SettingsTab = .profile
 
     private var appLanguageBinding: Binding<AppLanguageOption> {
         Binding<AppLanguageOption>(
@@ -765,694 +798,16 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Athlete Profile")
-                        .font(.title3.bold())
-                    Text("Inputs for load modeling, TSS estimation, and AI recommendations.")
-                        .foregroundStyle(.secondary)
-                    Text("\(L10n.choose(simplifiedChinese: "当前账号", english: "Current Account")): \(store.currentAccountDisplayName)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                settingsHeader
+                settingsTabPicker
+                tabContent
+                if selectedTab != .sync {
+                    saveProfileButtonRow
                 }
-
-                GroupBox(L10n.string("settings.language.title")) {
-                    Picker(L10n.string("settings.language.picker"), selection: appLanguageBinding) {
-                        ForEach(AppLanguageOption.allCases) { option in
-                            Text(verbatim: option.localizedTitle).tag(option)
-                        }
-                    }
-                    .appDropdownTheme()
-                }
-
-                GroupBox(L10n.choose(simplifiedChinese: "账号", english: "Account")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("\(L10n.choose(simplifiedChinese: "当前账号", english: "Current")): \(store.currentAccountDisplayName)")
-                            .font(.subheadline.weight(.semibold))
-                        if let session = auth.currentSession {
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "登录方式：\(session.provider.displayName)",
-                                    english: "Provider: \(session.provider.displayName)"
-                                )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                        Button(L10n.choose(simplifiedChinese: "退出登录", english: "Log Out"), role: .destructive) {
-                            auth.logout()
-                        }
-                        .buttonStyle(.bordered)
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox("Cycling") {
-                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                        GridRow {
-                            Text("FTP (W)")
-                            TextField("260", text: $cyclingFTP)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Threshold HR")
-                            TextField("172", text: $cyclingThresholdHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Max HR (optional)")
-                            TextField("190", text: $cyclingMaxHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox("Running") {
-                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                        GridRow {
-                            Text("FTP (W)")
-                            TextField("260", text: $runningFTP)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Threshold HR")
-                            TextField("176", text: $runningThresholdHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Max HR (optional)")
-                            TextField("195", text: $runningMaxHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox("Swimming") {
-                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                        GridRow {
-                            Text("FTP (W)")
-                            TextField("230", text: $swimmingFTP)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Threshold HR")
-                            TextField("164", text: $swimmingThresholdHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Max HR (optional)")
-                            TextField("185", text: $swimmingMaxHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox("Strength") {
-                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                        GridRow {
-                            Text("FTP (W)")
-                            TextField("260", text: $strengthFTP)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Threshold HR")
-                            TextField("172", text: $strengthThresholdHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        GridRow {
-                            Text("Max HR (optional)")
-                            TextField("190", text: $strengthMaxHR)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox("Recovery & Race") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                            GridRow {
-                                Text("Athlete Age")
-                                TextField("34", text: $athleteAgeYears)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                            GridRow {
-                                Text("Body Weight (kg)")
-                                TextField("69.0", text: $athleteWeightKg)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                            GridRow {
-                                Text("HRV Baseline (All Sports)")
-                                TextField("62", text: $hrvBaseline)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                            GridRow {
-                                Text("HRV Today (All Sports)")
-                                TextField("58", text: $hrvToday)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                        }
-
-                        Toggle("Set goal race date", isOn: $hasGoalDate)
-                        if hasGoalDate {
-                            DatePicker("Goal Race Date", selection: $goalDate, displayedComponents: .date)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox(L10n.choose(simplifiedChinese: "Nutrition Profile", english: "Nutrition Profile")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(
-                            L10n.choose(
-                                simplifiedChinese: "按运动员区分营养基础参数。饮食页面会基于 BMR 和活动系数生成默认热量/三餐目标。",
-                                english: "Nutrition baseline settings are athlete-specific. Nutrition page will use BMR and activity factor to generate default calories and meal targets."
-                            )
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                            GridRow {
-                                Text(L10n.choose(simplifiedChinese: "基础代谢 BMR (kcal)", english: "BMR (kcal)"))
-                                TextField("1650", text: $basalMetabolicRateKcal)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                            GridRow {
-                                Text(L10n.choose(simplifiedChinese: "日常活动系数", english: "Daily activity factor"))
-                                TextField("1.35", text: $nutritionActivityFactor)
-                                    .textFieldStyle(.roundedBorder)
-                            }
-                            GridRow {
-                                Text(L10n.choose(simplifiedChinese: "维持热量估算", english: "Estimated maintenance"))
-                                Text("\(Int((Double(max(500, Int(basalMetabolicRateKcal) ?? store.profile.basalMetabolicRateKcal)) * min(max(Double(nutritionActivityFactor) ?? store.profile.nutritionActivityFactor, 1.0), 2.5)).rounded())) kcal/day")
-                                    .font(.body.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox("FTP / Threshold HR Evaluation") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(
-                            L10n.choose(
-                                simplifiedChinese: "基于最近 120 天活动，自动评估每个运动的 FTP 和阈值心率（LTHR）。",
-                                english: "Automatically estimate sport-specific FTP and LTHR from the last 120 days of activities."
-                            )
-                        )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        HStack {
-                            Button(L10n.choose(simplifiedChinese: "评估 FTP + LTHR", english: "Estimate FTP + LTHR")) {
-                                evaluateProfileEstimate()
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(store.athleteScopedActivities.isEmpty)
-
-                            if let estimate = profileEstimate {
-                                Button(L10n.choose(simplifiedChinese: "应用评估并保存", english: "Apply Estimate & Save")) {
-                                    applyProfileEstimate(estimate)
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        }
-
-                        if let estimateStatus {
-                            Text(estimateStatus)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if let estimate = profileEstimate {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(estimate.items) { item in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(
-                                            L10n.choose(
-                                                simplifiedChinese: "\(item.sport.label): FTP \(item.ftpWatts)W (\(item.ftpConfidence)，样本 \(item.ftpSamples)) · LTHR \(item.thresholdHeartRate)bpm (\(item.thresholdConfidence)，样本 \(item.thresholdSamples))",
-                                                english: "\(item.sport.label): FTP \(item.ftpWatts)W (\(item.ftpConfidence), samples \(item.ftpSamples)) · LTHR \(item.thresholdHeartRate)bpm (\(item.thresholdConfidence), samples \(item.thresholdSamples))"
-                                            )
-                                        )
-                                            .font(.subheadline.monospacedDigit())
-                                        Text(item.methodSummary)
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox(L10n.choose(simplifiedChinese: "LTHR 区间表（GC 风格）", english: "LTHR Range Table (GC Style)")) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(
-                            L10n.choose(
-                                simplifiedChinese: "可按运动编辑起止日期和阈值参数。结束日期为空表示持续生效。",
-                                english: "Edit start/end dates and threshold parameters per sport. Empty end date means still active."
-                            )
-                        )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        ForEach(SportType.allCases) { sport in
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text(sport.label)
-                                        .font(.headline)
-                                    Spacer()
-                                    Button(
-                                        L10n.choose(
-                                            simplifiedChinese: "新增 \(sport.label) 区间",
-                                            english: "Add \(sport.label) Range"
-                                        )
-                                    ) {
-                                        addThresholdRow(for: sport)
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-
-                                let indices = thresholdRowIndices(for: sport)
-                                if indices.isEmpty {
-                                    Text(L10n.choose(simplifiedChinese: "暂无区间", english: "No ranges"))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    ForEach(indices, id: \.self) { index in
-                                        VStack(alignment: .leading, spacing: 8) {
-                                            HStack {
-                                                DatePicker(
-                                                    L10n.choose(simplifiedChinese: "开始", english: "Start"),
-                                                    selection: $thresholdRangeEditorRows[index].startDate,
-                                                    displayedComponents: .date
-                                                )
-                                                Toggle(
-                                                    L10n.choose(simplifiedChinese: "结束日期", english: "End Date"),
-                                                    isOn: $thresholdRangeEditorRows[index].hasEndDate
-                                                )
-                                                    #if os(macOS)
-                                                        .toggleStyle(.checkbox)
-                                                    #endif
-                                                    .frame(width: 110)
-                                                if thresholdRangeEditorRows[index].hasEndDate {
-                                                    DatePicker(
-                                                        L10n.choose(simplifiedChinese: "结束", english: "End"),
-                                                        selection: $thresholdRangeEditorRows[index].endDate,
-                                                        displayedComponents: .date
-                                                    )
-                                                }
-                                                Spacer()
-                                                Button(role: .destructive) {
-                                                    thresholdRangeEditorRows.remove(at: index)
-                                                } label: {
-                                                    Label(
-                                                        L10n.choose(simplifiedChinese: "删除", english: "Delete"),
-                                                        systemImage: "trash"
-                                                    )
-                                                }
-                                                .buttonStyle(.borderless)
-                                            }
-
-                                            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
-                                                GridRow {
-                                                    Text("LTHR")
-                                                    TextField("172", text: $thresholdRangeEditorRows[index].lthr)
-                                                        .textFieldStyle(.roundedBorder)
-                                                }
-                                                GridRow {
-                                                    Text("AeTHR")
-                                                    TextField("155 (optional)", text: $thresholdRangeEditorRows[index].aeTHR)
-                                                        .textFieldStyle(.roundedBorder)
-                                                }
-                                                GridRow {
-                                                    Text("RHR")
-                                                    TextField("52 (optional)", text: $thresholdRangeEditorRows[index].restingHR)
-                                                        .textFieldStyle(.roundedBorder)
-                                                }
-                                                GridRow {
-                                                    Text("Max HR")
-                                                    TextField("190 (optional)", text: $thresholdRangeEditorRows[index].maxHR)
-                                                        .textFieldStyle(.roundedBorder)
-                                                }
-                                            }
-                                        }
-                                        .padding(8)
-                                        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
-                                    }
-                                }
-                            }
-                        }
-
-                        if let thresholdRangeValidationMessage {
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "区间表校验失败：\(thresholdRangeValidationMessage)",
-                                    english: "Range validation failed: \(thresholdRangeValidationMessage)"
-                                )
-                            )
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                GroupBox(L10n.choose(simplifiedChinese: "服务与集成配置", english: "Service & Integration Configuration")) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Intervals.icu API Key")
-                                .font(.headline)
-                            SecureField("API key", text: $intervalsKey)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Strava")
-                                .font(.headline)
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "先填写 Strava App 的 Client ID / Client Secret，然后执行 OAuth 授权。",
-                                    english: "Fill Strava App Client ID / Client Secret first, then run OAuth authorization."
-                                )
-                            )
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            TextField("Strava Client ID", text: $stravaClientID)
-                                .textFieldStyle(.roundedBorder)
-                            SecureField("Strava Client Secret", text: $stravaClientSecret)
-                                .textFieldStyle(.roundedBorder)
-                            HStack {
-                                Button(L10n.choose(simplifiedChinese: "OAuth 登录并回调", english: "OAuth Login + Callback")) {
-                                    persistStravaOAuthConfigFromFields()
-                                    Task {
-                                        await store.syncAuthorizeStravaOAuth(redirectURI: stravaOAuthRedirectURI) { authURL in
-                                            openURL(authURL)
-                                        }
-                                        loadFieldsFromProfile()
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-
-                                Button(L10n.choose(simplifiedChinese: "打开 Strava 应用设置", english: "Open Strava App Settings")) {
-                                    if let url = URL(string: "https://www.strava.com/settings/api") {
-                                        openURL(url)
-                                    }
-                                }
-                            }
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "回调地址：\(stravaOAuthRedirectURI)",
-                                    english: "Redirect URI: \(stravaOAuthRedirectURI)"
-                                )
-                            )
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "授权 scope: read, read_all, activity:read_all, profile:read_all, activity:write",
-                                    english: "OAuth scopes: read, read_all, activity:read_all, profile:read_all, activity:write"
-                                )
-                            )
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Wellness / Platform Connectors")
-                                .font(.headline)
-                            SecureField("Garmin Connect Access Token", text: $garminAccessToken)
-                                .textFieldStyle(.roundedBorder)
-                            TextField(
-                                L10n.choose(
-                                    simplifiedChinese: "Garmin Connect Csrf Token（connectus/gc-api 常需）",
-                                    english: "Garmin Connect Csrf Token (often required for connectus/gc-api)"
-                                ),
-                                text: $garminCSRFToken
-                            )
-                                .textFieldStyle(.roundedBorder)
-                            SecureField("Oura Personal Access Token", text: $ouraAccessToken)
-                                .textFieldStyle(.roundedBorder)
-                            SecureField("WHOOP Access Token", text: $whoopAccessToken)
-                                .textFieldStyle(.roundedBorder)
-                            SecureField("Apple Health Access Token", text: $appleHealthAccessToken)
-                                .textFieldStyle(.roundedBorder)
-                            SecureField("Google Fit Access Token", text: $googleFitAccessToken)
-                                .textFieldStyle(.roundedBorder)
-                            SecureField("TrainingPeaks Access Token", text: $trainingPeaksAccessToken)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Backend Server")
-                                .font(.headline)
-                            TextField("http://127.0.0.1:8080", text: $serverBaseURL)
-                                .textFieldStyle(.roundedBorder)
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "用于活动/计划/档案数据的服务端地址。留空会回退到默认 http://127.0.0.1:8080。",
-                                    english: "Server base URL for activity/workout/profile persistence. Leave blank to use default http://127.0.0.1:8080."
-                                )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("GPT / OpenAI")
-                                .font(.headline)
-                            SecureField("API key", text: $openAIAPIKey)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(L10n.choose(simplifiedChinese: "服务端连接", english: "Server Connection"))
-                                .font(.headline)
-                            TextField("Server IP / Host", text: $serverHost)
-                                .textFieldStyle(.roundedBorder)
-                            TextField("Server Port", text: $serverPort)
-                                .textFieldStyle(.roundedBorder)
-                            Button(L10n.choose(simplifiedChinese: "应用服务端地址", english: "Apply Server Endpoint")) {
-                                store.updateServerEndpoint(host: serverHost, port: serverPort)
-                            }
-                            .buttonStyle(.bordered)
-                            Text(L10n.choose(
-                                simplifiedChinese: "示例：http://127.0.0.1:8080；修改后会立即重建客户端连接。",
-                                english: "Example: http://127.0.0.1:8080. Applying will rebuild the server client immediately."
-                            ))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Button("Save Profile") {
-                    persistProfileFromFields()
-                    persistServerURLFromFields()
-                }
-                .buttonStyle(.borderedProminent)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Intervals.icu Sync")
-                        .font(.headline)
-                    HStack {
-                        Button("Pull Activities") {
-                            Task { await store.syncPullActivitiesFromIntervals() }
-                        }
-                        Button("Push Activities") {
-                            Task { await store.syncPushActivitiesToIntervals() }
-                        }
-                    }
-                    HStack {
-                        Button("Pull Workouts") {
-                            Task { await store.syncPullWorkoutsFromIntervals() }
-                        }
-                        Button("Push Workouts") {
-                            Task { await store.syncPushWorkoutsToIntervals() }
-                        }
-                    }
-                    Button("Pull HRV / Wellness") {
-                        Task { await store.syncPullWellnessFromIntervals() }
-                    }
-                    Button("Pull Calendar Events") {
-                        Task { await store.syncPullEventsFromIntervals() }
-                    }
-                    Divider()
-                    HStack {
-                        Button("Full Pull (A/W/Wellness/Events)") {
-                            Task { await store.syncPullEverythingFromIntervals() }
-                        }
-                        .buttonStyle(.borderedProminent)
-
-                        Button("Bi-Sync (Push + Pull All)") {
-                            Task { await store.syncBidirectionalIntervals() }
-                        }
-                    }
-                }
-                .disabled(store.isSyncing)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Strava Sync")
-                        .font(.headline)
-                    HStack(alignment: .center, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.choose(simplifiedChinese: "最近天数", english: "Recent Days"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Picker("", selection: $stravaPullRecentDays) {
-                                ForEach([3, 7, 14, 30, 60, 90, 180], id: \.self) { days in
-                                    Text(L10n.choose(
-                                        simplifiedChinese: "最近 \(days) 天",
-                                        english: "Last \(days) days"
-                                    )).tag(days)
-                                }
-                            }
-                            .labelsHidden()
-                            .appDropdownTheme()
-                            .frame(maxWidth: 180)
-                        }
-
-                        Button("Pull Activities from Strava") {
-                            Task { await store.syncPullActivitiesFromStrava(days: stravaPullRecentDays) }
-                        }
-                    }
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "按选择的最近天数从 Strava 拉取活动明细。",
-                            english: "Pull activities from Strava for the selected recent-day range."
-                        )
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                .disabled(store.isSyncing)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Garmin Connect Sync")
-                        .font(.headline)
-                    Button("Pull Activities from Garmin Connect") {
-                        Task { await store.syncPullActivitiesFromGarminConnect() }
-                    }
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "Token 可填 Bearer token 或 Cookie 串（如 SESSION=...; ...）。",
-                            english: "Token can be a Bearer token or a Cookie string (for example: SESSION=...; ...)."
-                        )
-                    )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(
-                        L10n.choose(
-                            simplifiedChinese: "中国区 connectus.garmin.cn 建议额外填写 Connect-Csrf-Token。",
-                            english: "For China region connectus.garmin.cn, providing Connect-Csrf-Token is recommended."
-                        )
-                    )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .disabled(store.isSyncing)
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Wellness Sync")
-                        .font(.headline)
-                    HStack {
-                        Button("Pull Wellness from Garmin") {
-                            Task { await store.syncPullWellnessFromGarmin() }
-                        }
-                        Button("Pull Wellness from Oura") {
-                            Task { await store.syncPullWellnessFromOura() }
-                        }
-                        Button("Pull Wellness from WHOOP") {
-                            Task { await store.syncPullWellnessFromWhoop() }
-                        }
-                    }
-                }
-                .disabled(store.isSyncing)
-
-                if let status = store.syncStatus {
-                    Text(status)
-                        .foregroundStyle(.secondary)
-                }
-
-                if let message = store.lastError {
-                    Text(message)
-                        .foregroundStyle(.red)
-                }
-
-                GroupBox(L10n.choose(simplifiedChinese: "客户端日志", english: "Client Logs")) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(
-                                L10n.choose(
-                                    simplifiedChinese: "显示最近 300 条日志",
-                                    english: "Showing last 300 log lines"
-                                )
-                            )
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            Spacer()
-                            Button(L10n.choose(simplifiedChinese: "清空日志", english: "Clear Logs")) {
-                                store.clearClientLogs()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 4) {
-                                ForEach(Array(store.clientLogLines.suffix(120).enumerated()), id: \.offset) { _, line in
-                                    Text(line)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
-                        .frame(minHeight: 140, maxHeight: 220)
-
-                        Text(
-                            L10n.choose(
-                                simplifiedChinese: "服务端日志会在 fricu-server 启动终端实时输出。",
-                                english: "Server logs are printed in real time in the fricu-server terminal."
-                            )
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 2)
-                }
-
-                Text(
-                    L10n.choose(
-                        simplifiedChinese: "计划训练库总分钟数：\(store.totalWorkoutMinutes)",
-                        english: "Planned workout minutes in library: \(store.totalWorkoutMinutes)"
-                    )
-                )
-                    .foregroundStyle(.secondary)
             }
             .padding()
         }
-        .frame(width: 700, height: 700)
+        .frame(width: 760, height: 720)
         .onAppear {
             loadFieldsFromProfile()
             loadServerURLField()
@@ -1461,6 +816,729 @@ struct SettingsView: View {
             profileEstimate = nil
             estimateStatus = nil
             loadFieldsFromProfile()
+        }
+        .onReceive(store.$profile) { _ in
+            loadFieldsFromProfile()
+        }
+    }
+
+    private var settingsHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Athlete Profile")
+                .font(.title3.bold())
+            Text("Inputs for load modeling, TSS estimation, and AI recommendations.")
+                .foregroundStyle(.secondary)
+            Text("\(L10n.choose(simplifiedChinese: "当前账号", english: "Current Account")): \(store.currentAccountDisplayName)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var settingsTabPicker: some View {
+        Picker(L10n.choose(simplifiedChinese: "设置分组", english: "Settings Section"), selection: $selectedTab) {
+            ForEach(SettingsTab.allCases) { tab in
+                Text(tab.title).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch selectedTab {
+        case .profile:
+            profileTabContent
+        case .performance:
+            performanceTabContent
+        case .integrations:
+            integrationsTabContent
+        case .sync:
+            syncTabContent
+        }
+    }
+
+    private var saveProfileButtonRow: some View {
+        HStack {
+            Spacer()
+            Button("Save Profile") {
+                persistProfileFromFields()
+                persistServerURLFromFields()
+            }
+            .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var profileTabContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GroupBox(L10n.string("settings.language.title")) {
+                Picker(L10n.string("settings.language.picker"), selection: appLanguageBinding) {
+                    ForEach(AppLanguageOption.allCases) { option in
+                        Text(verbatim: option.localizedTitle).tag(option)
+                    }
+                }
+                .appDropdownTheme()
+            }
+
+            GroupBox(L10n.choose(simplifiedChinese: "账号", english: "Account")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("\(L10n.choose(simplifiedChinese: "当前账号", english: "Current")): \(store.currentAccountDisplayName)")
+                        .font(.subheadline.weight(.semibold))
+                    if let session = auth.currentSession {
+                        Text(
+                            L10n.choose(
+                                simplifiedChinese: "登录方式：\(session.provider.displayName)",
+                                english: "Provider: \(session.provider.displayName)"
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Button(L10n.choose(simplifiedChinese: "退出登录", english: "Log Out"), role: .destructive) {
+                        auth.logout()
+                    }
+                    .buttonStyle(.bordered)
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox("Cycling") {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                    GridRow {
+                        Text("FTP (W)")
+                        TextField("260", text: $cyclingFTP)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Threshold HR")
+                        TextField("172", text: $cyclingThresholdHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Max HR (optional)")
+                        TextField("190", text: $cyclingMaxHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox("Running") {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                    GridRow {
+                        Text("FTP (W)")
+                        TextField("260", text: $runningFTP)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Threshold HR")
+                        TextField("176", text: $runningThresholdHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Max HR (optional)")
+                        TextField("195", text: $runningMaxHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox("Swimming") {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                    GridRow {
+                        Text("FTP (W)")
+                        TextField("230", text: $swimmingFTP)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Threshold HR")
+                        TextField("164", text: $swimmingThresholdHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Max HR (optional)")
+                        TextField("185", text: $swimmingMaxHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox("Strength") {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                    GridRow {
+                        Text("FTP (W)")
+                        TextField("260", text: $strengthFTP)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Threshold HR")
+                        TextField("172", text: $strengthThresholdHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    GridRow {
+                        Text("Max HR (optional)")
+                        TextField("190", text: $strengthMaxHR)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox("Recovery & Race") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                        GridRow {
+                            Text("Athlete Age")
+                            TextField("34", text: $athleteAgeYears)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        GridRow {
+                            Text("Body Weight (kg)")
+                            TextField("69.0", text: $athleteWeightKg)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        GridRow {
+                            Text("HRV Baseline (All Sports)")
+                            TextField("62", text: $hrvBaseline)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        GridRow {
+                            Text("HRV Today (All Sports)")
+                            TextField("58", text: $hrvToday)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+
+                    Toggle("Set goal race date", isOn: $hasGoalDate)
+                    if hasGoalDate {
+                        DatePicker("Goal Race Date", selection: $goalDate, displayedComponents: .date)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox(L10n.choose(simplifiedChinese: "Nutrition Profile", english: "Nutrition Profile")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "按运动员区分营养基础参数。饮食页面会基于 BMR 和活动系数生成默认热量/三餐目标。",
+                            english: "Nutrition baseline settings are athlete-specific. Nutrition page will use BMR and activity factor to generate default calories and meal targets."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                        GridRow {
+                            Text(L10n.choose(simplifiedChinese: "基础代谢 BMR (kcal)", english: "BMR (kcal)"))
+                            TextField("1650", text: $basalMetabolicRateKcal)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        GridRow {
+                            Text(L10n.choose(simplifiedChinese: "日常活动系数", english: "Daily activity factor"))
+                            TextField("1.35", text: $nutritionActivityFactor)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        GridRow {
+                            Text(L10n.choose(simplifiedChinese: "维持热量估算", english: "Estimated maintenance"))
+                            Text("\(Int((Double(max(500, Int(basalMetabolicRateKcal) ?? store.profile.basalMetabolicRateKcal)) * min(max(Double(nutritionActivityFactor) ?? store.profile.nutritionActivityFactor, 1.0), 2.5)).rounded())) kcal/day")
+                                .font(.body.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private var performanceTabContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GroupBox("FTP / Threshold HR Evaluation") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "基于最近 120 天活动，自动评估每个运动的 FTP 和阈值心率（LTHR）。",
+                            english: "Automatically estimate sport-specific FTP and LTHR from the last 120 days of activities."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    HStack {
+                        Button(L10n.choose(simplifiedChinese: "评估 FTP + LTHR", english: "Estimate FTP + LTHR")) {
+                            evaluateProfileEstimate()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(store.athleteScopedActivities.isEmpty)
+
+                        if let estimate = profileEstimate {
+                            Button(L10n.choose(simplifiedChinese: "应用评估并保存", english: "Apply Estimate & Save")) {
+                                applyProfileEstimate(estimate)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+
+                    if let estimateStatus {
+                        Text(estimateStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let estimate = profileEstimate {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(estimate.items) { item in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(
+                                        L10n.choose(
+                                            simplifiedChinese: "\(item.sport.label): FTP \(item.ftpWatts)W (\(item.ftpConfidence)，样本 \(item.ftpSamples)) · LTHR \(item.thresholdHeartRate)bpm (\(item.thresholdConfidence)，样本 \(item.thresholdSamples))",
+                                            english: "\(item.sport.label): FTP \(item.ftpWatts)W (\(item.ftpConfidence), samples \(item.ftpSamples)) · LTHR \(item.thresholdHeartRate)bpm (\(item.thresholdConfidence), samples \(item.thresholdSamples))"
+                                        )
+                                    )
+                                    .font(.subheadline.monospacedDigit())
+                                    Text(item.methodSummary)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            GroupBox(L10n.choose(simplifiedChinese: "LTHR 区间表（GC 风格）", english: "LTHR Range Table (GC Style)")) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "可按运动编辑起止日期和阈值参数。结束日期为空表示持续生效。",
+                            english: "Edit start/end dates and threshold parameters per sport. Empty end date means still active."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    ForEach(SportType.allCases) { sport in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text(sport.label)
+                                    .font(.headline)
+                                Spacer()
+                                Button(
+                                    L10n.choose(
+                                        simplifiedChinese: "新增 \(sport.label) 区间",
+                                        english: "Add \(sport.label) Range"
+                                    )
+                                ) {
+                                    addThresholdRow(for: sport)
+                                }
+                                .buttonStyle(.bordered)
+                            }
+
+                            let indices = thresholdRowIndices(for: sport)
+                            if indices.isEmpty {
+                                Text(L10n.choose(simplifiedChinese: "暂无区间", english: "No ranges"))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                ForEach(indices, id: \.self) { index in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            DatePicker(
+                                                L10n.choose(simplifiedChinese: "开始", english: "Start"),
+                                                selection: $thresholdRangeEditorRows[index].startDate,
+                                                displayedComponents: .date
+                                            )
+                                            Toggle(
+                                                L10n.choose(simplifiedChinese: "结束日期", english: "End Date"),
+                                                isOn: $thresholdRangeEditorRows[index].hasEndDate
+                                            )
+                                            #if os(macOS)
+                                            .toggleStyle(.checkbox)
+                                            #endif
+                                            .frame(width: 110)
+                                            if thresholdRangeEditorRows[index].hasEndDate {
+                                                DatePicker(
+                                                    L10n.choose(simplifiedChinese: "结束", english: "End"),
+                                                    selection: $thresholdRangeEditorRows[index].endDate,
+                                                    displayedComponents: .date
+                                                )
+                                            }
+                                            Spacer()
+                                            Button(role: .destructive) {
+                                                thresholdRangeEditorRows.remove(at: index)
+                                            } label: {
+                                                Label(
+                                                    L10n.choose(simplifiedChinese: "删除", english: "Delete"),
+                                                    systemImage: "trash"
+                                                )
+                                            }
+                                            .buttonStyle(.borderless)
+                                        }
+
+                                        Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                                            GridRow {
+                                                Text("LTHR")
+                                                TextField("172", text: $thresholdRangeEditorRows[index].lthr)
+                                                    .textFieldStyle(.roundedBorder)
+                                            }
+                                            GridRow {
+                                                Text("AeTHR")
+                                                TextField("155 (optional)", text: $thresholdRangeEditorRows[index].aeTHR)
+                                                    .textFieldStyle(.roundedBorder)
+                                            }
+                                            GridRow {
+                                                Text("RHR")
+                                                TextField("52 (optional)", text: $thresholdRangeEditorRows[index].restingHR)
+                                                    .textFieldStyle(.roundedBorder)
+                                            }
+                                            GridRow {
+                                                Text("Max HR")
+                                                TextField("190 (optional)", text: $thresholdRangeEditorRows[index].maxHR)
+                                                    .textFieldStyle(.roundedBorder)
+                                            }
+                                        }
+                                    }
+                                    .padding(8)
+                                    .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+                                }
+                            }
+                        }
+                    }
+
+                    if let thresholdRangeValidationMessage {
+                        Text(
+                            L10n.choose(
+                                simplifiedChinese: "区间表校验失败：\(thresholdRangeValidationMessage)",
+                                english: "Range validation failed: \(thresholdRangeValidationMessage)"
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    private var integrationsTabContent: some View {
+        GroupBox(L10n.choose(simplifiedChinese: "服务与集成配置", english: "Service & Integration Configuration")) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Intervals.icu API Key")
+                        .font(.headline)
+                    SecureField("API key", text: $intervalsKey)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Strava")
+                        .font(.headline)
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "先填写 Strava App 的 Client ID / Client Secret，然后执行 OAuth 授权。",
+                            english: "Fill Strava App Client ID / Client Secret first, then run OAuth authorization."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    TextField("Strava Client ID", text: $stravaClientID)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("Strava Client Secret", text: $stravaClientSecret)
+                        .textFieldStyle(.roundedBorder)
+                    HStack {
+                        Button(L10n.choose(simplifiedChinese: "OAuth 登录并回调", english: "OAuth Login + Callback")) {
+                            persistStravaOAuthConfigFromFields()
+                            Task {
+                                await store.syncAuthorizeStravaOAuth(redirectURI: stravaOAuthRedirectURI) { authURL in
+                                    openURL(authURL)
+                                }
+                                loadFieldsFromProfile()
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+
+                        Button(L10n.choose(simplifiedChinese: "打开 Strava 应用设置", english: "Open Strava App Settings")) {
+                            if let url = URL(string: "https://www.strava.com/settings/api") {
+                                openURL(url)
+                            }
+                        }
+                    }
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "回调地址：\(stravaOAuthRedirectURI)",
+                            english: "Redirect URI: \(stravaOAuthRedirectURI)"
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "授权 scope: read, read_all, activity:read_all, profile:read_all, activity:write",
+                            english: "OAuth scopes: read, read_all, activity:read_all, profile:read_all, activity:write"
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Wellness / Platform Connectors")
+                        .font(.headline)
+                    SecureField("Garmin Connect Access Token", text: $garminAccessToken)
+                        .textFieldStyle(.roundedBorder)
+                    TextField(
+                        L10n.choose(
+                            simplifiedChinese: "Garmin Connect Csrf Token（connectus/gc-api 常需）",
+                            english: "Garmin Connect Csrf Token (often required for connectus/gc-api)"
+                        ),
+                        text: $garminCSRFToken
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    SecureField("Oura Personal Access Token", text: $ouraAccessToken)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("WHOOP Access Token", text: $whoopAccessToken)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("Apple Health Access Token", text: $appleHealthAccessToken)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("Google Fit Access Token", text: $googleFitAccessToken)
+                        .textFieldStyle(.roundedBorder)
+                    SecureField("TrainingPeaks Access Token", text: $trainingPeaksAccessToken)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Backend Server")
+                        .font(.headline)
+                    TextField("http://127.0.0.1:8080", text: $serverBaseURL)
+                        .textFieldStyle(.roundedBorder)
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "用于活动/计划/档案数据的服务端地址。留空会回退到默认 http://127.0.0.1:8080。",
+                            english: "Server base URL for activity/workout/profile persistence. Leave blank to use default http://127.0.0.1:8080."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("GPT / OpenAI")
+                        .font(.headline)
+                    SecureField("API key", text: $openAIAPIKey)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.choose(simplifiedChinese: "服务端连接", english: "Server Connection"))
+                        .font(.headline)
+                    TextField("Server IP / Host", text: $serverHost)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Server Port", text: $serverPort)
+                        .textFieldStyle(.roundedBorder)
+                    Button(L10n.choose(simplifiedChinese: "应用服务端地址", english: "Apply Server Endpoint")) {
+                        store.updateServerEndpoint(host: serverHost, port: serverPort)
+                    }
+                    .buttonStyle(.bordered)
+                    Text(L10n.choose(
+                        simplifiedChinese: "示例：http://127.0.0.1:8080；修改后会立即重建客户端连接。",
+                        english: "Example: http://127.0.0.1:8080. Applying will rebuild the server client immediately."
+                    ))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private var syncTabContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            GroupBox(L10n.choose(simplifiedChinese: "同步中心", english: "Sync Center")) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "按平台执行拉取/推送；建议先保存上面的配置再操作。",
+                            english: "Run pull/push actions by platform. Save configuration above before syncing."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Intervals.icu")
+                            .font(.headline)
+                        HStack(spacing: 8) {
+                            Button("Pull Activities") {
+                                Task { await store.syncPullActivitiesFromIntervals() }
+                            }
+                            Button("Push Activities") {
+                                Task { await store.syncPushActivitiesToIntervals() }
+                            }
+                            Button("Pull Workouts") {
+                                Task { await store.syncPullWorkoutsFromIntervals() }
+                            }
+                            Button("Push Workouts") {
+                                Task { await store.syncPushWorkoutsToIntervals() }
+                            }
+                        }
+                        HStack(spacing: 8) {
+                            Button("Pull HRV / Wellness") {
+                                Task { await store.syncPullWellnessFromIntervals() }
+                            }
+                            Button("Pull Calendar Events") {
+                                Task { await store.syncPullEventsFromIntervals() }
+                            }
+                            Spacer(minLength: 0)
+                            Button("Full Pull (A/W/Wellness/Events)") {
+                                Task { await store.syncPullEverythingFromIntervals() }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            Button("Bi-Sync (Push + Pull All)") {
+                                Task { await store.syncBidirectionalIntervals() }
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Strava")
+                            .font(.headline)
+                        HStack(alignment: .center, spacing: 10) {
+                            Picker(L10n.choose(simplifiedChinese: "最近天数", english: "Recent Days"), selection: $stravaPullRecentDays) {
+                                ForEach([3, 7, 14, 30, 60, 90, 180], id: \.self) { days in
+                                    Text(
+                                        L10n.choose(
+                                            simplifiedChinese: "最近 \(days) 天",
+                                            english: "Last \(days) days"
+                                        )
+                                    )
+                                    .tag(days)
+                                }
+                            }
+                            .appDropdownTheme()
+                            .frame(width: 210)
+
+                            Button("Pull Activities from Strava") {
+                                Task { await store.syncPullActivitiesFromStrava(days: stravaPullRecentDays) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        Text(
+                            L10n.choose(
+                                simplifiedChinese: "按选择的最近天数从 Strava 拉取活动明细。",
+                                english: "Pull activities from Strava for the selected recent-day range."
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Garmin / Wellness")
+                            .font(.headline)
+                        HStack(spacing: 8) {
+                            Button("Pull Activities from Garmin Connect") {
+                                Task { await store.syncPullActivitiesFromGarminConnect() }
+                            }
+                            Button("Pull Wellness from Garmin") {
+                                Task { await store.syncPullWellnessFromGarmin() }
+                            }
+                            Button("Pull Wellness from Oura") {
+                                Task { await store.syncPullWellnessFromOura() }
+                            }
+                            Button("Pull Wellness from WHOOP") {
+                                Task { await store.syncPullWellnessFromWhoop() }
+                            }
+                        }
+                        Text(
+                            L10n.choose(
+                                simplifiedChinese: "Garmin Token 可填 Bearer token 或 Cookie 串（如 SESSION=...; ...）。中国区 connectus.garmin.cn 建议额外填写 Connect-Csrf-Token。",
+                                english: "Garmin token can be a Bearer token or a Cookie string (for example: SESSION=...; ...). For connectus.garmin.cn, Connect-Csrf-Token is recommended."
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 4)
+            }
+            .disabled(store.isSyncing)
+
+            if let status = store.syncStatus {
+                Text(status)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let message = store.lastError {
+                Text(message)
+                    .foregroundStyle(.red)
+            }
+
+            GroupBox(L10n.choose(simplifiedChinese: "客户端日志", english: "Client Logs")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(
+                            L10n.choose(
+                                simplifiedChinese: "显示最近 300 条日志",
+                                english: "Showing last 300 log lines"
+                            )
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        Spacer()
+                        Button(L10n.choose(simplifiedChinese: "清空日志", english: "Clear Logs")) {
+                            store.clearClientLogs()
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(store.clientLogLines.suffix(120).enumerated()), id: \.offset) { _, line in
+                                Text(line)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                    .frame(minHeight: 140, maxHeight: 220)
+
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "服务端日志会在 fricu-server 启动终端实时输出。",
+                            english: "Server logs are printed in real time in the fricu-server terminal."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.top, 2)
+            }
+
+            Text(
+                L10n.choose(
+                    simplifiedChinese: "计划训练库总分钟数：\(store.totalWorkoutMinutes)",
+                    english: "Planned workout minutes in library: \(store.totalWorkoutMinutes)"
+                )
+            )
+            .foregroundStyle(.secondary)
         }
     }
 }

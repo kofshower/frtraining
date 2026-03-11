@@ -1,5 +1,11 @@
 import Foundation
 
+enum AthleteNameCanonicalizer {
+    static func normalize(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 enum SportType: String, Codable, CaseIterable, Identifiable {
     case cycling
     case running
@@ -519,7 +525,7 @@ struct Activity: Codable, Identifiable {
     var id: UUID
     var date: Date
     var sport: SportType
-    var athleteName: String?
+    var athleteName: String
     var durationSec: Int
     var distanceKm: Double
     var tss: Int
@@ -536,11 +542,33 @@ struct Activity: Codable, Identifiable {
     var bikeComputerScreenshotMimeType: String?
     var platformPayloadJSON: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case date
+        case sport
+        case athleteName
+        case durationSec
+        case distanceKm
+        case tss
+        case normalizedPower
+        case avgHeartRate
+        case intervals
+        case notes
+        case externalID
+        case sourceFileName
+        case sourceFileType
+        case sourceFileBase64
+        case bikeComputerScreenshotBase64
+        case bikeComputerScreenshotFileName
+        case bikeComputerScreenshotMimeType
+        case platformPayloadJSON
+    }
+
     init(
         id: UUID = UUID(),
         date: Date,
         sport: SportType,
-        athleteName: String? = nil,
+        athleteName: String = "",
         durationSec: Int,
         distanceKm: Double,
         tss: Int,
@@ -560,7 +588,7 @@ struct Activity: Codable, Identifiable {
         self.id = id
         self.date = date
         self.sport = sport
-        self.athleteName = athleteName
+        self.athleteName = AthleteNameCanonicalizer.normalize(athleteName)
         self.durationSec = durationSec
         self.distanceKm = distanceKm
         self.tss = tss
@@ -577,6 +605,151 @@ struct Activity: Codable, Identifiable {
         self.bikeComputerScreenshotMimeType = bikeComputerScreenshotMimeType
         self.platformPayloadJSON = platformPayloadJSON
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = Activity.decodeUUID(from: container, forKey: .id) ?? UUID()
+        guard let decodedDate = Activity.decodeDate(from: container, forKey: .date) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .date,
+                in: container,
+                debugDescription: "Activity.date is missing or invalid."
+            )
+        }
+        date = decodedDate
+        sport = Activity.decodeSport(from: container, forKey: .sport) ?? .cycling
+
+        let rawAthleteName = (try? container.decodeIfPresent(String.self, forKey: .athleteName)) ?? ""
+        athleteName = AthleteNameCanonicalizer.normalize(rawAthleteName)
+
+        durationSec = Activity.decodeInt(from: container, forKey: .durationSec) ?? 0
+        distanceKm = Activity.decodeDouble(from: container, forKey: .distanceKm) ?? 0
+        tss = Activity.decodeInt(from: container, forKey: .tss) ?? 0
+
+        normalizedPower = Activity.decodeInt(from: container, forKey: .normalizedPower)
+        avgHeartRate = Activity.decodeInt(from: container, forKey: .avgHeartRate)
+
+        intervals = (try? container.decodeIfPresent([IntervalEffort].self, forKey: .intervals)) ?? []
+        notes = (try? container.decodeIfPresent(String.self, forKey: .notes)) ?? ""
+
+        externalID = try? container.decodeIfPresent(String.self, forKey: .externalID)
+        sourceFileName = try? container.decodeIfPresent(String.self, forKey: .sourceFileName)
+        sourceFileType = try? container.decodeIfPresent(String.self, forKey: .sourceFileType)
+        sourceFileBase64 = try? container.decodeIfPresent(String.self, forKey: .sourceFileBase64)
+        bikeComputerScreenshotBase64 = try? container.decodeIfPresent(String.self, forKey: .bikeComputerScreenshotBase64)
+        bikeComputerScreenshotFileName = try? container.decodeIfPresent(String.self, forKey: .bikeComputerScreenshotFileName)
+        bikeComputerScreenshotMimeType = try? container.decodeIfPresent(String.self, forKey: .bikeComputerScreenshotMimeType)
+        platformPayloadJSON = try? container.decodeIfPresent(String.self, forKey: .platformPayloadJSON)
+    }
+
+    private static func decodeUUID(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> UUID? {
+        if let value = try? container.decodeIfPresent(UUID.self, forKey: key) {
+            return value
+        }
+        if let text = try? container.decodeIfPresent(String.self, forKey: key),
+           let value = UUID(uuidString: text) {
+            return value
+        }
+        return nil
+    }
+
+    private static func decodeDate(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> Date? {
+        if let value = try? container.decodeIfPresent(Date.self, forKey: key) {
+            return value
+        }
+        if let seconds = decodeDouble(from: container, forKey: key) {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        if let text = try? container.decodeIfPresent(String.self, forKey: key) {
+            if let parsed = Activity.iso8601Formatter.date(from: text) {
+                return parsed
+            }
+            if let parsed = Activity.iso8601FormatterNoFractional.date(from: text) {
+                return parsed
+            }
+            if let epochSeconds = Double(text) {
+                return Date(timeIntervalSince1970: epochSeconds)
+            }
+        }
+        return nil
+    }
+
+    private static func decodeSport(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> SportType? {
+        if let sport = try? container.decodeIfPresent(SportType.self, forKey: key) {
+            return sport
+        }
+        if let raw = try? container.decodeIfPresent(String.self, forKey: key) {
+            switch raw.lowercased() {
+            case "cycling", "ride", "trainer":
+                return .cycling
+            case "running", "run":
+                return .running
+            case "swimming", "swim":
+                return .swimming
+            case "strength", "gym":
+                return .strength
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    private static func decodeInt(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> Int? {
+        if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return Int(value.rounded())
+        }
+        if let text = try? container.decodeIfPresent(String.self, forKey: key),
+           let value = Double(text) {
+            return Int(value.rounded())
+        }
+        return nil
+    }
+
+    private static func decodeDouble(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) -> Double? {
+        if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
+            return value
+        }
+        if let value = try? container.decodeIfPresent(Int.self, forKey: key) {
+            return Double(value)
+        }
+        if let text = try? container.decodeIfPresent(String.self, forKey: key),
+           let value = Double(text) {
+            return value
+        }
+        return nil
+    }
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601FormatterNoFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
 }
 
 struct WorkoutSegment: Codable, Identifiable {
@@ -600,7 +773,7 @@ struct PlannedWorkout: Codable, Identifiable {
     var createdAt: Date
     var name: String
     var sport: SportType
-    var athleteName: String?
+    var athleteName: String
     var segments: [WorkoutSegment]
     var scheduledDate: Date?
     var externalID: String?
@@ -610,7 +783,7 @@ struct PlannedWorkout: Codable, Identifiable {
         createdAt: Date = Date(),
         name: String,
         sport: SportType,
-        athleteName: String? = nil,
+        athleteName: String = "",
         segments: [WorkoutSegment],
         scheduledDate: Date? = nil,
         externalID: String? = nil
@@ -619,7 +792,7 @@ struct PlannedWorkout: Codable, Identifiable {
         self.createdAt = createdAt
         self.name = name
         self.sport = sport
-        self.athleteName = athleteName
+        self.athleteName = AthleteNameCanonicalizer.normalize(athleteName)
         self.segments = segments
         self.scheduledDate = scheduledDate
         self.externalID = externalID
@@ -637,7 +810,7 @@ struct CalendarEvent: Codable, Identifiable {
     var type: String
     var category: String
     var name: String
-    var athleteName: String?
+    var athleteName: String
     var notes: String
     var externalID: String?
 
@@ -648,7 +821,7 @@ struct CalendarEvent: Codable, Identifiable {
         type: String,
         category: String,
         name: String,
-        athleteName: String? = nil,
+        athleteName: String = "",
         notes: String = "",
         externalID: String? = nil
     ) {
@@ -658,7 +831,7 @@ struct CalendarEvent: Codable, Identifiable {
         self.type = type
         self.category = category
         self.name = name
-        self.athleteName = athleteName
+        self.athleteName = AthleteNameCanonicalizer.normalize(athleteName)
         self.notes = notes
         self.externalID = externalID
     }
@@ -690,7 +863,7 @@ struct DashboardSummary {
 struct WellnessSample: Codable, Identifiable {
     var id: Date { date }
     var date: Date
-    var athleteName: String?
+    var athleteName: String
     var hrv: Double?
     var restingHR: Double?
     var weightKg: Double?
@@ -699,7 +872,7 @@ struct WellnessSample: Codable, Identifiable {
 
     init(
         date: Date,
-        athleteName: String? = nil,
+        athleteName: String = "",
         hrv: Double? = nil,
         restingHR: Double? = nil,
         weightKg: Double? = nil,
@@ -707,7 +880,7 @@ struct WellnessSample: Codable, Identifiable {
         sleepScore: Double? = nil
     ) {
         self.date = date
-        self.athleteName = athleteName
+        self.athleteName = AthleteNameCanonicalizer.normalize(athleteName)
         self.hrv = hrv
         self.restingHR = restingHR
         self.weightKg = weightKg
@@ -1163,7 +1336,7 @@ struct CustomFoodLibraryItem: Codable, Identifiable, Hashable {
 struct DailyMealPlan: Codable, Identifiable {
     var id: UUID
     var date: Date
-    var athleteName: String?
+    var athleteName: String
     var hydrationTargetLiters: Double
     var hydrationActualLiters: Double
     var goalProfile: NutritionGoalProfile
@@ -1175,7 +1348,7 @@ struct DailyMealPlan: Codable, Identifiable {
     init(
         id: UUID = UUID(),
         date: Date,
-        athleteName: String? = nil,
+        athleteName: String = "",
         hydrationTargetLiters: Double = 2.5,
         hydrationActualLiters: Double = 0,
         goalProfile: NutritionGoalProfile = .balanced,
@@ -1186,7 +1359,7 @@ struct DailyMealPlan: Codable, Identifiable {
     ) {
         self.id = id
         self.date = date
-        self.athleteName = athleteName
+        self.athleteName = AthleteNameCanonicalizer.normalize(athleteName)
         self.hydrationTargetLiters = hydrationTargetLiters
         self.hydrationActualLiters = hydrationActualLiters
         self.goalProfile = goalProfile
@@ -1250,7 +1423,7 @@ struct DailyMealPlan: Codable, Identifiable {
         }
     }
 
-    static func defaultTemplate(date: Date, athleteName: String?) -> DailyMealPlan {
+    static func defaultTemplate(date: Date, athleteName: String) -> DailyMealPlan {
         DailyMealPlan(
             date: Calendar.current.startOfDay(for: date),
             athleteName: athleteName,
@@ -1281,7 +1454,7 @@ struct DailyMealPlan: Codable, Identifiable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         date = try container.decode(Date.self, forKey: .date)
-        athleteName = try container.decodeIfPresent(String.self, forKey: .athleteName)
+        athleteName = AthleteNameCanonicalizer.normalize(try container.decode(String.self, forKey: .athleteName))
         hydrationTargetLiters = try container.decodeIfPresent(Double.self, forKey: .hydrationTargetLiters) ?? 2.5
         hydrationActualLiters = try container.decodeIfPresent(Double.self, forKey: .hydrationActualLiters) ?? 0
         goalProfile = try container.decodeIfPresent(NutritionGoalProfile.self, forKey: .goalProfile) ?? .balanced
@@ -1296,7 +1469,7 @@ struct DailyMealPlan: Codable, Identifiable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(date, forKey: .date)
-        try container.encodeIfPresent(athleteName, forKey: .athleteName)
+        try container.encode(athleteName, forKey: .athleteName)
         try container.encode(hydrationTargetLiters, forKey: .hydrationTargetLiters)
         try container.encode(hydrationActualLiters, forKey: .hydrationActualLiters)
         try container.encode(goalProfile, forKey: .goalProfile)

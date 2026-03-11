@@ -45,6 +45,8 @@ final class HeartRateMonitorManager: NSObject, ObservableObject {
     private var pendingScanRequest = false
     private var preferredAutoConnectDeviceID: UUID?
     private var didAttemptAutoConnectForCurrentScan = false
+    /// Target device while connecting/switching. Keeps connect flow single-active.
+    private var pendingConnectDeviceID: UUID?
 
     private var connectedPeripheral: CBPeripheral?
     private var heartRateMeasurementCharacteristic: CBCharacteristic?
@@ -85,13 +87,37 @@ final class HeartRateMonitorManager: NSObject, ObservableObject {
     func connect(deviceID: UUID) {
         guard let central = ensureCentralManager() else { return }
         guard let peripheral = peripherals[deviceID] else { return }
+
+        // Always treat explicit connect as preferred target.
+        preferredAutoConnectDeviceID = deviceID
+
+        if connectedPeripheral?.identifier == deviceID, isConnected {
+            lastMessage = "Already connected to \(peripheral.name ?? "HR Monitor")."
+            return
+        }
+        if pendingConnectDeviceID == deviceID {
+            lastMessage = "Connecting to \(peripheral.name ?? "HR Monitor")..."
+            return
+        }
+
+        if let current = connectedPeripheral, current.identifier != deviceID {
+            // Serialize device switching: disconnect current first, then connect target in didDisconnect.
+            pendingConnectDeviceID = deviceID
+            lastMessage = "Switching to \(peripheral.name ?? "HR Monitor")..."
+            central.cancelPeripheralConnection(current)
+            return
+        }
+
         stopScan()
+        pendingConnectDeviceID = deviceID
         lastMessage = "Connecting to \(peripheral.name ?? "HR Monitor")..."
         central.connect(peripheral, options: nil)
     }
 
     func disconnect() {
-        guard let connectedPeripheral, let central else { return }
+        guard let central else { return }
+        pendingConnectDeviceID = nil
+        guard let connectedPeripheral else { return }
         central.cancelPeripheralConnection(connectedPeripheral)
     }
 
@@ -142,6 +168,7 @@ final class HeartRateMonitorManager: NSObject, ObservableObject {
         guard let targetID = preferredAutoConnectDeviceID else { return }
         guard !didAttemptAutoConnectForCurrentScan else { return }
         guard !isConnected else { return }
+        guard pendingConnectDeviceID == nil else { return }
         guard peripheralID == targetID else { return }
         didAttemptAutoConnectForCurrentScan = true
         lastMessage = "Found preferred HR monitor, auto-connecting..."
@@ -324,7 +351,17 @@ extension HeartRateMonitorManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        if let pending = pendingConnectDeviceID, pending != peripheral.identifier {
+            // Late/stale callback from a superseded connect attempt.
+            central.cancelPeripheralConnection(peripheral)
+            return
+        }
+        if let current = connectedPeripheral, current.identifier != peripheral.identifier {
+            central.cancelPeripheralConnection(current)
+        }
+
         connectedPeripheral = peripheral
+        pendingConnectDeviceID = nil
         preferredAutoConnectDeviceID = peripheral.identifier
         connectedDeviceName = peripheral.name ?? "HR Monitor"
         isConnected = true
@@ -336,14 +373,40 @@ extension HeartRateMonitorManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        let isCurrent = peripheral.identifier == connectedPeripheral?.identifier
+        let isPending = peripheral.identifier == pendingConnectDeviceID
+        guard isCurrent || isPending else { return }
         lastMessage = "Connect failed: \(error?.localizedDescription ?? "unknown")"
-        resetConnectionState()
+        if isCurrent {
+            resetConnectionState()
+        }
+        if isPending {
+            pendingConnectDeviceID = nil
+        }
         refreshDiscoveredDevices()
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        let wasCurrent = peripheral.identifier == connectedPeripheral?.identifier
+        let wasPending = peripheral.identifier == pendingConnectDeviceID
+        guard wasCurrent || wasPending else { return }
+
         let reason = error?.localizedDescription
-        resetConnectionState()
+        if wasCurrent {
+            resetConnectionState()
+        }
+        if wasPending {
+            pendingConnectDeviceID = nil
+        }
+
+        // Continue requested switch after current device fully disconnects.
+        if !isConnected, let targetID = pendingConnectDeviceID, let target = peripherals[targetID] {
+            lastMessage = "Connecting to \(target.name ?? "HR Monitor")..."
+            central.connect(target, options: nil)
+            refreshDiscoveredDevices()
+            return
+        }
+
         refreshDiscoveredDevices()
         lastMessage = reason == nil ? "Disconnected" : "Disconnected: \(reason!)"
     }

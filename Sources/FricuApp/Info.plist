@@ -24,6 +24,8 @@
     <string>14.0</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Fricu uses Bluetooth to connect heart rate monitors and smart trainers for live telemetry and ERG control.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Fricu uses the iPad camera to capture trainer fitting videos with framing guidance and posture analysis.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright 2026 Fricu</string>
 </dict>
