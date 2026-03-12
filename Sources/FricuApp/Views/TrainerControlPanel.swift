@@ -1191,7 +1191,9 @@ struct TrainerControlPanel: View {
         value: String,
         detail: String,
         tint: Color,
-        points: [SparklinePoint]
+        points: [SparklinePoint],
+        fixedYDomain: ClosedRange<Double>? = nil,
+        yAxisFormat: LightChartAxisFormat
     ) -> BikeComputerLightChart {
         BikeComputerLightChart(
             storageKey: storageKey,
@@ -1199,7 +1201,9 @@ struct TrainerControlPanel: View {
             value: value,
             detail: detail,
             tint: tint,
-            points: lightChartPoints(from: points)
+            points: lightChartPoints(from: points),
+            fixedYDomain: fixedYDomain,
+            yAxisFormat: yAxisFormat
         )
     }
 
@@ -1214,7 +1218,9 @@ struct TrainerControlPanel: View {
                     String(format: "1m %.1f km/h", $0)
                 } ?? "1m --",
                 tint: .mint,
-                points: realMapSpeedSparkline
+                points: realMapSpeedSparkline,
+                fixedYDomain: 0...70,
+                yAxisFormat: .number(decimals: 0, suffix: "km/h")
             ),
             lightChart(
                 storageKey: "fricu.chart.real_map.power",
@@ -1224,7 +1230,9 @@ struct TrainerControlPanel: View {
                     String(format: "1m %.0f W", $0)
                 } ?? "1m --",
                 tint: .orange,
-                points: realMapPowerSparkline
+                points: realMapPowerSparkline,
+                fixedYDomain: 0...600,
+                yAxisFormat: .number(decimals: 0, suffix: "W")
             ),
             lightChart(
                 storageKey: "fricu.chart.real_map.grade",
@@ -1234,7 +1242,9 @@ struct TrainerControlPanel: View {
                     String(format: "1m %.1f%%", $0)
                 } ?? "1m --",
                 tint: .purple,
-                points: realMapGradeSparkline
+                points: realMapGradeSparkline,
+                fixedYDomain: -10...20,
+                yAxisFormat: .number(decimals: 0, suffix: "%")
             ),
             lightChart(
                 storageKey: "fricu.chart.real_map.elevation",
@@ -1244,7 +1254,8 @@ struct TrainerControlPanel: View {
                     String(format: "1m %.0f m", $0)
                 } ?? "1m --",
                 tint: .blue,
-                points: realMapAltitudeSparkline
+                points: realMapAltitudeSparkline,
+                yAxisFormat: .number(decimals: 0, suffix: "m")
             )
         ]
     }
@@ -1259,7 +1270,9 @@ struct TrainerControlPanel: View {
                     String(format: "1m %.1f km/h", $0)
                 } ?? "1m --",
                 tint: .mint,
-                points: whooshSpeedSparkline
+                points: whooshSpeedSparkline,
+                fixedYDomain: 0...70,
+                yAxisFormat: .number(decimals: 0, suffix: "km/h")
             ),
             lightChart(
                 storageKey: "fricu.chart.whoosh.power",
@@ -1269,7 +1282,9 @@ struct TrainerControlPanel: View {
                     String(format: "1m %.0f W", $0)
                 } ?? "1m --",
                 tint: .orange,
-                points: whooshPowerSparkline
+                points: whooshPowerSparkline,
+                fixedYDomain: 0...600,
+                yAxisFormat: .number(decimals: 0, suffix: "W")
             ),
             lightChart(
                 storageKey: "fricu.chart.whoosh.grade",
@@ -1279,7 +1294,9 @@ struct TrainerControlPanel: View {
                     String(format: "1m %.1f%%", $0)
                 } ?? "1m --",
                 tint: .purple,
-                points: whooshGradeSparkline
+                points: whooshGradeSparkline,
+                fixedYDomain: -10...20,
+                yAxisFormat: .number(decimals: 0, suffix: "%")
             )
         ]
     }

@@ -40,8 +40,10 @@ enum AppChartDisplayMode: String, CaseIterable, Identifiable {
 
 enum PersistedChartDisplayModeKeys {
     static let perChartPrefix = "fricu.chart.display.mode.v2."
+    static let perChartScalePrefix = "fricu.chart.scale.mode.v1."
     private static let trackedPrefixes = [
         perChartPrefix,
+        perChartScalePrefix,
         "fricu.chart.real_map.",
         "fricu.chart.whoosh.",
         "fricu.chart.bike."

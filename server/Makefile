@@ -8,7 +8,7 @@ LDFLAGS ?= -lsqlite3 -pthread
 SAN_FLAGS ?= -fsanitize=address,undefined -fno-omit-frame-pointer
 
 BIN := fricu-server
-SRC := main.c util.c db.c http.c event_loop.c logger.c
+SRC := main.c util.c db.c http.c event_loop.c logger.c write_queue.c
 TEST_BIN := unit-tests
 TEST_SRC := tests/unit_tests.c
 PERF_BIN := perf-client

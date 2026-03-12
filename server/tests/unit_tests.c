@@ -209,6 +209,76 @@ static void test_missing_account_id_rejected(void) {
     assert(system(cleanup_cmd) == 0);
 }
 
+static void test_write_queue_diagnostics_endpoint(void) {
+    char dir_template[] = "/tmp/fricu-test-diag-XXXXXX";
+    char *tmpdir = mkdtemp(dir_template);
+    assert(tmpdir != NULL);
+
+    int old_cwd = open(".", O_RDONLY);
+    assert(old_cwd >= 0);
+    assert(chdir(tmpdir) == 0);
+
+    assert(init_db("state.db") == 0);
+    worker_db_t db;
+    assert(worker_db_open(&db, "state.db") == 0);
+
+    int put_fds[2] = {-1, -1};
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, put_fds) == 0);
+    const char *put_req =
+        "PUT /v1/data/profile HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "X-Account-Id: tester\r\n"
+        "X-Log-Id: diag-success\r\n"
+        "Content-Length: 14\r\n\r\n"
+        "{\"name\":\"Ana\"}";
+    conn_t put_conn = {0};
+    put_conn.cap = REQ_BUF_SIZE;
+    put_conn.buf = (char *)malloc(put_conn.cap);
+    assert(put_conn.buf != NULL);
+    put_conn.len = strlen(put_req);
+    memcpy(put_conn.buf, put_req, put_conn.len);
+    assert(try_process_client(put_fds[0], &db, &put_conn) == 1);
+    char put_resp[256] = {0};
+    ssize_t put_n = read(put_fds[1], put_resp, sizeof(put_resp) - 1);
+    assert(put_n > 0);
+    assert(strstr(put_resp, "204 No Content") != NULL);
+
+    int diag_fds[2] = {-1, -1};
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, diag_fds) == 0);
+    const char *diag_req =
+        "GET /debug/write-queue HTTP/1.1\r\n"
+        "Host: localhost\r\n"
+        "Connection: close\r\n\r\n";
+    conn_t diag_conn = {0};
+    diag_conn.cap = REQ_BUF_SIZE;
+    diag_conn.buf = (char *)malloc(diag_conn.cap);
+    assert(diag_conn.buf != NULL);
+    diag_conn.len = strlen(diag_req);
+    memcpy(diag_conn.buf, diag_req, diag_conn.len);
+    assert(try_process_client(diag_fds[0], &db, &diag_conn) == 1);
+
+    char diag_resp[1024] = {0};
+    ssize_t diag_n = read(diag_fds[1], diag_resp, sizeof(diag_resp) - 1);
+    assert(diag_n > 0);
+    assert(strstr(diag_resp, "200 OK") != NULL);
+    assert(strstr(diag_resp, "\"queue_depth\":0") != NULL);
+    assert(strstr(diag_resp, "\"last_success_logid\":\"diag-success\"") != NULL);
+    assert(strstr(diag_resp, "\"last_error_logid\":\"\"") != NULL);
+
+    free(put_conn.buf);
+    free(diag_conn.buf);
+    close(put_fds[0]);
+    close(put_fds[1]);
+    close(diag_fds[0]);
+    close(diag_fds[1]);
+    worker_db_close(&db);
+    assert(fchdir(old_cwd) == 0);
+    close(old_cwd);
+    char cleanup_cmd[512] = {0};
+    assert(snprintf(cleanup_cmd, sizeof(cleanup_cmd), "rm -rf '%s' >/dev/null 2>&1", tmpdir) > 0);
+    assert(system(cleanup_cmd) == 0);
+}
+
 
 static void test_put_lock_is_queued_in_pending_writes(void) {
     char dir_template[] = "/tmp/fricu-test-lock-XXXXXX";
@@ -343,6 +413,7 @@ int main(void) {
     test_configure_socket_after_accept();
     test_put_is_journaled_and_persisted();
     test_missing_account_id_rejected();
+    test_write_queue_diagnostics_endpoint();
     test_replay_pending_write_on_restart();
     test_put_lock_is_queued_in_pending_writes();
     puts("unit tests passed");

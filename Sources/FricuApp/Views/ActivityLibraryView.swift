@@ -1,6 +1,5 @@
 import Foundation
 import SwiftUI
-import Charts
 import UniformTypeIdentifiers
 
 private enum ActivityCalendarScope: String, CaseIterable, Identifiable {
@@ -1449,6 +1448,132 @@ private struct ActivityDetailSheet: View {
         return rows
     }
 
+    private var hrPwChartModel: LightScatterCardModel {
+        let samples = hrPwRenderableScatterPoints.map { point in
+            LightScatterSample(
+                id: "\(point.id)",
+                x: point.power,
+                y: point.hr,
+                tint: hrPwTimeColor(for: point.segment),
+                size: 7
+            )
+        }
+        let bands = hrPwZoneBands.map { band in
+            LightScatterBand(
+                id: "zone-\(band.id)",
+                lowerX: band.lowerPower,
+                upperX: band.upperPower,
+                lowerY: hrPwYDomain.lowerBound,
+                upperY: hrPwYDomain.upperBound,
+                tint: band.color,
+                opacity: 0.16
+            )
+        }
+        let curves = hrPwRegressionVisiblePoints.isEmpty ? [] : [
+            LightScatterCurve(
+                id: "regression",
+                tint: .blue.opacity(0.9),
+                points: hrPwRegressionVisiblePoints.map {
+                    LightScatterXYPoint(id: "\($0.id)", x: $0.minute, y: $0.value)
+                },
+                dashed: false
+            )
+        ]
+        var footerNotes = [
+            LightChartNote(
+                text: L10n.choose(simplifiedChinese: "X: 功率(W) · Y: 心率(bpm)", english: "X: Power (W) · Y: Heart rate (bpm)"),
+                style: .standard
+            )
+        ]
+        if let regression = hrPwRegression {
+            footerNotes.append(
+                LightChartNote(
+                    text: String(format: "%.3f*x+%.1f : R %.3f (%d)", regression.slope, regression.intercept, regression.correlation, hrPwDelaySec),
+                    style: .monospaced
+                )
+            )
+        }
+        if let powerAtTHR = hrPwPowerAtThreshold {
+            footerNotes.append(
+                LightChartNote(
+                    text: String(format: "Power@150: %.0fW", powerAtTHR),
+                    style: .monospaced
+                )
+            )
+        }
+        return LightScatterCardModel(
+            storageKey: "activity.detail.hrpw",
+            title: "HrPw (Heart Rate × Power)",
+            valueText: String(format: "%.0f bpm", hrPwAverageHR),
+            detailText: String(format: "Avg %.0f W", hrPwAveragePower),
+            footerNotes: footerNotes,
+            tint: .orange,
+            xDomain: hrPwXDomain,
+            yDomain: hrPwYDomain,
+            yAxisFormat: .number(decimals: 0, suffix: "bpm"),
+            bands: bands,
+            samples: samples,
+            curves: curves,
+            rules: [
+                LightScatterRule(id: "avg-power", axis: .x, value: hrPwAveragePower, tint: .secondary, dashed: true),
+                LightScatterRule(id: "avg-hr", axis: .y, value: hrPwAverageHR, tint: .secondary, dashed: true)
+            ],
+            plotHeight: 290
+        )
+    }
+
+    private var decouplingChartModel: LightTimeSeriesCardModel? {
+        guard let decoupling = decouplingSummary, !decouplingTracePoints.isEmpty else { return nil }
+        let values = decouplingTracePoints.map(\.value)
+        let lower = min(decoupling.efFirst, decoupling.efSecond, values.min() ?? decoupling.efFirst)
+        let upper = max(decoupling.efFirst, decoupling.efSecond, values.max() ?? decoupling.efSecond)
+        let padding = max(0.05, (upper - lower) * 0.12)
+        var footerNotes = [
+            LightChartNote(
+                text: String(format: "EF前半 %.3f → 后半 %.3f", decoupling.efFirst, decoupling.efSecond),
+                style: .monospaced
+            )
+        ]
+        if let splitMinute = decoupling.splitMinute {
+            footerNotes.append(
+                LightChartNote(
+                    text: String(format: "Split %.1f min", splitMinute),
+                    style: .monospaced
+                )
+            )
+        }
+        return LightTimeSeriesCardModel(
+            storageKey: "activity.detail.decoupling",
+            title: "Decoupling (EF)",
+            valueText: String(format: "%.1f%%", decoupling.ratePct),
+            detailText: L10n.choose(simplifiedChinese: "解耦率", english: "Decoupling"),
+            footerNotes: footerNotes,
+            yDomain: (lower - padding)...(upper + padding),
+            yAxisFormat: .number(decimals: 2),
+            series: [
+                LightTimeSeriesSeries(
+                    id: "ef",
+                    title: "EF",
+                    tint: .mint,
+                    points: decouplingTracePoints.map { point in
+                        LightTimeSeriesPoint(
+                            timestamp: activity.date.addingTimeInterval(point.minute * 60),
+                            value: point.value
+                        )
+                    },
+                    renderStyle: .line
+                )
+            ],
+            bands: [],
+            rules: [
+                LightTimeSeriesRule(id: "ef-first", value: decoupling.efFirst, tint: .mint, dashed: true),
+                LightTimeSeriesRule(id: "ef-second", value: decoupling.efSecond, tint: .blue, dashed: true)
+            ],
+            tint: .mint,
+            plotHeight: 130
+        )
+    }
+
     private func rollingMean(_ values: [Double], window: Int) -> [Double] {
         guard !values.isEmpty else { return [] }
         let w = max(1, window)
@@ -2447,14 +2572,7 @@ private struct ActivityDetailSheet: View {
                 }
 
                 GroupBox("HrPw (Heart Rate × Power)") {
-                    let hrPwChartMode = chartModeStore.mode(for: "hrpw_scatter", fallback: chartDisplayMode)
                     VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Spacer()
-                            AppChartModeMenuButton(
-                                selection: chartModeStore.binding(for: "hrpw_scatter", fallback: chartDisplayMode)
-                            )
-                        }
                         if hrPwRenderableScatterPoints.count < 8 {
                             Text(
                                 hrPwScatterPoints.count >= 8
@@ -2463,235 +2581,61 @@ private struct ActivityDetailSheet: View {
                             )
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                        } else if hrPwChartMode == .pie {
-                            Chart(hrPwRenderableScatterPoints.suffix(60)) { point in
-                                SectorMark(
-                                    angle: .value("HeartRate", max(0, point.hr)),
-                                    innerRadius: .ratio(0.56),
-                                    angularInset: 1
-                                )
-                                .foregroundStyle(hrPwTimeColor(for: point.segment))
-                            }
                         } else {
-                            Chart {
-                                ForEach(hrPwZoneBands) { band in
-                                    RectangleMark(
-                                        xStart: .value("PowerStart", band.lowerPower),
-                                        xEnd: .value("PowerEnd", band.upperPower),
-                                        yStart: .value("HRMin", hrPwYDomain.lowerBound),
-                                        yEnd: .value("HRMax", hrPwYDomain.upperBound)
-                                    )
-                                    .foregroundStyle(band.color.opacity(0.18))
-                                    .annotation(position: .overlay, alignment: .center) {
-                                        Text(band.label)
-                                            .font(.caption2.bold())
-                                            .foregroundStyle(band.color.opacity(0.95))
-                                    }
-                                }
-
-                                RuleMark(y: .value("AvgHR", hrPwAverageHR))
-                                    .foregroundStyle(.secondary.opacity(0.45))
-                                    .lineStyle(.init(lineWidth: 1, dash: [3, 3]))
-
-                                RuleMark(x: .value("AvgPower", hrPwAveragePower))
-                                    .foregroundStyle(.secondary.opacity(0.45))
-                                    .lineStyle(.init(lineWidth: 1, dash: [3, 3]))
-
-                                ForEach(hrPwRenderableScatterPoints) { point in
-                                    switch hrPwChartMode {
-                                    case .line:
-                                        PointMark(
-                                            x: .value("Power", point.power),
-                                            y: .value("HeartRate", point.hr)
-                                        )
-                                        .symbolSize(18)
-                                        .foregroundStyle(hrPwTimeColor(for: point.segment))
-                                    case .bar:
-                                        BarMark(
-                                            x: .value("Power", point.power),
-                                            y: .value("HeartRate", point.hr)
-                                        )
-                                        .foregroundStyle(hrPwTimeColor(for: point.segment).opacity(0.8))
-                                    case .pie:
-                                        BarMark(
-                                            x: .value("Power", point.power),
-                                            y: .value("HeartRate", point.hr)
-                                        )
-                                        .foregroundStyle(hrPwTimeColor(for: point.segment).opacity(0.8))
-                                    case .flame:
-                                        BarMark(
-                                            x: .value("Power", point.power),
-                                            y: .value("HeartRate", point.hr)
-                                        )
-                                        .foregroundStyle(
-                                            LinearGradient(
-                                                colors: [.yellow, .orange, .red],
-                                                startPoint: .bottom,
-                                                endPoint: .top
-                                            )
-                                        )
-                                    }
-                                }
-
-                                if hrPwChartMode == .line, !hrPwRegressionVisiblePoints.isEmpty {
-                                    ForEach(hrPwRegressionVisiblePoints) { point in
-                                        LineMark(
-                                            x: .value("Power", point.minute),
-                                            y: .value("Regression", point.value)
-                                        )
-                                        .interpolationMethod(.linear)
-                                        .foregroundStyle(.blue.opacity(0.9))
-                                        .lineStyle(.init(lineWidth: 2))
-                                    }
-                                }
-                            }
-                            .chartXScale(domain: hrPwXDomain)
-                            .chartYScale(domain: hrPwYDomain)
-                            .chartPlotStyle { plot in
-                                plot.clipped()
-                            }
-                            .chartXAxisLabel("Power (Watts)")
-                            .chartYAxisLabel("Heart Rate (BPM)")
-                            .frame(height: 290)
-                            .cartesianHoverTip(
-                                xTitle: L10n.choose(simplifiedChinese: "功率(W)", english: "Power (W)"),
-                                yTitle: L10n.choose(simplifiedChinese: "心率(bpm)", english: "Heart Rate (bpm)")
+                            LightScatterCard(
+                                model: hrPwChartModel,
+                                mode: chartModeStore.binding(for: "hrpw_scatter", fallback: chartDisplayMode)
                             )
-
-                            if let regression = hrPwRegression {
-                                Text(
-                                    String(
-                                        format: "%.3f*x+%.1f : R %.3f (%d)",
-                                        regression.slope,
-                                        regression.intercept,
-                                        regression.correlation,
-                                        hrPwDelaySec
-                                    )
-                                )
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                            }
-                            if let powerAtTHR = hrPwPowerAtThreshold {
-                                Text(
-                                    String(
-                                        format: "Power@150: %.0fW",
-                                        powerAtTHR
-                                    )
-                                )
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                            }
-
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 GroupBox("Decoupling (EF)") {
-                    let decouplingChartMode = chartModeStore.mode(for: "decoupling_ef", fallback: chartDisplayMode)
                     VStack(alignment: .leading, spacing: 8) {
-                        if let decoupling = decouplingSummary, !decouplingTracePoints.isEmpty {
-                            HStack {
-                                Text(String(format: "解耦率 %.1f%%", decoupling.ratePct))
-                                    .font(.caption.bold())
-                                Spacer()
-                                AppChartModeMenuButton(
-                                    selection: chartModeStore.binding(for: "decoupling_ef", fallback: chartDisplayMode)
-                                )
-                                Text(String(format: "EF前半 %.3f → 后半 %.3f", decoupling.efFirst, decoupling.efSecond))
-                                    .font(.caption2.monospaced())
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Chart(decouplingTracePoints) { point in
-                                switch decouplingChartMode {
-                                case .line:
-                                    LineMark(
-                                        x: .value("Minute", point.minute),
-                                        y: .value("EF", point.value)
-                                    )
-                                    .interpolationMethod(.linear)
-                                    .foregroundStyle(.mint)
-                                    .lineStyle(.init(lineWidth: 2))
-
-                                    RuleMark(y: .value("EF First", decoupling.efFirst))
-                                        .foregroundStyle(.mint.opacity(0.3))
-                                        .lineStyle(.init(lineWidth: 1, dash: [4, 3]))
-
-                                    RuleMark(y: .value("EF Second", decoupling.efSecond))
-                                        .foregroundStyle(.blue.opacity(0.35))
-                                        .lineStyle(.init(lineWidth: 1, dash: [4, 3]))
-
-                                    if let splitMinute = decoupling.splitMinute {
-                                        RuleMark(x: .value("Split", splitMinute))
-                                            .foregroundStyle(.orange.opacity(0.75))
-                                            .lineStyle(.init(lineWidth: 1.2, dash: [2, 2]))
-                                    }
-                                case .bar:
-                                    BarMark(
-                                        x: .value("Minute", point.minute),
-                                        y: .value("EF", point.value)
-                                    )
-                                    .foregroundStyle(.mint.opacity(0.85))
-                                case .pie:
-                                    SectorMark(
-                                        angle: .value("EF", max(0, point.value)),
-                                        innerRadius: .ratio(0.56),
-                                        angularInset: 1
-                                    )
-                                    .foregroundStyle(.mint.opacity(0.8))
-                                case .flame:
-                                    BarMark(
-                                        x: .value("Minute", point.minute),
-                                        y: .value("EF", max(0, point.value))
-                                    )
-                                    .foregroundStyle(
-                                        LinearGradient(
-                                            colors: [.yellow, .orange, .red],
-                                            startPoint: .bottom,
-                                            endPoint: .top
-                                        )
-                                    )
-                                }
-                            }
-                            .frame(height: 130)
-                            .cartesianHoverTip(
-                                xTitle: L10n.choose(simplifiedChinese: "时间(分)", english: "Time (min)"),
-                                yTitle: "EF"
+                        if let decouplingChartModel, let decoupling = decouplingSummary {
+                            LightTimeSeriesCard(
+                                model: decouplingChartModel,
+                                mode: chartModeStore.binding(for: "decoupling_ef", fallback: chartDisplayMode)
                             )
 
-                            HStack(spacing: 12) {
-                                ActivityLegendSwatch(
-                                    color: .mint,
-                                    style: .solid,
-                                    label: L10n.choose(simplifiedChinese: "实线：EF 时间曲线", english: "Solid: EF time trace")
-                                )
-                                ActivityLegendSwatch(
-                                    color: .mint.opacity(0.65),
-                                    style: .dashed,
-                                    label: L10n.choose(simplifiedChinese: "虚线：前半均值", english: "Dashed: first-half mean")
-                                )
-                                ActivityLegendSwatch(
-                                    color: .blue.opacity(0.75),
-                                    style: .dashed,
-                                    label: L10n.choose(simplifiedChinese: "虚线：后半均值", english: "Dashed: second-half mean")
-                                )
-                                ActivityLegendSwatch(
-                                    color: .orange.opacity(0.8),
-                                    style: .dashed,
-                                    label: L10n.choose(simplifiedChinese: "竖虚线：前后半分割点", english: "Vertical dashed: split point")
-                                )
-                            }
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            LightChartLegendStrip(
+                                items: [
+                                    LightChartLegendItem(
+                                        label: L10n.choose(simplifiedChinese: "实线：EF 时间曲线", english: "Solid: EF time trace"),
+                                        tint: .mint,
+                                        style: .solid
+                                    ),
+                                    LightChartLegendItem(
+                                        label: L10n.choose(simplifiedChinese: "虚线：前半均值", english: "Dashed: first-half mean"),
+                                        tint: .mint.opacity(0.65),
+                                        style: .dashed
+                                    ),
+                                    LightChartLegendItem(
+                                        label: L10n.choose(simplifiedChinese: "虚线：后半均值", english: "Dashed: second-half mean"),
+                                        tint: .blue.opacity(0.75),
+                                        style: .dashed
+                                    ),
+                                    LightChartLegendItem(
+                                        label: L10n.choose(simplifiedChinese: "竖虚线：前后半分割点", english: "Vertical dashed: split point"),
+                                        tint: .orange.opacity(0.8),
+                                        style: .dashed
+                                    )
+                                ]
+                            )
 
-                            Text("计算: 解耦率 = (EF前半 - EF后半) / EF前半 × 100，EF = 功率 / 心率")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                            Text("参数: 样本点 \(decoupling.sampleCount), 前后半程均值由同时间点功率/心率配对得到")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
+                            LightChartNotesBlock(
+                                notes: [
+                                    LightChartNote(
+                                        text: "计算: 解耦率 = (EF前半 - EF后半) / EF前半 × 100，EF = 功率 / 心率",
+                                        style: .standard
+                                    ),
+                                    LightChartNote(
+                                        text: "参数: 样本点 \(decoupling.sampleCount), 前后半程均值由同时间点功率/心率配对得到",
+                                        style: .monospaced
+                                    )
+                                ]
+                            )
                         } else {
                             Text("解耦率需要 >=20min 且含功率+心率数据。")
                                 .foregroundStyle(.secondary)
@@ -2991,45 +2935,6 @@ private struct ActivityStoryCard: View {
     }
 }
 
-private struct ActivityLegendSwatch: View {
-    enum Style {
-        case solid
-        case dashed
-    }
-
-    let color: Color
-    let style: Style
-    let label: String
-
-    var body: some View {
-        HStack(spacing: 5) {
-            Group {
-                if style == .solid {
-                    Capsule()
-                        .fill(color)
-                } else {
-                    DashedLegendLine()
-                        .stroke(color, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
-                }
-            }
-            .frame(width: 20, height: 6)
-
-            Text(label)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-    }
-}
-
-private struct DashedLegendLine: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
-        return path
-    }
-}
-
 private struct ActivityTracePoint: Identifiable {
     let id: Int
     let minute: Double
@@ -3094,6 +2999,10 @@ private struct ActivityDistributionCard: View {
     let color: Color
     let bins: [ActivityDistributionBin]
 
+    private var storageID: String {
+        title.lowercased().replacingOccurrences(of: " ", with: "_")
+    }
+
     private var xAxisTickIndices: [Int] {
         guard !bins.isEmpty else { return [] }
         let desiredTickCount = min(6, bins.count)
@@ -3106,90 +3015,42 @@ private struct ActivityDistributionCard: View {
     }
 
     var body: some View {
-        let mode = chartModeStore.mode(for: title, fallback: chartDisplayMode)
         GroupBox(title) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Spacer()
-                    AppChartModeMenuButton(selection: chartModeStore.binding(for: title, fallback: chartDisplayMode))
-                }
-                if bins.isEmpty {
-                    Text("No \(title.lowercased()) data")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    if mode == .pie {
-                        Chart(bins) { bin in
-                            SectorMark(
-                                angle: .value("Samples", max(0, bin.sampleCount)),
-                                innerRadius: .ratio(0.56),
-                                angularInset: 1
-                            )
-                            .foregroundStyle(color.opacity(0.8))
-                        }
-                        .frame(height: 150)
-                    } else {
-                        Chart(bins) { bin in
-                            switch mode {
-                            case .line:
-                                LineMark(
-                                    x: .value("Bin", bin.id),
-                                    y: .value("Samples", bin.sampleCount)
-                                )
-                                .foregroundStyle(color)
-                                .interpolationMethod(.linear)
-                            case .bar:
-                                BarMark(
-                                    x: .value("Bin", bin.id),
-                                    y: .value("Samples", bin.sampleCount)
-                                )
-                                .foregroundStyle(color.gradient)
-                            case .flame:
-                                BarMark(
-                                    x: .value("Bin", bin.id),
-                                    y: .value("Samples", max(0, bin.sampleCount))
-                                )
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.yellow, .orange, color],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                            case .pie:
-                                BarMark(
-                                    x: .value("Bin", bin.id),
-                                    y: .value("Samples", bin.sampleCount)
-                                )
-                                .foregroundStyle(color.gradient)
-                            }
-                        }
-                        .chartXAxis {
-                            AxisMarks(values: xAxisTickIndices) { value in
-                                AxisGridLine()
-                                AxisTick()
-                                AxisValueLabel {
-                                    if let idx = value.as(Int.self), bins.indices.contains(idx) {
-                                        let bin = bins[idx]
-                                        Text("\(bin.lowerBound)-\(bin.upperBound)")
-                                            .font(.caption2.monospacedDigit())
-                                    }
-                                }
-                            }
-                        }
-                        .frame(height: 150)
-                    }
-
-                    HStack {
-                        Text("Peak: \(Int((bins.max(by: { $0.sampleCount < $1.sampleCount })?.valueMidpoint ?? 0).rounded())) \(unitLabel)")
-                        Spacer()
-                        Text("Bins: \(bins.count)")
-                    }
-                    .font(.caption)
+            if bins.isEmpty {
+                Text("No \(title.lowercased()) data")
                     .foregroundStyle(.secondary)
-                }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                LightCategoricalCard(
+                    model: LightCategoricalCardModel(
+                        storageKey: "activity.distribution.\(storageID)",
+                        title: title,
+                        valueText: "Peak \(Int((bins.max(by: { $0.sampleCount < $1.sampleCount })?.valueMidpoint ?? 0).rounded())) \(unitLabel)",
+                        detailText: "Bins \(bins.count)",
+                        footerNotes: xAxisTickIndices.compactMap { idx in
+                            guard bins.indices.contains(idx) else { return nil }
+                            let bin = bins[idx]
+                            return LightChartNote(
+                                text: "\(bin.lowerBound)-\(bin.upperBound): \(bin.sampleCount)",
+                                style: .monospaced
+                            )
+                        },
+                        yDomain: 0...Double(max(1, bins.map(\.sampleCount).max() ?? 1)),
+                        yAxisFormat: .number(decimals: 0),
+                        tint: color,
+                        points: bins.map { bin in
+                            LightCategoricalPoint(
+                                id: "\(title)-\(bin.id)",
+                                label: "\(bin.lowerBound)-\(bin.upperBound)",
+                                value: Double(bin.sampleCount),
+                                tint: color
+                            )
+                        },
+                        plotHeight: 150
+                    ),
+                    mode: chartModeStore.binding(for: title, fallback: chartDisplayMode)
+                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
@@ -3203,6 +3064,10 @@ private struct ActivityMiniSeriesCard: View {
     let points: [ActivityTracePoint]
     let average: Double?
     let sourceText: String
+
+    private var storageID: String {
+        title.lowercased().replacingOccurrences(of: " ", with: "_")
+    }
 
     private var smoothedPoints: [ActivityTracePoint] {
         guard points.count >= 2 else { return points }
@@ -3251,85 +3116,45 @@ private struct ActivityMiniSeriesCard: View {
     }
 
     var body: some View {
-        let mode = chartModeStore.mode(for: "\(title).\(unitLabel)", fallback: chartDisplayMode)
         GroupBox(title) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Label("Latest \(latestText)", systemImage: "waveform.path.ecg")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    AppChartModeMenuButton(
-                        selection: chartModeStore.binding(
-                            for: "\(title).\(unitLabel)",
-                            fallback: chartDisplayMode
-                        )
-                    )
-                    Label("Avg \(averageText)", systemImage: "minus.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if smoothedPoints.isEmpty {
-                    Text("No \(title.lowercased()) data")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Chart(smoothedPoints) { point in
-                        switch mode {
-                        case .line:
-                            LineMark(
-                                x: .value("Minute", point.minute),
-                                y: .value("Value", point.value)
-                            )
-                            .interpolationMethod(.linear)
-                            .foregroundStyle(color)
-                            .lineStyle(.init(lineWidth: 2))
-                        case .bar:
-                            BarMark(
-                                x: .value("Minute", point.minute),
-                                y: .value("Value", point.value)
-                            )
-                            .foregroundStyle(color.opacity(0.85))
-                        case .pie:
-                            SectorMark(
-                                angle: .value("Value", max(0, point.value)),
-                                innerRadius: .ratio(0.56),
-                                angularInset: 1
-                            )
-                            .foregroundStyle(color.opacity(0.8))
-                        case .flame:
-                            BarMark(
-                                x: .value("Minute", point.minute),
-                                y: .value("Value", max(0, point.value))
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.yellow, .orange, .red],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                        }
-                    }
-                    .chartYScale(domain: yDomain)
-                    .chartPlotStyle { plot in
-                        plot.clipped()
-                    }
-                    .chartXAxis(.hidden)
-                    .chartYAxis(.hidden)
-                    .frame(height: 96)
-                    .cartesianHoverTip(
-                        xTitle: L10n.choose(simplifiedChinese: "时间(分)", english: "Time (min)"),
-                        yTitle: unitLabel
-                    )
-                }
-
-                Text(sourceText)
-                    .font(.caption2)
+            if smoothedPoints.isEmpty {
+                Text("No \(title.lowercased()) data")
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                LightTimeSeriesCard(
+                    model: LightTimeSeriesCardModel(
+                        storageKey: "activity.mini.\(storageID)",
+                        title: title,
+                        valueText: latestText,
+                        detailText: "Avg \(averageText)",
+                        footerNotes: [LightChartNote(text: sourceText, style: .standard)],
+                        yDomain: yDomain,
+                        yAxisFormat: .number(decimals: 0, suffix: unitLabel),
+                        series: [
+                            LightTimeSeriesSeries(
+                                id: "\(title).\(unitLabel)",
+                                title: title,
+                                tint: color,
+                                points: smoothedPoints.map { point in
+                                    let seconds = point.minute * 60.0
+                                    let date = Date(timeIntervalSinceReferenceDate: seconds)
+                                    return LightTimeSeriesPoint(timestamp: date, value: point.value)
+                                },
+                                renderStyle: .line
+                            )
+                        ],
+                        bands: [],
+                        rules: [],
+                        tint: color,
+                        plotHeight: 96
+                    ),
+                    mode: chartModeStore.binding(
+                        for: "\(title).\(unitLabel)",
+                        fallback: chartDisplayMode
+                    )
+                )
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

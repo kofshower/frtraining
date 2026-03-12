@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 struct InsightsView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
@@ -55,6 +54,10 @@ struct InsightsView: View {
         let grouped = Dictionary(grouping: store.filteredActivities.filter { $0.date >= start }) { $0.sport }
         return grouped.map { sport, activities in
             SportMixPoint(sport: sport, totalTSS: activities.reduce(0) { $0 + $1.tss })
+        }
+        .sorted { lhs, rhs in
+            if lhs.totalTSS != rhs.totalTSS { return lhs.totalTSS > rhs.totalTSS }
+            return lhs.sport.label < rhs.sport.label
         }
     }
 
@@ -155,6 +158,116 @@ struct InsightsView: View {
 
     private func clampLevel(_ value: Double) -> Double {
         min(max(value, 0.0), 1.0)
+    }
+
+    private func sportTint(_ sport: SportType) -> Color {
+        switch sport {
+        case .cycling:
+            return .blue
+        case .running:
+            return .green
+        case .swimming:
+            return .cyan
+        case .strength:
+            return .orange
+        }
+    }
+
+    private var freshnessChartModel: LightTimeSeriesCardModel {
+        LightTimeSeriesCardModel(
+            storageKey: "insights.freshness",
+            title: L10n.choose(simplifiedChinese: "新鲜度趋势（21天）", english: "Freshness Trend (21d)"),
+            valueText: String(format: "%.1f", freshnessSeries.last?.tsb ?? 0),
+            detailText: readinessAdvice(tsb: store.summary.currentTSB),
+            footerNotes: [
+                LightChartNote(
+                    text: L10n.choose(simplifiedChinese: "高风险 / 过渡 / 最优 / 精力充沛", english: "High Risk / Transition / Optimal / Very Fresh"),
+                    style: .standard
+                )
+            ],
+            yDomain: freshnessYDomain,
+            yAxisFormat: .number(decimals: 0),
+            series: [
+                LightTimeSeriesSeries(
+                    id: "freshness",
+                    title: "TSB",
+                    tint: .orange,
+                    points: freshnessSeries.map { LightTimeSeriesPoint(timestamp: $0.date, value: $0.tsb) },
+                    renderStyle: .step
+                )
+            ],
+            bands: [
+                LightTimeSeriesBand(id: "risk", lower: -40, upper: -25, tint: .red, opacity: 0.10),
+                LightTimeSeriesBand(id: "transition", lower: -25, upper: -10, tint: .orange, opacity: 0.08),
+                LightTimeSeriesBand(id: "optimal", lower: -10, upper: 10, tint: .green, opacity: 0.08),
+                LightTimeSeriesBand(id: "fresh", lower: 10, upper: 25, tint: .cyan, opacity: 0.08)
+            ],
+            rules: [LightTimeSeriesRule(id: "baseline", value: 0, tint: .secondary, dashed: true)],
+            tint: .orange,
+            plotHeight: 190
+        )
+    }
+
+    private var sportMixChartModel: LightCategoricalCardModel {
+        let total = sportMix.reduce(0) { $0 + $1.totalTSS }
+        let lead = sportMix.first
+        return LightCategoricalCardModel(
+            storageKey: "insights.sport_mix",
+            title: L10n.choose(simplifiedChinese: "30天运动负荷分布（按 TSS）", english: "30-Day Sport Mix by TSS"),
+            valueText: lead.map { "\($0.sport.label) \($0.totalTSS)" } ?? "--",
+            detailText: "Total \(total)",
+            footerNotes: sportMix.map { point in
+                let ratio = total > 0 ? Double(point.totalTSS) / Double(total) * 100 : 0
+                return LightChartNote(
+                    text: "\(point.sport.label): \(point.totalTSS) TSS · \(Int(ratio.rounded()))%",
+                    style: .monospaced
+                )
+            },
+            yDomain: 0...Double(max(1, sportMix.map(\.totalTSS).max() ?? 1)),
+            yAxisFormat: .number(decimals: 0),
+            tint: .blue,
+            points: sportMix.map { point in
+                LightCategoricalPoint(
+                    id: point.sport.rawValue,
+                    label: point.sport.label,
+                    value: Double(point.totalTSS),
+                    tint: sportTint(point.sport)
+                )
+            },
+            plotHeight: 240
+        )
+    }
+
+    private var plannedLoadChartModel: LightTimeSeriesCardModel {
+        let values = plannedLoad.map { Double($0.minutes) }
+        let upper = max(30.0, ceil((values.max() ?? 0) * 1.15 / 10.0) * 10.0)
+        return LightTimeSeriesCardModel(
+            storageKey: "insights.planned_load",
+            title: L10n.choose(simplifiedChinese: "计划负荷（未来21天）", english: "Planned Load (Next 21d)"),
+            valueText: "\(plannedLoad.reduce(0) { $0 + $1.minutes }) min",
+            detailText: "\(plannedLoad.filter { $0.minutes > 0 }.count) days",
+            footerNotes: [
+                LightChartNote(
+                    text: L10n.choose(simplifiedChinese: "未来 21 天计划时长汇总", english: "Aggregated planned minutes for next 21 days"),
+                    style: .standard
+                )
+            ],
+            yDomain: 0...upper,
+            yAxisFormat: .number(decimals: 0, suffix: "min"),
+            series: [
+                LightTimeSeriesSeries(
+                    id: "planned_load",
+                    title: "Minutes",
+                    tint: .blue,
+                    points: plannedLoad.map { LightTimeSeriesPoint(timestamp: $0.date, value: Double($0.minutes)) },
+                    renderStyle: .bar
+                )
+            ],
+            bands: [],
+            rules: [],
+            tint: .blue,
+            plotHeight: 220
+        )
     }
 
     private var insightStatGroups: [InsightStatGroup] {
@@ -482,238 +595,33 @@ struct InsightsView: View {
                 }
 
                 GroupBox(L10n.choose(simplifiedChinese: "新鲜度趋势（21天）", english: "Freshness Trend (21d)")) {
-                    let freshnessChartMode = chartModeStore.mode(for: "freshness_trend", fallback: chartDisplayMode)
                     if freshnessSeries.isEmpty {
                         Text(L10n.choose(simplifiedChinese: "暂无负荷数据。", english: "No load data yet."))
                             .foregroundStyle(.secondary)
                     } else {
-                        HStack {
-                            Spacer()
-                            AppChartModeMenuButton(
-                                selection: chartModeStore.binding(
-                                    for: "freshness_trend",
-                                    fallback: chartDisplayMode
-                                )
-                            )
-                        }
-
-                        if freshnessChartMode == .pie {
-                            Chart(freshnessSeries) { point in
-                                SectorMark(
-                                    angle: .value("TSB", max(0, abs(point.tsb))),
-                                    innerRadius: .ratio(0.55),
-                                    angularInset: 1
-                                )
-                                .foregroundStyle(point.tsb >= 0 ? .green : .orange)
-                            }
-                            .frame(height: 190)
-                            .padding(.top, 6)
-                        } else {
-                            Chart {
-                                if let first = freshnessSeries.first?.date, let last = freshnessSeries.last?.date {
-                                    RectangleMark(
-                                        xStart: .value("Start", first),
-                                        xEnd: .value("End", last),
-                                        yStart: .value("Y Start", -40),
-                                        yEnd: .value("Y End", -25)
-                                    )
-                                    .foregroundStyle(.red.opacity(0.10))
-
-                                    RectangleMark(
-                                        xStart: .value("Start", first),
-                                        xEnd: .value("End", last),
-                                        yStart: .value("Y Start", -25),
-                                        yEnd: .value("Y End", -10)
-                                    )
-                                    .foregroundStyle(.orange.opacity(0.08))
-
-                                    RectangleMark(
-                                        xStart: .value("Start", first),
-                                        xEnd: .value("End", last),
-                                        yStart: .value("Y Start", -10),
-                                        yEnd: .value("Y End", 10)
-                                    )
-                                    .foregroundStyle(.green.opacity(0.08))
-
-                                    RectangleMark(
-                                        xStart: .value("Start", first),
-                                        xEnd: .value("End", last),
-                                        yStart: .value("Y Start", 10),
-                                        yEnd: .value("Y End", 25)
-                                    )
-                                    .foregroundStyle(.cyan.opacity(0.08))
-                                }
-
-                                RuleMark(y: .value("Baseline", 0))
-                                    .foregroundStyle(.secondary.opacity(0.45))
-                                    .lineStyle(.init(lineWidth: 1, dash: [4, 4]))
-
-                                ForEach(freshnessSeries) { point in
-                                    switch freshnessChartMode {
-                                    case .line:
-                                        LineMark(
-                                            x: .value("Date", point.date, unit: .day),
-                                            y: .value("TSB", point.tsb)
-                                        )
-                                        .foregroundStyle(.orange)
-                                        .interpolationMethod(.stepCenter)
-                                    case .bar:
-                                        BarMark(
-                                            x: .value("Date", point.date, unit: .day),
-                                            y: .value("TSB", point.tsb)
-                                        )
-                                        .foregroundStyle(.orange.opacity(0.85))
-                                    case .pie:
-                                        BarMark(
-                                            x: .value("Date", point.date, unit: .day),
-                                            y: .value("TSB", point.tsb)
-                                        )
-                                        .foregroundStyle(.orange.opacity(0.85))
-                                    case .flame:
-                                        BarMark(
-                                            x: .value("Date", point.date, unit: .day),
-                                            y: .value("TSB", abs(point.tsb))
-                                        )
-                                        .foregroundStyle(
-                                            LinearGradient(
-                                                colors: [.yellow, .orange, .red],
-                                                startPoint: .bottom,
-                                                endPoint: .top
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                            .frame(height: 190)
-                            .chartYScale(domain: freshnessYDomain)
-                            .chartYAxis {
-                                AxisMarks(position: .trailing)
-                            }
-                            .cartesianHoverTip(
-                                xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                                yTitle: "TSB"
-                            )
-                            .padding(.top, 6)
-                        }
-
-                        HStack(spacing: 10) {
-                            Text(L10n.choose(simplifiedChinese: "高风险", english: "High Risk"))
-                                .foregroundStyle(.red)
-                            Text(L10n.choose(simplifiedChinese: "过渡", english: "Transition"))
-                                .foregroundStyle(.orange)
-                            Text(L10n.choose(simplifiedChinese: "最优", english: "Optimal"))
-                                .foregroundStyle(.green)
-                            Text(L10n.choose(simplifiedChinese: "精力充沛", english: "Very Fresh"))
-                                .foregroundStyle(.cyan)
-                        }
-                        .font(.caption2)
+                        LightTimeSeriesCard(
+                            model: freshnessChartModel,
+                            mode: chartModeStore.binding(for: "freshness_trend", fallback: chartDisplayMode)
+                        )
                     }
                 }
 
                 GroupBox(L10n.choose(simplifiedChinese: "30天运动负荷分布（按 TSS）", english: "30-Day Sport Mix by TSS")) {
-                    let sportMixChartMode = chartModeStore.mode(for: "sport_mix_tss", fallback: chartDisplayMode)
                     if sportMix.isEmpty {
                         Text(L10n.choose(simplifiedChinese: "数据不足。", english: "Not enough data."))
                             .foregroundStyle(.secondary)
                     } else {
-                        HStack {
-                            Spacer()
-                            AppChartModeMenuButton(
-                                selection: chartModeStore.binding(
-                                    for: "sport_mix_tss",
-                                    fallback: chartDisplayMode
-                                )
-                            )
-                        }
-                        Chart(sportMix) { point in
-                            switch sportMixChartMode {
-                            case .line:
-                                LineMark(
-                                    x: .value("Sport", point.sport.label),
-                                    y: .value("TSS", point.totalTSS)
-                                )
-                                .foregroundStyle(by: .value("Sport", point.sport.label))
-                            case .bar:
-                                BarMark(
-                                    x: .value("Sport", point.sport.label),
-                                    y: .value("TSS", point.totalTSS)
-                                )
-                                .foregroundStyle(by: .value("Sport", point.sport.label))
-                            case .pie:
-                                SectorMark(
-                                    angle: .value("TSS", point.totalTSS),
-                                    innerRadius: .ratio(0.55),
-                                    angularInset: 2
-                                )
-                                .foregroundStyle(by: .value("Sport", point.sport.label))
-                            case .flame:
-                                BarMark(
-                                    x: .value("Sport", point.sport.label),
-                                    y: .value("TSS", point.totalTSS)
-                                )
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.yellow, .orange, .red],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                            }
-                        }
-                        .chartLegend(position: .trailing, alignment: .center)
-                        .frame(height: 240)
+                        LightCategoricalCard(
+                            model: sportMixChartModel,
+                            mode: chartModeStore.binding(for: "sport_mix_tss", fallback: chartDisplayMode)
+                        )
                     }
                 }
 
                 GroupBox(L10n.choose(simplifiedChinese: "计划负荷（未来21天）", english: "Planned Load (Next 21d)")) {
-                    let plannedLoadChartMode = chartModeStore.mode(for: "planned_load", fallback: chartDisplayMode)
-                    HStack {
-                        Spacer()
-                        AppChartModeMenuButton(
-                            selection: chartModeStore.binding(for: "planned_load", fallback: chartDisplayMode)
-                        )
-                    }
-                    Chart(plannedLoad) { point in
-                        switch plannedLoadChartMode {
-                        case .line:
-                            LineMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value("Minutes", point.minutes)
-                            )
-                            .foregroundStyle(.blue)
-                        case .bar:
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value("Minutes", point.minutes)
-                            )
-                            .foregroundStyle(.blue.gradient)
-                            .opacity(point.minutes > 0 ? 1.0 : 0.2)
-                        case .pie:
-                            SectorMark(
-                                angle: .value("Minutes", max(0, point.minutes)),
-                                innerRadius: .ratio(0.55),
-                                angularInset: 1
-                            )
-                            .foregroundStyle(.blue.opacity(point.minutes > 0 ? 0.85 : 0.22))
-                        case .flame:
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value("Minutes", max(0, point.minutes))
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.yellow, .orange, .red],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                            .opacity(point.minutes > 0 ? 1.0 : 0.2)
-                        }
-                    }
-                    .frame(height: 220)
-                    .cartesianHoverTip(
-                        xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                        yTitle: L10n.choose(simplifiedChinese: "分钟", english: "Minutes")
+                    LightTimeSeriesCard(
+                        model: plannedLoadChartModel,
+                        mode: chartModeStore.binding(for: "planned_load", fallback: chartDisplayMode)
                     )
                 }
             }

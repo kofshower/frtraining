@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 import UniformTypeIdentifiers
 
 private enum ProSuiteModule: String, CaseIterable, Identifiable {
@@ -400,6 +399,38 @@ private struct IntervalLabModuleView: View {
         return rows
     }
 
+    private var intervalCompareChartModel: LightCategoricalCardModel {
+        let points = compareRows.enumerated().map { index, row in
+            LightCategoricalPoint(
+                id: "\(index)-\(row.label)",
+                label: row.label,
+                value: max(0, row.power),
+                tint: index == 0 ? .blue : .orange.opacity(0.85)
+            )
+        }
+        let detail = compareRows.first.map {
+            "目标 \(Int($0.power))W · \(Int($0.duration).asDuration)"
+        } ?? "Power / Duration"
+        let footerNotes = compareRows.map { row in
+            LightChartNote(
+                text: "\(row.label): \(Int(row.power))W · \(Int(row.duration).asDuration) · IF \(String(format: "%.2f", row.ifValue)) · 相似度 \(String(format: "%.0f%%", row.similarity * 100))",
+                style: .monospaced
+            )
+        }
+        return LightCategoricalCardModel(
+            storageKey: "prosuite.interval.compare",
+            title: "间歇对比图",
+            valueText: compareRows.first.map { "\(Int($0.power)) W" } ?? "--",
+            detailText: detail,
+            footerNotes: footerNotes,
+            yDomain: 0...Double(max(1, Int(points.map(\.value).max() ?? 1))),
+            yAxisFormat: .number(decimals: 0, suffix: "W"),
+            tint: .blue,
+            points: points,
+            plotHeight: 210
+        )
+    }
+
     var body: some View {
         Group {
             if activityOptions.isEmpty {
@@ -486,68 +517,14 @@ private struct IntervalLabModuleView: View {
                     }
 
                     GroupBox("间歇对比图") {
-                        let compareChartMode = chartModeStore.mode(for: "interval_compare", fallback: chartDisplayMode)
                         if compareRows.isEmpty {
                             Text("选择间歇后显示对比")
                                 .foregroundStyle(.secondary)
                         } else {
-                            HStack {
-                                Spacer()
-                                AppChartModeMenuButton(
-                                    selection: chartModeStore.binding(for: "interval_compare", fallback: chartDisplayMode)
-                                )
-                            }
-                            Chart(compareRows) { row in
-                                switch compareChartMode {
-                                case .line:
-                                    LineMark(
-                                        x: .value("Interval", row.label),
-                                        y: .value("Power", row.power)
-                                    )
-                                    .foregroundStyle(.blue)
-                                    .interpolationMethod(.linear)
-
-                                    PointMark(
-                                        x: .value("Interval", row.label),
-                                        y: .value("Duration", row.duration / 10.0)
-                                    )
-                                    .foregroundStyle(.orange)
-                                case .bar:
-                                    BarMark(
-                                        x: .value("Interval", row.label),
-                                        y: .value("Power", row.power)
-                                    )
-                                    .foregroundStyle(.blue.gradient)
-                                case .pie:
-                                    SectorMark(
-                                        angle: .value("Power", max(0, row.power)),
-                                        innerRadius: .ratio(0.55),
-                                        angularInset: 1
-                                    )
-                                    .foregroundStyle(.blue.opacity(0.82))
-                                case .flame:
-                                    BarMark(
-                                        x: .value("Interval", row.label),
-                                        y: .value("Power", max(0, row.power))
-                                    )
-                                    .foregroundStyle(
-                                        LinearGradient(
-                                            colors: [.yellow, .orange, .red],
-                                            startPoint: .bottom,
-                                            endPoint: .top
-                                        )
-                                    )
-                                }
-                            }
-                            .frame(height: 210)
-                            .cartesianHoverTip(
-                                xTitle: L10n.choose(simplifiedChinese: "间歇", english: "Interval"),
-                                yTitle: L10n.choose(simplifiedChinese: "功率/时长", english: "Power/Duration")
+                            LightCategoricalCard(
+                                model: intervalCompareChartModel,
+                                mode: chartModeStore.binding(for: "interval_compare", fallback: chartDisplayMode)
                             )
-
-                            Text("柱: 平均功率(W)；点: 时长(秒/10)。")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -679,58 +656,71 @@ private struct MetricsLabModuleView: View {
         return "\(primaryMetricID)-\(secondaryEnabled)-\(secondaryMetricID)-\(days)-\(aggregation.rawValue)-\(sport)-\(comparePrevious)-\(scopeFilter.rawValue)-\(store.athleteScopedActivities.count)-\(store.loadSeries.count)-\(marker)-\(store.profile.cyclingFTPWatts)-\(store.profile.runningFTPWatts)"
     }
 
-    private var primaryInterpolation: InterpolationMethod {
-        if aggregation == .day, primaryMetric.style == .sum { return .stepCenter }
-        return .linear
-    }
-
-    private var comparisonInterpolation: InterpolationMethod {
-        if aggregation == .day, primaryMetric.style == .sum { return .stepCenter }
-        return .linear
-    }
-
-    private var secondaryInterpolation: InterpolationMethod {
-        guard let secondaryMetric else { return .linear }
-        if aggregation == .day, secondaryMetric.style == .sum { return .stepCenter }
-        return .linear
-    }
-
     private var renderPrimaryAsBars: Bool {
         aggregation == .day && primaryMetric.style == .sum
     }
 
-    private var primaryLineSegments: [[MetricChartPoint]] {
-        segmentedSeries(resultCache.primary, aggregation: aggregation)
-    }
-
-    private var secondaryLineSegments: [[MetricChartPoint]] {
-        segmentedSeries(resultCache.secondary, aggregation: aggregation)
-    }
-
-    private var comparisonLineSegments: [[MetricChartPoint]] {
-        segmentedSeries(resultCache.comparison, aggregation: aggregation)
-    }
-
-    private var metricChartDomain: ClosedRange<Date> {
-        let allDates = (resultCache.primary + resultCache.secondary + resultCache.comparison).map(\.date)
-        let calendar = Calendar.current
-
-        guard
-            let minimum = allDates.min(),
-            let maximum = allDates.max()
-        else {
-            let end = calendar.startOfDay(for: Date())
-            let start = calendar.date(byAdding: .day, value: -max(14, days) + 1, to: end) ?? end
-            return start...end
+    private var metricsChartModel: LightTimeSeriesCardModel {
+        let primaryStyle: LightTimeSeriesRenderStyle = renderPrimaryAsBars ? .bar : .line
+        var series = [
+            LightTimeSeriesSeries(
+                id: "primary",
+                title: primaryMetric.name,
+                tint: .blue,
+                points: resultCache.primary.map { LightTimeSeriesPoint(timestamp: $0.date, value: $0.value) },
+                renderStyle: primaryStyle
+            )
+        ]
+        if let secondaryMetric {
+            series.append(
+                LightTimeSeriesSeries(
+                    id: "secondary",
+                    title: secondaryMetric.name,
+                    tint: .orange,
+                    points: resultCache.secondary.map { LightTimeSeriesPoint(timestamp: $0.date, value: $0.value) },
+                    renderStyle: aggregation == .day && secondaryMetric.style == .sum ? .step : .line
+                )
+            )
         }
-
-        if minimum == maximum {
-            let start = calendar.date(byAdding: .day, value: -1, to: minimum) ?? minimum
-            let end = calendar.date(byAdding: .day, value: 1, to: maximum) ?? maximum
-            return start...end
+        if comparePrevious {
+            series.append(
+                LightTimeSeriesSeries(
+                    id: "comparison",
+                    title: "Prev",
+                    tint: .gray.opacity(0.8),
+                    points: resultCache.comparison.map { LightTimeSeriesPoint(timestamp: $0.date, value: $0.value) },
+                    renderStyle: aggregation == .day && primaryMetric.style == .sum ? .step : .line,
+                    dashed: true
+                )
+            )
         }
-
-        return minimum...maximum
+        let allValues = (resultCache.primary + resultCache.secondary + resultCache.comparison).map(\.value)
+        let minValue = allValues.min() ?? 0
+        let maxValue = allValues.max() ?? 1
+        let span = max(1, maxValue - minValue)
+        let lower = min(0, minValue - span * 0.08)
+        let upper = maxValue + span * 0.12
+        var footerNotes = [LightChartNote(text: "蓝: \(primaryMetric.name)", style: .standard)]
+        if let secondaryMetric {
+            footerNotes.append(LightChartNote(text: "橙: \(secondaryMetric.name)", style: .standard))
+        }
+        if comparePrevious {
+            footerNotes.append(LightChartNote(text: "灰虚线: 上一周期", style: .standard))
+        }
+        return LightTimeSeriesCardModel(
+            storageKey: "prosuite.metrics.engine",
+            title: "可视化图表引擎",
+            valueText: resultCache.primary.last.map { String(format: "%.1f", $0.value) } ?? "--",
+            detailText: "\(aggregation.title) · \(days)d",
+            footerNotes: footerNotes,
+            yDomain: lower...upper,
+            yAxisFormat: .number(decimals: primaryMetric.unit == "%" ? 1 : 0, suffix: primaryMetric.unit == "%" ? "%" : ""),
+            series: series,
+            bands: [],
+            rules: [],
+            tint: .blue,
+            plotHeight: 280
+        )
     }
 
     var body: some View {
@@ -800,127 +790,9 @@ private struct MetricsLabModuleView: View {
             }
 
             GroupBox("可视化图表引擎") {
-                let metricsChartMode = chartModeStore.mode(for: "metrics_engine", fallback: chartDisplayMode)
-                HStack {
-                    Spacer()
-                    AppChartModeMenuButton(
-                        selection: chartModeStore.binding(for: "metrics_engine", fallback: chartDisplayMode)
-                    )
-                }
-                Chart {
-                    switch metricsChartMode {
-                    case .line:
-                        if renderPrimaryAsBars {
-                            ForEach(resultCache.primary) { point in
-                                BarMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value(primaryMetric.name, point.value)
-                                )
-                                .foregroundStyle(.blue)
-                            }
-                        } else {
-                            ForEach(Array(primaryLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
-                                ForEach(segment) { point in
-                                    LineMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value(primaryMetric.name, point.value),
-                                        series: .value("Primary Segment", "primary-\(segmentIndex)")
-                                    )
-                                    .foregroundStyle(.blue)
-                                    .interpolationMethod(primaryInterpolation)
-                                    .lineStyle(StrokeStyle(lineWidth: 2))
-                                }
-                            }
-                        }
-
-                        if let secondaryMetric {
-                            ForEach(Array(secondaryLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
-                                ForEach(segment) { point in
-                                    LineMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value(secondaryMetric.name, point.value),
-                                        series: .value("Secondary Segment", "secondary-\(segmentIndex)")
-                                    )
-                                    .foregroundStyle(.orange)
-                                    .interpolationMethod(secondaryInterpolation)
-                                    .lineStyle(StrokeStyle(lineWidth: 1.8))
-                                }
-                            }
-                        }
-
-                        if comparePrevious {
-                            ForEach(Array(comparisonLineSegments.enumerated()), id: \.offset) { segmentIndex, segment in
-                                ForEach(segment) { point in
-                                    LineMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("Prev", point.value),
-                                        series: .value("Comparison Segment", "comparison-\(segmentIndex)")
-                                    )
-                                    .foregroundStyle(.gray.opacity(0.8))
-                                    .interpolationMethod(comparisonInterpolation)
-                                    .lineStyle(StrokeStyle(lineWidth: 1.4, dash: [5, 4]))
-                                }
-                            }
-                        }
-                    case .bar:
-                        ForEach(resultCache.primary) { point in
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value(primaryMetric.name, max(0, point.value))
-                            )
-                            .foregroundStyle(.blue.opacity(0.85))
-                        }
-                    case .pie:
-                        ForEach(resultCache.primary.suffix(40)) { point in
-                            SectorMark(
-                                angle: .value(primaryMetric.name, max(0, abs(point.value))),
-                                innerRadius: .ratio(0.56),
-                                angularInset: 1
-                            )
-                            .foregroundStyle(.blue.opacity(0.8))
-                        }
-                    case .flame:
-                        ForEach(resultCache.primary) { point in
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value(primaryMetric.name, max(0, abs(point.value)))
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.yellow, .orange, .red],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                        }
-                    }
-                }
-                .frame(height: 280)
-                .chartXScale(domain: metricChartDomain)
-                .chartXAxis {
-                    AxisMarks(values: .stride(by: .month)) { _ in
-                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8, dash: [4, 4]))
-                            .foregroundStyle(.secondary.opacity(0.25))
-                        AxisTick()
-                        AxisValueLabel(format: .dateTime.month(.abbreviated))
-                    }
-                }
-                .chartYAxis {
-                    AxisMarks(position: .trailing) { _ in
-                        AxisGridLine().foregroundStyle(.secondary.opacity(0.25))
-                        AxisTick()
-                        AxisValueLabel()
-                    }
-                }
-                .chartPlotStyle { plot in
-                    plot.clipped()
-                }
-                .transaction { transaction in
-                    transaction.animation = nil
-                }
-                .cartesianHoverTip(
-                    xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                    yTitle: L10n.choose(simplifiedChinese: "指标值", english: "Metric")
+                LightTimeSeriesCard(
+                    model: metricsChartModel,
+                    mode: chartModeStore.binding(for: "metrics_engine", fallback: chartDisplayMode)
                 )
 
                 if isComputing {
@@ -933,17 +805,12 @@ private struct MetricsLabModuleView: View {
                     }
                 }
 
-                HStack(spacing: 14) {
-                    Text("蓝实线: \(primaryMetric.name)")
-                    if let secondaryMetric {
-                        Text("橙实线: \(secondaryMetric.name)")
-                    }
-                    if comparePrevious {
-                        Text("灰虚线: 上一周期")
-                    }
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                LightChartLegendStrip(
+                    items:
+                        [LightChartLegendItem(label: "蓝实线: \(primaryMetric.name)", tint: .blue, style: .solid)] +
+                        (secondaryMetric.map { [LightChartLegendItem(label: "橙实线: \($0.name)", tint: .orange, style: .solid)] } ?? []) +
+                        (comparePrevious ? [LightChartLegendItem(label: "灰虚线: 上一周期", tint: .gray.opacity(0.8), style: .dashed)] : [])
+                )
             }
         }
         .task(id: metricQueryKey) {
@@ -982,42 +849,6 @@ private struct MetricsLabModuleView: View {
             resultCache = result
             isComputing = false
         }
-    }
-
-    private func segmentedSeries(
-        _ points: [MetricChartPoint],
-        aggregation: MetricAggregation
-    ) -> [[MetricChartPoint]] {
-        guard !points.isEmpty else { return [] }
-        let sorted = points.sorted { $0.date < $1.date }
-        let maxGap: TimeInterval
-        switch aggregation {
-        case .day:
-            maxGap = 36 * 60 * 60
-        case .week:
-            maxGap = 9 * 24 * 60 * 60
-        case .month:
-            maxGap = 40 * 24 * 60 * 60
-        }
-
-        var segments: [[MetricChartPoint]] = []
-        var current: [MetricChartPoint] = []
-
-        for point in sorted {
-            if let last = current.last,
-               point.date.timeIntervalSince(last.date) > maxGap {
-                if !current.isEmpty {
-                    segments.append(current)
-                }
-                current = [point]
-            } else {
-                current.append(point)
-            }
-        }
-        if !current.isEmpty {
-            segments.append(current)
-        }
-        return segments
     }
 }
 
@@ -1111,6 +942,19 @@ private struct PowerModelModuleView: View {
         ]
     }
 
+    private func colorForModel(_ name: String) -> Color {
+        switch name {
+        case "Monod-Scherrer":
+            return .blue
+        case "Morton 3P":
+            return .purple
+        case "Submax Envelope":
+            return .green
+        default:
+            return .gray
+        }
+    }
+
     private var chartXDomain: ClosedRange<Double> {
         let allDurations = (analysis.observed + analysis.comparisonObserved + modelCurvePoints).map(\.durationSec)
         let upper = max(10.0, Double(allDurations.max() ?? 3600) / 60.0)
@@ -1130,6 +974,59 @@ private struct PowerModelModuleView: View {
         let hardCap = max(500.0, observedMax * 1.7)
         let rawMax = (observedPowers + modelPowers).map { min($0, hardCap) }.max() ?? observedMax
         return 0.0...max(250.0, rawMax * 1.08)
+    }
+
+    private var powerModelChartModel: LightScatterCardModel {
+        LightScatterCardModel(
+            storageKey: "prosuite.power_model",
+            title: "CP/W'/Pmax 多模型",
+            valueText: analysis.monod.map { String(format: "CP %.0fW", $0.cp) } ?? "--",
+            detailText: "\(analysis.observed.count) obs / \(analysis.comparisonObserved.count) prev",
+            footerNotes: [
+                LightChartNote(text: "黑点: 最近90天 MMP；灰点: 前90天", style: .standard),
+                LightChartNote(text: "蓝/紫/绿: Monod / Morton 3P / Submax", style: .standard)
+            ],
+            tint: .blue,
+            xDomain: chartXDomain,
+            yDomain: chartYDomain,
+            yAxisFormat: .number(decimals: 0, suffix: "W"),
+            bands: [],
+            samples: analysis.observed.map { point in
+                LightScatterSample(
+                    id: "obs-\(point.durationSec)",
+                    x: Double(point.durationSec) / 60.0,
+                    y: point.power,
+                    tint: .black.opacity(0.8),
+                    size: 8
+                )
+            } + analysis.comparisonObserved.map { point in
+                LightScatterSample(
+                    id: "prev-\(point.durationSec)",
+                    x: Double(point.durationSec) / 60.0,
+                    y: point.power,
+                    tint: .gray.opacity(0.4),
+                    size: 7
+                )
+            },
+            curves: Dictionary(grouping: modelCurveRows, by: \.model)
+                .sorted { $0.key < $1.key }
+                .map { model, rows in
+                    LightScatterCurve(
+                        id: model,
+                        tint: colorForModel(model),
+                        points: rows.map { row in
+                            LightScatterXYPoint(
+                                id: "\(model)-\(row.durationMin)",
+                                x: row.durationMin,
+                                y: row.power
+                            )
+                        },
+                        dashed: false
+                    )
+                },
+            rules: [],
+            plotHeight: 280
+        )
     }
 
     var body: some View {
@@ -1154,84 +1051,9 @@ private struct PowerModelModuleView: View {
                 }
 
                 GroupBox("CP/W'/Pmax 多模型") {
-                    let powerModelChartMode = chartModeStore.mode(for: "cp_model", fallback: chartDisplayMode)
-                    HStack {
-                        Spacer()
-                        AppChartModeMenuButton(
-                            selection: chartModeStore.binding(for: "cp_model", fallback: chartDisplayMode)
-                        )
-                    }
-                    Chart {
-                        switch powerModelChartMode {
-                        case .line:
-                            ForEach(analysis.observed) { point in
-                                PointMark(
-                                    x: .value("Duration", Double(point.durationSec) / 60.0),
-                                    y: .value("Power", point.power)
-                                )
-                                .foregroundStyle(.black)
-                            }
-
-                            ForEach(analysis.comparisonObserved) { point in
-                                PointMark(
-                                    x: .value("Prev Duration", Double(point.durationSec) / 60.0),
-                                    y: .value("Prev Power", point.power)
-                                )
-                                .foregroundStyle(.gray.opacity(0.35))
-                            }
-
-                            ForEach(modelCurveRows) { row in
-                                LineMark(
-                                    x: .value("Duration", row.durationMin),
-                                    y: .value("Model Power", row.power),
-                                    series: .value("Model", row.model)
-                                )
-                                .foregroundStyle(by: .value("Model", row.model))
-                                .lineStyle(StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                            }
-                        case .bar:
-                            ForEach(modelCurveRows) { row in
-                                BarMark(
-                                    x: .value("Duration", row.durationMin),
-                                    y: .value("Model Power", max(0, row.power))
-                                )
-                                .foregroundStyle(by: .value("Model", row.model))
-                            }
-                        case .pie:
-                            ForEach(modelCurveRows.suffix(40)) { row in
-                                SectorMark(
-                                    angle: .value("Power", max(0, row.power)),
-                                    innerRadius: .ratio(0.56),
-                                    angularInset: 1
-                                )
-                                .foregroundStyle(by: .value("Model", row.model))
-                            }
-                        case .flame:
-                            ForEach(modelCurveRows) { row in
-                                BarMark(
-                                    x: .value("Duration", row.durationMin),
-                                    y: .value("Model Power", max(0, row.power))
-                                )
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.yellow, .orange, .red],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                            }
-                        }
-                    }
-                    .frame(height: 280)
-                    .chartXScale(domain: chartXDomain)
-                    .chartYScale(domain: chartYDomain)
-                    .chartForegroundStyleScale(modelColorScale)
-                    .transaction { transaction in
-                        transaction.animation = nil
-                    }
-                    .cartesianHoverTip(
-                        xTitle: L10n.choose(simplifiedChinese: "时长(分)", english: "Duration (min)"),
-                        yTitle: L10n.choose(simplifiedChinese: "功率(W)", english: "Power (W)")
+                    LightScatterCard(
+                        model: powerModelChartModel,
+                        mode: chartModeStore.binding(for: "cp_model", fallback: chartDisplayMode)
                     )
 
                     Text("黑点: 最近90天 MMP；灰点: 前90天。蓝/紫/绿分别为 Monod、Morton 3P、Submax 建模曲线。")
@@ -2008,118 +1830,103 @@ private struct ForensicModuleView: View {
         }
     }
 
+    private func sportTint(_ sport: SportType) -> Color {
+        switch sport {
+        case .cycling: return .blue
+        case .running: return .green
+        case .swimming: return .cyan
+        case .strength: return .orange
+        }
+    }
+
+    private var forensicScatterChartModel: LightScatterCardModel {
+        let avgPower = scatterRows.isEmpty ? 0 : scatterRows.map(\.power).reduce(0, +) / Double(scatterRows.count)
+        let avgHR = scatterRows.isEmpty ? 0 : scatterRows.map(\.heartRate).reduce(0, +) / Double(scatterRows.count)
+        let maxTSS = max(1, scatterRows.map(\.tss).max() ?? 1)
+        let xValues = scatterRows.map(\.power)
+        let yValues = scatterRows.map(\.heartRate)
+        let xUpper = max(250, (xValues.max() ?? 200) * 1.08)
+        let yUpper = max(150, (yValues.max() ?? 120) * 1.08)
+        let yLower = max(40, (yValues.min() ?? 80) * 0.82)
+        return LightScatterCardModel(
+            storageKey: "prosuite.forensic.scatter",
+            title: "2D/3D Scatter (Forensic)",
+            valueText: String(format: "%.0fW / %.0fbpm", avgPower, avgHR),
+            detailText: "\(scatterRows.count) samples",
+            footerNotes: [LightChartNote(text: "点大小代表 TSS，作为伪 3D 强度轴。", style: .standard)],
+            tint: .blue,
+            xDomain: 0...xUpper,
+            yDomain: yLower...yUpper,
+            yAxisFormat: .number(decimals: 0, suffix: "bpm"),
+            bands: [],
+            samples: scatterRows.enumerated().map { index, row in
+                LightScatterSample(
+                    id: "scatter-\(index)",
+                    x: row.power,
+                    y: row.heartRate,
+                    tint: sportTint(row.sport),
+                    size: CGFloat(max(7, min(20, 7 + (row.tss / maxTSS) * 12)))
+                )
+            },
+            curves: [],
+            rules: [],
+            plotHeight: 220
+        )
+    }
+
+    private var aerolabChartModel: LightTimeSeriesCardModel {
+        let values = aeroRows.map(\.cda)
+        let minValue = values.min() ?? 0.2
+        let maxValue = values.max() ?? 0.4
+        let span = max(0.02, maxValue - minValue)
+        return LightTimeSeriesCardModel(
+            storageKey: "prosuite.aerolab",
+            title: "Aerolab (CdA 估计轨迹)",
+            valueText: String(format: "%.3f", aeroRows.last?.cda ?? 0),
+            detailText: "\(aeroRows.count) sessions",
+            footerNotes: [LightChartNote(text: "基于功率/速度估算 CdA，用于空气动力变化趋势追踪。", style: .standard)],
+            yDomain: max(0.1, minValue - span * 0.15)...(maxValue + span * 0.15),
+            yAxisFormat: .number(decimals: 3),
+            series: [
+                LightTimeSeriesSeries(
+                    id: "aerolab",
+                    title: "CdA",
+                    tint: .mint,
+                    points: aeroRows.map { row in
+                        LightTimeSeriesPoint(
+                            timestamp: Date(timeIntervalSinceReferenceDate: Double(row.index)),
+                            value: row.cda
+                        )
+                    },
+                    renderStyle: .line
+                )
+            ],
+            bands: [],
+            rules: [],
+            tint: .mint,
+            plotHeight: 160
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             GroupBox("2D/3D Scatter (Forensic)") {
-                let forensicScatterChartMode = chartModeStore.mode(for: "scatter", fallback: chartDisplayMode)
                 if scatterRows.isEmpty {
                     Text("缺少功率+心率样本")
                         .foregroundStyle(.secondary)
                 } else {
-                    HStack {
-                        Spacer()
-                        AppChartModeMenuButton(
-                            selection: chartModeStore.binding(for: "scatter", fallback: chartDisplayMode)
-                        )
-                    }
-                    Chart(scatterRows) { row in
-                        switch forensicScatterChartMode {
-                        case .line:
-                            PointMark(
-                                x: .value("Power", row.power),
-                                y: .value("HeartRate", row.heartRate)
-                            )
-                            .symbolSize(max(18, row.tss * 1.5))
-                            .foregroundStyle(by: .value("Sport", row.sport.label))
-                        case .bar:
-                            BarMark(
-                                x: .value("Power", row.power),
-                                y: .value("HeartRate", row.heartRate)
-                            )
-                            .foregroundStyle(by: .value("Sport", row.sport.label))
-                        case .pie:
-                            SectorMark(
-                                angle: .value("TSS", max(0, row.tss)),
-                                innerRadius: .ratio(0.56),
-                                angularInset: 1
-                            )
-                            .foregroundStyle(by: .value("Sport", row.sport.label))
-                        case .flame:
-                            BarMark(
-                                x: .value("Power", row.power),
-                                y: .value("HeartRate", row.heartRate)
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.yellow, .orange, .red],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                        }
-                    }
-                    .frame(height: 220)
-                    .cartesianHoverTip(
-                        xTitle: L10n.choose(simplifiedChinese: "功率(W)", english: "Power (W)"),
-                        yTitle: L10n.choose(simplifiedChinese: "心率(bpm)", english: "Heart Rate (bpm)")
+                    LightScatterCard(
+                        model: forensicScatterChartModel,
+                        mode: chartModeStore.binding(for: "scatter", fallback: chartDisplayMode)
                     )
-                    Text("点大小代表 TSS，作为伪 3D 强度轴。")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
                 }
             }
 
             GroupBox("Aerolab (CdA 估计轨迹)") {
-                let forensicAerolabChartMode = chartModeStore.mode(for: "aerolab", fallback: chartDisplayMode)
-                HStack {
-                    Spacer()
-                    AppChartModeMenuButton(
-                        selection: chartModeStore.binding(for: "aerolab", fallback: chartDisplayMode)
-                    )
-                }
-                Chart(aeroRows) { row in
-                    switch forensicAerolabChartMode {
-                    case .line:
-                        LineMark(
-                            x: .value("Session", row.index),
-                            y: .value("CdA", row.cda)
-                        )
-                        .foregroundStyle(.mint)
-                    case .bar:
-                        BarMark(
-                            x: .value("Session", row.index),
-                            y: .value("CdA", row.cda)
-                        )
-                        .foregroundStyle(.mint.opacity(0.85))
-                    case .pie:
-                        SectorMark(
-                            angle: .value("CdA", max(0, row.cda)),
-                            innerRadius: .ratio(0.56),
-                            angularInset: 1
-                        )
-                        .foregroundStyle(.mint.opacity(0.8))
-                    case .flame:
-                        BarMark(
-                            x: .value("Session", row.index),
-                            y: .value("CdA", row.cda)
-                        )
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.yellow, .orange, .red],
-                                startPoint: .bottom,
-                                endPoint: .top
-                            )
-                        )
-                    }
-                }
-                .frame(height: 160)
-                .cartesianHoverTip(
-                    xTitle: L10n.choose(simplifiedChinese: "训练序号", english: "Session"),
-                    yTitle: "CdA"
+                LightTimeSeriesCard(
+                    model: aerolabChartModel,
+                    mode: chartModeStore.binding(for: "aerolab", fallback: chartDisplayMode)
                 )
-                Text("基于功率/速度估算 CdA，用于空气动力变化趋势追踪。")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
             }
 
             GroupBox("高级数据编辑器") {

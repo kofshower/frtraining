@@ -261,11 +261,6 @@ static int create_pending_write(
     return 0;
 }
 
-static int remove_pending_write(const char *path) {
-    if (unlink(path) != 0) return -1;
-    return fsync_directory(PENDING_WRITES_DIR);
-}
-
 static int send_all(int fd, const char *buf, size_t len) {
     size_t sent = 0;
     int retry = 0;
@@ -345,51 +340,6 @@ static int json_is_valid(worker_db_t *db, const char *json) {
     return ok;
 }
 
-static int persist_failed_payload(
-    const char *key,
-    const char *payload,
-    size_t payload_len,
-    int sqlite_rc,
-    int sqlite_ext,
-    char *out_path,
-    size_t out_path_len) {
-    const char *dir = "failed_writes";
-    struct stat st;
-    if (stat(dir, &st) != 0) {
-        if (mkdir(dir, 0700) != 0 && errno != EEXIST) {
-            return -1;
-        }
-    } else if (!S_ISDIR(st.st_mode)) {
-        return -1;
-    }
-
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    int name_len = snprintf(
-        out_path,
-        out_path_len,
-        "%s/%s-%jd-%ld-rc%d-ext%d.json",
-        dir,
-        key,
-        (intmax_t)getpid(),
-        ts.tv_nsec,
-        sqlite_rc,
-        sqlite_ext);
-    if (name_len <= 0 || (size_t)name_len >= out_path_len) {
-        return -1;
-    }
-
-    FILE *f = fopen(out_path, "wb");
-    if (!f) return -1;
-    size_t written = fwrite(payload, 1, payload_len, f);
-    if (fclose(f) != 0 || written != payload_len) {
-        unlink(out_path);
-        return -1;
-    }
-
-    return 0;
-}
-
 static void log_http_request(
     const char *method,
     const char *path,
@@ -438,6 +388,23 @@ static int handle_get_data(int fd, worker_db_t *db, const char *key, const reque
     }
 }
 
+static int handle_get_write_queue_diagnostics(int fd, const request_log_context_t *ctx) {
+    write_dispatch_diagnostics_t diag;
+    write_dispatch_diagnostics_snapshot(&diag);
+
+    char body[512] = {0};
+    snprintf(
+        body,
+        sizeof(body),
+        "{\"running\":%s,\"queue_depth\":%d,\"last_success_logid\":\"%s\",\"last_error_logid\":\"%s\"}",
+        diag.running ? "true" : "false",
+        diag.queue_depth,
+        diag.last_success_logid,
+        diag.last_error_logid);
+    send_response_with_log_context(fd, 200, "OK", body, ctx);
+    return 200;
+}
+
 static int handle_put_data(
     int fd,
     worker_db_t *db,
@@ -450,16 +417,6 @@ static int handle_put_data(
         log_warn("DATA WRITE rejected key=%s reason=invalid_json bytes=%zu logid=%s", key, payload_len, ctx->log_id);
         return 400;
     }
-
-    sqlite3_stmt *stmt = db->upsert_stmt;
-    if (!stmt) {
-        send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"database error\"}", ctx);
-        log_error("DATA WRITE failed key=%s reason=missing_upsert_stmt bytes=%zu logid=%s", key, payload_len, ctx->log_id);
-        return 500;
-    }
-
-    sqlite3_reset(stmt);
-    sqlite3_clear_bindings(stmt);
 
     char storage_key[256] = {0};
     if (build_storage_key(ctx->account_id, key, storage_key, sizeof(storage_key)) != 0) {
@@ -474,107 +431,60 @@ static int handle_put_data(
         return 500;
     }
 
-    sqlite3_bind_text(stmt, 1, storage_key, -1, SQLITE_TRANSIENT);
-    sqlite3_bind_text(stmt, 2, payload, -1, SQLITE_TRANSIENT);
-    int rc = SQLITE_ERROR;
-    const int max_retries = 8;
-    int attempt_used = 0;
-    for (int attempt = 0; attempt <= max_retries; attempt++) {
-        attempt_used = attempt;
-        rc = sqlite3_step(stmt);
-        if (rc == SQLITE_DONE) {
-            break;
-        }
-
-        if ((rc == SQLITE_BUSY || rc == SQLITE_LOCKED) && attempt < max_retries) {
-            log_warn(
-                "DATA WRITE retrying key=%s account=%s logid=%s attempt=%d rc=%d bytes=%zu",
-                key,
-                ctx->account_id,
-                ctx->log_id,
-                attempt + 1,
-                rc,
-                payload_len);
-            sqlite3_reset(stmt);
-            struct timespec ts = {.tv_sec = 0, .tv_nsec = (long)(2000000 * (attempt + 1))};
-            nanosleep(&ts, NULL);
-            continue;
-        }
-
-        break;
+    write_dispatch_result_t result;
+    int dispatch_rc = write_dispatch_submit(
+        key,
+        storage_key,
+        payload,
+        payload_len,
+        pending_path,
+        ctx->account_id,
+        ctx->log_id,
+        150,
+        &result);
+    if (dispatch_rc < 0) {
+        send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"write queue unavailable\"}", ctx);
+        log_error("DATA WRITE failed key=%s reason=dispatch_enqueue_failed bytes=%zu account=%s logid=%s", key, payload_len, ctx->account_id, ctx->log_id);
+        return 500;
     }
 
-    int ext = sqlite3_extended_errcode(db->db);
-    int transient_lock = (rc == SQLITE_BUSY || rc == SQLITE_LOCKED || ext == SQLITE_BUSY_SNAPSHOT || ext == SQLITE_BUSY_TIMEOUT);
-
-    if (rc != SQLITE_DONE && transient_lock) {
+    if (dispatch_rc > 0) {
         char response_body[512] = {0};
         snprintf(
             response_body,
             sizeof(response_body),
-            "{\"status\":\"queued\",\"logid\":\"%s\",\"pending\":\"%s\",\"rc\":%d,\"ext\":%d}",
+            "{\"status\":\"queued\",\"logid\":\"%s\",\"pending\":\"%s\"}",
             ctx->log_id,
-            pending_path,
-            rc,
-            ext);
+            pending_path);
         send_response_with_log_context(fd, 202, "Accepted", response_body, ctx);
         log_warn(
-            "DATA WRITE queued key=%s reason=sqlite_lock rc=%d ext=%d bytes=%zu pending=%s account=%s logid=%s retries=%d",
+            "DATA WRITE queued key=%s reason=writer_backlog bytes=%zu pending=%s account=%s logid=%s",
             key,
-            rc,
-            ext,
             payload_len,
             pending_path,
             ctx->account_id,
-            ctx->log_id,
-            attempt_used);
+            ctx->log_id);
         return 202;
     }
 
-    if (rc != SQLITE_DONE) {
-        const char *errmsg = sqlite3_errmsg(db->db);
-        const char *rc_name = sqlite3_errstr(rc);
-        const char *ext_name = sqlite3_errstr(ext);
-        char backup_path[512] = {0};
-        int backup_ok = persist_failed_payload(key, payload, payload_len, rc, ext, backup_path, sizeof(backup_path));
+    if (result.status_code != 204) {
         char response_body[512] = {0};
-        if (backup_ok == 0) {
+        if (result.backup_path[0] != '\0') {
             snprintf(
                 response_body,
                 sizeof(response_body),
                 "{\"error\":\"database error\",\"rc\":%d,\"ext\":%d,\"backup\":\"%s\"}",
-                rc,
-                ext,
-                backup_path);
+                result.sqlite_rc,
+                result.sqlite_ext,
+                result.backup_path);
         } else {
-            snprintf(response_body, sizeof(response_body), "{\"error\":\"database error\",\"rc\":%d,\"ext\":%d}", rc, ext);
+            snprintf(response_body, sizeof(response_body), "{\"error\":\"database error\",\"rc\":%d,\"ext\":%d}", result.sqlite_rc, result.sqlite_ext);
         }
-
         send_response_with_log_context(fd, 500, "Internal Server Error", response_body, ctx);
-        log_error(
-            "DATA WRITE failed key=%s reason=sqlite_step_error rc=%d rc_name=%s ext=%d ext_name=%s errmsg=%s bytes=%zu backup=%s account=%s logid=%s retries=%d",
-            key,
-            rc,
-            rc_name ? rc_name : "unknown",
-            ext,
-            ext_name ? ext_name : "unknown",
-            errmsg ? errmsg : "unknown",
-            payload_len,
-            backup_ok == 0 ? backup_path : "none",
-            ctx->account_id,
-            ctx->log_id,
-            attempt_used);
-        return 500;
-    }
-
-    if (remove_pending_write(pending_path) != 0) {
-        send_response_with_log_context(fd, 500, "Internal Server Error", "{\"error\":\"durable journal cleanup error\"}", ctx);
-        log_error("DATA WRITE failed key=%s reason=pending_write_cleanup_failed path=%s account=%s logid=%s", key, pending_path, ctx->account_id, ctx->log_id);
         return 500;
     }
 
     send_response_with_log_context(fd, 204, "No Content", "", ctx);
-    log_info("DATA WRITE key=%s status=stored bytes=%zu account=%s logid=%s retries=%d", key, payload_len, ctx->account_id, ctx->log_id, attempt_used);
     return 204;
 }
 
@@ -596,6 +506,13 @@ int try_process_client(int fd, worker_db_t *db, conn_t *conn) {
     if (strcmp(path, "/health") == 0 && strcmp(method, "GET") == 0) {
         send_response_with_log_context(fd, 200, "OK", "{\"status\":\"ok\"}", &log_ctx);
         log_http_request(method, path, 200, 0, &log_ctx);
+        return 1;
+    }
+
+    if ((strcmp(path, "/debug/write-queue") == 0 || strcmp(path, "/v1/debug/write-queue") == 0) &&
+        strcmp(method, "GET") == 0) {
+        int status = handle_get_write_queue_diagnostics(fd, &log_ctx);
+        log_http_request(method, path, status, 0, &log_ctx);
         return 1;
     }
 

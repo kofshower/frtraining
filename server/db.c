@@ -7,6 +7,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <sqlite3.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -282,6 +283,17 @@ int worker_db_open(worker_db_t *db, const char *db_path) {
         return -1;
     }
 
+    char resolved_path[PATH_MAX] = {0};
+    const char *effective_path = db_path;
+    if (realpath(db_path, resolved_path)) {
+        effective_path = resolved_path;
+    }
+    if (snprintf(db->db_path, sizeof(db->db_path), "%s", effective_path) <= 0 ||
+        strlen(effective_path) >= sizeof(db->db_path)) {
+        worker_db_close(db);
+        return -1;
+    }
+
     sqlite3_exec(db->db, "PRAGMA busy_timeout=5000;", NULL, NULL, NULL);
     sqlite3_exec(db->db, "PRAGMA synchronous=FULL;", NULL, NULL, NULL);
     sqlite3_exec(db->db, "PRAGMA fullfsync=ON;", NULL, NULL, NULL);
@@ -291,14 +303,14 @@ int worker_db_open(worker_db_t *db, const char *db_path) {
     sqlite3_exec(db->db, "PRAGMA cache_size=-32768;", NULL, NULL, NULL);
 
     if (sqlite3_prepare_v2(db->db, "SELECT data_value FROM kv_store WHERE data_key=?1", -1, &db->get_stmt, NULL) != SQLITE_OK ||
-        sqlite3_prepare_v2(db->db,
-                           "INSERT INTO kv_store (data_key, data_value, updated_at) VALUES (?1, ?2, strftime('%s', 'now'))"
-                           " ON CONFLICT(data_key) DO UPDATE SET data_value=excluded.data_value, updated_at=excluded.updated_at",
-                           -1,
-                           &db->upsert_stmt,
-                           NULL) != SQLITE_OK ||
         sqlite3_prepare_v2(db->db, "SELECT json_valid(?1)", -1, &db->json_valid_stmt, NULL) != SQLITE_OK) {
         log_error("worker failed to prepare statements: %s", sqlite3_errmsg(db->db));
+        worker_db_close(db);
+        return -1;
+    }
+
+    if (write_dispatcher_acquire(db->db_path) != 0) {
+        db->db_path[0] = '\0';
         worker_db_close(db);
         return -1;
     }
@@ -308,8 +320,10 @@ int worker_db_open(worker_db_t *db, const char *db_path) {
 
 void worker_db_close(worker_db_t *db) {
     sqlite3_finalize(db->get_stmt);
-    sqlite3_finalize(db->upsert_stmt);
     sqlite3_finalize(db->json_valid_stmt);
     if (db->db) sqlite3_close(db->db);
+    if (db->db_path[0] != '\0') {
+        write_dispatcher_release();
+    }
     memset(db, 0, sizeof(*db));
 }

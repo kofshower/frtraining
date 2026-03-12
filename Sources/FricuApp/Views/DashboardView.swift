@@ -1,5 +1,4 @@
 import SwiftUI
-import Charts
 
 struct DashboardView: View {
     @Environment(\.appChartDisplayMode) private var chartDisplayMode
@@ -703,6 +702,119 @@ struct DashboardView: View {
         return lower...upper
     }
 
+    private var fitnessLoadChartModel: LightTimeSeriesCardModel {
+        LightTimeSeriesCardModel(
+            storageKey: "dashboard.fitness_fatigue",
+            title: "Fitness / Fatigue",
+            valueText: String(format: "ATL %.0f", currentFatigue),
+            detailText: String(format: "CTL %.0f", currentFitness),
+            footerNotes: [
+                LightChartNote(
+                    text: loadDisplayMode == .smooth7d ? "显示模式: 平滑 7 天（仅影响图表）" : "显示模式: 原始日级（无平滑）",
+                    style: .standard
+                )
+            ],
+            yDomain: fitnessYDomain,
+            yAxisFormat: .number(decimals: 0),
+            series: [
+                LightTimeSeriesSeries(
+                    id: "atl",
+                    title: "ATL",
+                    tint: .blue,
+                    points: displayedFitnessLoad.map {
+                        LightTimeSeriesPoint(timestamp: $0.date, value: max(0, $0.atl))
+                    },
+                    renderStyle: .areaLine
+                ),
+                LightTimeSeriesSeries(
+                    id: "ctl",
+                    title: "CTL",
+                    tint: .mint,
+                    points: displayedFitnessLoad.map {
+                        LightTimeSeriesPoint(timestamp: $0.date, value: max(0, $0.ctl))
+                    },
+                    renderStyle: .line
+                )
+            ],
+            bands: [],
+            rules: [],
+            tint: .blue,
+            plotHeight: 220
+        )
+    }
+
+    private var fitnessStatusChartModel: LightTimeSeriesCardModel {
+        LightTimeSeriesCardModel(
+            storageKey: "dashboard.tsb",
+            title: "TSB",
+            valueText: String(format: "%.1f", currentForm),
+            detailText: "状态值 \(currentStatusValuePercent)%",
+            footerNotes: [
+                LightChartNote(text: "高风险区 / 过渡期 / 最优区 / 精力充沛", style: .standard)
+            ],
+            yDomain: tsbYDomain,
+            yAxisFormat: .number(decimals: 0),
+            series: [
+                LightTimeSeriesSeries(
+                    id: "tsb",
+                    title: "TSB",
+                    tint: .orange,
+                    points: displayedFitnessLoad.map {
+                        LightTimeSeriesPoint(timestamp: $0.date, value: $0.tsb)
+                    },
+                    renderStyle: .step
+                )
+            ],
+            bands: [
+                LightTimeSeriesBand(id: "risk", lower: -120, upper: -30, tint: .red, opacity: 0.08),
+                LightTimeSeriesBand(id: "transition", lower: -30, upper: -10, tint: .orange, opacity: 0.08),
+                LightTimeSeriesBand(id: "optimal", lower: -10, upper: 10, tint: .green, opacity: 0.07),
+                LightTimeSeriesBand(id: "fresh", lower: 10, upper: 25, tint: .cyan, opacity: 0.08)
+            ],
+            rules: [
+                LightTimeSeriesRule(id: "baseline", value: 0, tint: .blue, dashed: true)
+            ],
+            tint: currentForm >= 0 ? .mint : .orange,
+            plotHeight: 180
+        )
+    }
+
+    private var dailyTSSChartModel: LightTimeSeriesCardModel {
+        LightTimeSeriesCardModel(
+            storageKey: "dashboard.daily_tss",
+            title: "Daily TSS",
+            valueText: String(format: "%.1f", recentLoad.last?.tss ?? 0),
+            detailText: String(format: "7d %.1f", recentLoad.suffix(7).map(\.tss).average),
+            footerNotes: [
+                LightChartNote(
+                    text: String(format: "训练日 %d / %d", recentLoad.filter { $0.tss > 0 }.count, recentLoad.count),
+                    style: .monospaced
+                )
+            ],
+            yDomain: {
+                let values = recentLoad.map(\.tss).filter { $0.isFinite }
+                let ceiling = max(40.0, ceil((values.max() ?? 0) * 1.15 / 10.0) * 10.0)
+                return 0...ceiling
+            }(),
+            yAxisFormat: .number(decimals: 0),
+            series: [
+                LightTimeSeriesSeries(
+                    id: "daily_tss",
+                    title: "TSS",
+                    tint: .indigo,
+                    points: recentLoad.map {
+                        LightTimeSeriesPoint(timestamp: $0.date, value: max(0, $0.tss))
+                    },
+                    renderStyle: .bar
+                )
+            ],
+            bands: [],
+            rules: [],
+            tint: .indigo,
+            plotHeight: 180
+        )
+    }
+
     private func smoothedLoadSeries(_ series: [DailyLoadPoint], window: Int) -> [DailyLoadPoint] {
         guard !series.isEmpty else { return [] }
         let w = max(2, window)
@@ -894,18 +1006,10 @@ struct DashboardView: View {
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
 
                 VStack(alignment: .leading, spacing: 10) {
-                    let fitnessLoadMode = chartModeStore.mode(for: "fitness_fatigue_load", fallback: chartDisplayMode)
-                    let fitnessStatusMode = chartModeStore.mode(for: "fitness_fatigue_status", fallback: chartDisplayMode)
                     HStack {
                         Text("Fitness / Fatigue / Status")
                             .font(.title3.bold())
                         Spacer()
-                        AppChartModeMenuButton(
-                            selection: chartModeStore.binding(
-                                for: "fitness_fatigue_load",
-                                fallback: chartDisplayMode
-                            )
-                        )
                         Picker("显示", selection: $loadDisplayMode) {
                             ForEach(LoadDisplayMode.allCases) { mode in
                                 Text(mode.label).tag(mode)
@@ -914,256 +1018,28 @@ struct DashboardView: View {
                         .appDropdownTheme()
                     }
 
-                    HStack(spacing: 14) {
-                        FitnessHeaderValue(title: "健康度", value: String(format: "%.0f", currentFitness), tint: .blue)
-                        FitnessHeaderValue(title: "疲劳度", value: String(format: "%.0f", currentFatigue), tint: .purple)
-                        FitnessHeaderValue(
-                            title: "状态(TSB)",
-                            value: String(format: "%.1f", currentForm),
-                            tint: currentForm >= 0 ? .mint : .red
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(minimum: 320)),
+                            GridItem(.flexible(minimum: 320))
+                        ],
+                        spacing: 12
+                    ) {
+                        LightTimeSeriesCard(
+                            model: fitnessLoadChartModel,
+                            mode: chartModeStore.binding(
+                                for: "fitness_fatigue_load",
+                                fallback: chartDisplayMode
+                            )
                         )
-                        FitnessHeaderValue(title: "状态值", value: "\(currentStatusValuePercent)%", tint: .orange)
-                    }
-                    .padding(.bottom, 2)
-
-                    if fitnessLoadMode == .pie {
-                        Chart {
-                            if let latest = displayedFitnessLoad.last {
-                                SectorMark(
-                                    angle: .value("Fatigue", max(0, latest.atl)),
-                                    innerRadius: .ratio(0.55),
-                                    angularInset: 2
-                                )
-                                .foregroundStyle(.blue)
-
-                                SectorMark(
-                                    angle: .value("Fitness", max(0, latest.ctl)),
-                                    innerRadius: .ratio(0.55),
-                                    angularInset: 2
-                                )
-                                .foregroundStyle(.mint)
-                            }
-                        }
-                        .frame(height: 220)
-                    } else {
-                        Chart(displayedFitnessLoad) { point in
-                            switch fitnessLoadMode {
-                            case .line:
-                                // GC 风格上半图：以 Fatigue(ATL) 为主曲线，Fitness(CTL) 作为参考线。
-                                AreaMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("Fatigue", point.atl)
-                                )
-                                .foregroundStyle(.blue.opacity(0.18))
-                                .interpolationMethod(.linear)
-
-                                LineMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("Fatigue", point.atl)
-                                )
-                                .foregroundStyle(.blue)
-                                .lineStyle(StrokeStyle(lineWidth: 2))
-                                .interpolationMethod(.linear)
-
-                                LineMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("Fitness", point.ctl)
-                                )
-                                .foregroundStyle(.blue.opacity(0.6))
-                                .lineStyle(StrokeStyle(lineWidth: 1.2))
-                                .interpolationMethod(.linear)
-                            case .bar:
-                                BarMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("Fatigue", max(0, point.atl))
-                                )
-                                .foregroundStyle(.blue.opacity(0.75))
-                            case .pie:
-                                BarMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("Fatigue", max(0, point.atl))
-                                )
-                                .foregroundStyle(.blue.opacity(0.75))
-                            case .flame:
-                                BarMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("Fatigue", max(0, point.atl))
-                                )
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.yellow, .orange, .red],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                            }
-                        }
-                        .frame(height: 220)
-                        .chartYScale(domain: fitnessYDomain)
-                        .chartXAxis {
-                            AxisMarks(values: .stride(by: .month)) { _ in
-                                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8, dash: [4, 4]))
-                                    .foregroundStyle(.secondary.opacity(0.25))
-                                AxisTick()
-                                AxisValueLabel(format: .dateTime.month(.abbreviated))
-                            }
-                        }
-                        .chartYAxis {
-                            AxisMarks(position: .trailing) { _ in
-                                AxisGridLine().foregroundStyle(.secondary.opacity(0.25))
-                                AxisTick()
-                                AxisValueLabel()
-                            }
-                        }
-                        .chartPlotStyle { plotArea in
-                            plotArea.clipped()
-                        }
-                        .cartesianHoverTip(
-                            xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                            yTitle: L10n.choose(simplifiedChinese: "负荷", english: "Load")
-                        )
-                    }
-
-                    HStack {
-                        Text("TSB")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        AppChartModeMenuButton(
-                            selection: chartModeStore.binding(
+                        LightTimeSeriesCard(
+                            model: fitnessStatusChartModel,
+                            mode: chartModeStore.binding(
                                 for: "fitness_fatigue_status",
                                 fallback: chartDisplayMode
                             )
                         )
                     }
-
-                    if fitnessStatusMode == .pie {
-                        Chart(displayedFitnessLoad.suffix(30)) { point in
-                            SectorMark(
-                                angle: .value("TSB", max(0, abs(point.tsb))),
-                                innerRadius: .ratio(0.55),
-                                angularInset: 1
-                            )
-                            .foregroundStyle(point.tsb >= 0 ? .mint : .orange)
-                        }
-                        .frame(height: 180)
-                    } else {
-                        Chart {
-                            if let first = displayedFitnessLoad.first?.date, let last = displayedFitnessLoad.last?.date {
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", -120),
-                                    yEnd: .value("Y End", -30)
-                                )
-                                .foregroundStyle(.red.opacity(0.08))
-
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", -30),
-                                    yEnd: .value("Y End", -10)
-                                )
-                                .foregroundStyle(.orange.opacity(0.08))
-
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", -10),
-                                    yEnd: .value("Y End", 10)
-                                )
-                                .foregroundStyle(.green.opacity(0.07))
-
-                                RectangleMark(
-                                    xStart: .value("Start", first),
-                                    xEnd: .value("End", last),
-                                    yStart: .value("Y Start", 10),
-                                    yEnd: .value("Y End", 25)
-                                )
-                                .foregroundStyle(.cyan.opacity(0.08))
-                            }
-
-                            RuleMark(y: .value("Baseline", 0))
-                                .foregroundStyle(.blue.opacity(0.5))
-                                .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
-
-                            ForEach(displayedFitnessLoad) { point in
-                                switch fitnessStatusMode {
-                                case .line:
-                                    LineMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("TSB", point.tsb)
-                                    )
-                                    .foregroundStyle(.orange)
-                                    .interpolationMethod(.linear)
-                                case .bar:
-                                    BarMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("TSB", point.tsb)
-                                    )
-                                    .foregroundStyle(.orange.opacity(0.85))
-                                case .pie:
-                                    BarMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("TSB", point.tsb)
-                                    )
-                                    .foregroundStyle(.orange.opacity(0.85))
-                                case .flame:
-                                    BarMark(
-                                        x: .value("Date", point.date, unit: .day),
-                                        y: .value("TSB", abs(point.tsb))
-                                    )
-                                    .foregroundStyle(
-                                        LinearGradient(
-                                            colors: [.yellow, .orange, .red],
-                                            startPoint: .bottom,
-                                            endPoint: .top
-                                        )
-                                    )
-                                }
-                            }
-
-                        }
-                        .chartYScale(domain: tsbYDomain)
-                        .chartXAxis {
-                            AxisMarks(values: .stride(by: .month)) { _ in
-                                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.8, dash: [4, 4]))
-                                    .foregroundStyle(.secondary.opacity(0.25))
-                                AxisTick()
-                                AxisValueLabel(format: .dateTime.month(.abbreviated))
-                            }
-                        }
-                        .chartYAxis {
-                            AxisMarks(position: .trailing) { _ in
-                                AxisGridLine().foregroundStyle(.secondary.opacity(0.25))
-                                AxisTick()
-                                AxisValueLabel()
-                            }
-                        }
-                        .chartPlotStyle { plotArea in
-                            plotArea.clipped()
-                        }
-                        .frame(height: 180)
-                        .cartesianHoverTip(
-                            xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                            yTitle: "TSB"
-                        )
-                    }
-                    Text(loadDisplayMode == .smooth7d ? "显示模式: 平滑 7 天（仅影响图表）" : "显示模式: 原始日级（无平滑）")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 12) {
-                        Text("高风险区")
-                            .foregroundStyle(.red)
-                        Text("过渡期")
-                            .foregroundStyle(.orange)
-                        Text("最优区")
-                            .foregroundStyle(.green)
-                        Text("精力充沛")
-                            .foregroundStyle(.cyan)
-                    }
-                    .font(.caption)
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(loadMethodText)
@@ -1181,69 +1057,15 @@ struct DashboardView: View {
                 .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14))
 
                 VStack(alignment: .leading) {
-                    let dailyTSSChartMode = chartModeStore.mode(for: "daily_tss", fallback: chartDisplayMode)
                     HStack {
                         Text("Daily TSS")
                             .font(.title3.bold())
-                        Spacer()
-                        AppChartModeMenuButton(
-                            selection: chartModeStore.binding(for: "daily_tss", fallback: chartDisplayMode)
-                        )
                     }
 
-                    if dailyTSSChartMode == .pie {
-                        Chart(recentLoad.suffix(30)) { point in
-                            SectorMark(
-                                angle: .value("TSS", max(0, point.tss)),
-                                innerRadius: .ratio(0.55),
-                                angularInset: 1.0
-                            )
-                            .foregroundStyle(.indigo.opacity(0.82))
-                        }
-                        .frame(height: 180)
-                    } else {
-                        Chart(recentLoad) { point in
-                            switch dailyTSSChartMode {
-                            case .line:
-                                LineMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("TSS", point.tss)
-                                )
-                                .foregroundStyle(.indigo)
-                                .interpolationMethod(.linear)
-                            case .bar:
-                                BarMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("TSS", point.tss)
-                                )
-                                .foregroundStyle(.indigo.gradient)
-                            case .pie:
-                                BarMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("TSS", point.tss)
-                                )
-                                .foregroundStyle(.indigo.gradient)
-                            case .flame:
-                                BarMark(
-                                    x: .value("Date", point.date, unit: .day),
-                                    y: .value("TSS", max(0, point.tss))
-                                )
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.yellow, .orange, .red],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                            }
-
-                        }
-                        .frame(height: 180)
-                        .cartesianHoverTip(
-                            xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                            yTitle: "TSS"
-                        )
-                    }
+                    LightTimeSeriesCard(
+                        model: dailyTSSChartModel,
+                        mode: chartModeStore.binding(for: "daily_tss", fallback: chartDisplayMode)
+                    )
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(dailyTSSMethodText)
@@ -1274,26 +1096,6 @@ private extension Array where Element == Double {
     var average: Double {
         guard !isEmpty else { return 0 }
         return reduce(0, +) / Double(count)
-    }
-}
-
-private struct FitnessHeaderValue: View {
-    let title: String
-    let value: String
-    let tint: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.bold().monospacedDigit())
-                .foregroundStyle(tint)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -1386,130 +1188,61 @@ private struct MetricTrendCard: View {
         }
     }
 
-    var body: some View {
-        let localChartMode = chartModeStore.mode(for: series.id, fallback: chartDisplayMode)
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(series.title)
-                    .font(.headline)
-                Spacer()
-                AppChartModeMenuButton(
-                    selection: chartModeStore.binding(for: series.id, fallback: chartDisplayMode)
-                )
-                Text(valueText)
-                    .font(.title3.bold().monospacedDigit())
-                    .foregroundStyle(series.tint)
+    private var chartModel: LightTimeSeriesCardModel {
+        let mappedRenderStyle: LightTimeSeriesRenderStyle = {
+            switch series.renderStyle {
+            case .line:
+                return .line
+            case .step, .tsbStepWithZones:
+                return .step
             }
-
-            if let displayDate {
-                Text(displayDate.formatted(date: .abbreviated, time: .omitted))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            if localChartMode == .pie {
-                Chart(orderedPoints.suffix(24)) { point in
-                    SectorMark(
-                        angle: .value(series.title, max(0, abs(point.value))),
-                        innerRadius: .ratio(0.56),
-                        angularInset: 1
-                    )
-                    .foregroundStyle(series.tint.opacity(0.8))
-                }
-                .frame(height: 120)
-            } else {
-                Chart {
-                    if series.renderStyle == .tsbStepWithZones,
-                       let first = orderedPoints.first?.date,
-                       let last = orderedPoints.last?.date {
-                        RectangleMark(
-                            xStart: .value("Start", first),
-                            xEnd: .value("End", last),
-                            yStart: .value("Y Start", -40),
-                            yEnd: .value("Y End", -25)
-                        )
-                        .foregroundStyle(.red.opacity(0.10))
-
-                        RectangleMark(
-                            xStart: .value("Start", first),
-                            xEnd: .value("End", last),
-                            yStart: .value("Y Start", -25),
-                            yEnd: .value("Y End", -10)
-                        )
-                        .foregroundStyle(.orange.opacity(0.08))
-
-                        RectangleMark(
-                            xStart: .value("Start", first),
-                            xEnd: .value("End", last),
-                            yStart: .value("Y Start", -10),
-                            yEnd: .value("Y End", 10)
-                        )
-                        .foregroundStyle(.green.opacity(0.08))
-
-                        RectangleMark(
-                            xStart: .value("Start", first),
-                            xEnd: .value("End", last),
-                            yStart: .value("Y Start", 10),
-                            yEnd: .value("Y End", 25)
-                        )
-                        .foregroundStyle(.cyan.opacity(0.08))
-
-                        RuleMark(y: .value("Baseline", 0))
-                            .foregroundStyle(.secondary.opacity(0.45))
-                            .lineStyle(.init(lineWidth: 1, dash: [4, 4]))
-                    }
-
-                    ForEach(orderedPoints) { point in
-                        switch localChartMode {
-                        case .line:
-                            LineMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value(series.title, point.value)
-                            )
-                            .foregroundStyle(series.tint)
-                            .interpolationMethod(series.renderStyle == .line ? .linear : .stepCenter)
-                        case .bar:
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value(series.title, point.value)
-                            )
-                            .foregroundStyle(series.tint.opacity(0.85))
-                        case .pie:
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value(series.title, point.value)
-                            )
-                            .foregroundStyle(series.tint.opacity(0.85))
-                        case .flame:
-                            BarMark(
-                                x: .value("Date", point.date, unit: .day),
-                                y: .value(series.title, max(0, abs(point.value)))
-                            )
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [.yellow, .orange, .red],
-                                    startPoint: .bottom,
-                                    endPoint: .top
-                                )
-                            )
-                        }
-                    }
-                }
-                .frame(height: 120)
-                .chartYScale(domain: chartDomain)
-                .cartesianHoverTip(
-                    xTitle: L10n.choose(simplifiedChinese: "日期", english: "Date"),
-                    yTitle: series.unit.isEmpty ? L10n.choose(simplifiedChinese: "数值", english: "Value") : series.unit
-                )
-            }
-
-            Text(series.method)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+        }()
+        let bands: [LightTimeSeriesBand]
+        let rules: [LightTimeSeriesRule]
+        if series.renderStyle == .tsbStepWithZones {
+            bands = [
+                LightTimeSeriesBand(id: "risk", lower: -40, upper: -25, tint: .red, opacity: 0.10),
+                LightTimeSeriesBand(id: "transition", lower: -25, upper: -10, tint: .orange, opacity: 0.08),
+                LightTimeSeriesBand(id: "optimal", lower: -10, upper: 10, tint: .green, opacity: 0.08),
+                LightTimeSeriesBand(id: "fresh", lower: 10, upper: 25, tint: .cyan, opacity: 0.08)
+            ]
+            rules = [LightTimeSeriesRule(id: "baseline", value: 0, tint: .secondary, dashed: true)]
+        } else {
+            bands = []
+            rules = []
         }
-        .padding(10)
-        .background(.background.tertiary.opacity(0.8), in: RoundedRectangle(cornerRadius: 10))
+
+        return LightTimeSeriesCardModel(
+            storageKey: "dashboard.metric_trend.\(series.id)",
+            title: series.title,
+            valueText: valueText,
+            detailText: displayDate?.formatted(date: .abbreviated, time: .omitted) ?? "--",
+            footerNotes: [LightChartNote(text: series.method, style: .standard)],
+            yDomain: chartDomain,
+            yAxisFormat: .number(decimals: 0),
+            series: [
+                LightTimeSeriesSeries(
+                    id: series.id,
+                    title: series.title,
+                    tint: series.tint,
+                    points: orderedPoints.map { point in
+                        LightTimeSeriesPoint(timestamp: point.date, value: point.value)
+                    },
+                    renderStyle: mappedRenderStyle
+                )
+            ],
+            bands: bands,
+            rules: rules,
+            tint: series.tint,
+            plotHeight: 120
+        )
+    }
+
+    var body: some View {
+        LightTimeSeriesCard(
+            model: chartModel,
+            mode: chartModeStore.binding(for: series.id, fallback: chartDisplayMode)
+        )
     }
 }
 
