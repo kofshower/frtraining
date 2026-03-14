@@ -65,4 +65,46 @@ final class BikeComputerLightRendererTests: XCTestCase {
         XCTAssertEqual(rect.width, 288, accuracy: 0.001)
         XCTAssertEqual(rect.height, 184, accuracy: 0.001)
     }
+
+    func testTimeSeriesSegmentsSplitOnNonFiniteValues() {
+        let base = Date(timeIntervalSinceReferenceDate: 10_000)
+        let points = [
+            LightTimeSeriesPoint(timestamp: base, value: 10),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(60), value: 11),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(120), value: .nan),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(180), value: 13),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(240), value: 14)
+        ]
+
+        let segments = LightTimeSeriesLayout.segments(
+            for: points,
+            in: CGSize(width: 320, height: 180),
+            yDomain: 0...20
+        )
+
+        XCTAssertEqual(segments.count, 2)
+        XCTAssertEqual(segments[0].count, 2)
+        XCTAssertEqual(segments[1].count, 2)
+    }
+
+    func testTimeSeriesSegmentsSplitAcrossLargeTimestampGaps() {
+        let base = Date(timeIntervalSinceReferenceDate: 20_000)
+        let points = [
+            LightTimeSeriesPoint(timestamp: base, value: 8),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(60), value: 9),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(120), value: 10),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(600), value: 11),
+            LightTimeSeriesPoint(timestamp: base.addingTimeInterval(660), value: 12)
+        ]
+
+        let segments = LightTimeSeriesLayout.segments(
+            for: points,
+            in: CGSize(width: 320, height: 180),
+            yDomain: 0...20
+        )
+
+        XCTAssertEqual(segments.count, 2)
+        XCTAssertEqual(segments[0].count, 3)
+        XCTAssertEqual(segments[1].count, 2)
+    }
 }

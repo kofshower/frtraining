@@ -750,7 +750,7 @@ struct DashboardView: View {
             valueText: String(format: "%.1f", currentForm),
             detailText: "状态值 \(currentStatusValuePercent)%",
             footerNotes: [
-                LightChartNote(text: "高风险区 / 过渡期 / 最优区 / 精力充沛", style: .standard)
+                LightChartNote(text: "底色表示 TSB 恢复状态区间。", style: .standard)
             ],
             yDomain: tsbYDomain,
             yAxisFormat: .number(decimals: 0),
@@ -766,10 +766,10 @@ struct DashboardView: View {
                 )
             ],
             bands: [
-                LightTimeSeriesBand(id: "risk", lower: -120, upper: -30, tint: .red, opacity: 0.08),
-                LightTimeSeriesBand(id: "transition", lower: -30, upper: -10, tint: .orange, opacity: 0.08),
-                LightTimeSeriesBand(id: "optimal", lower: -10, upper: 10, tint: .green, opacity: 0.07),
-                LightTimeSeriesBand(id: "fresh", lower: 10, upper: 25, tint: .cyan, opacity: 0.08)
+                LightTimeSeriesBand(id: "risk", label: "高风险区", lower: -120, upper: -30, tint: .red, opacity: 0.08),
+                LightTimeSeriesBand(id: "transition", label: "过渡期", lower: -30, upper: -10, tint: .orange, opacity: 0.08),
+                LightTimeSeriesBand(id: "optimal", label: "最优区", lower: -10, upper: 10, tint: .green, opacity: 0.07),
+                LightTimeSeriesBand(id: "fresh", label: "精力充沛", lower: 10, upper: 25, tint: .cyan, opacity: 0.08)
             ],
             rules: [
                 LightTimeSeriesRule(id: "baseline", value: 0, tint: .blue, dashed: true)

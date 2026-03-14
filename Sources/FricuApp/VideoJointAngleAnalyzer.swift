@@ -85,8 +85,8 @@ enum CyclingCameraView: String, CaseIterable, Identifiable {
 enum CrankClockCheckpoint: String, CaseIterable, Identifiable {
     case point0
     case point3
+    case point6
     case point9
-    case point12
 
     var id: String { rawValue }
 
@@ -94,17 +94,17 @@ enum CrankClockCheckpoint: String, CaseIterable, Identifiable {
         switch self {
         case .point0: return "0"
         case .point3: return "3"
+        case .point6: return "6"
         case .point9: return "9"
-        case .point12: return "12"
         }
     }
 
-    // 12 点=0°，3 点=90°，0 点(近似 6 点) 180°，9 点=270°。
+    // 0 点=0°（上止点），3 点=90°（前水平），6 点=180°（下止点），9 点=270°（后水平）。
     var targetPhaseDeg: Double {
         switch self {
-        case .point12: return 0
+        case .point0: return 0
         case .point3: return 90
-        case .point0: return 180
+        case .point6: return 180
         case .point9: return 270
         }
     }
@@ -316,9 +316,11 @@ struct VideoJointAngleSample: Identifiable {
     let hipAngleDeg: Double?
     let crankPhaseDeg: Double?
 
+    let leftShoulder: PoseJointPoint?
     let leftHip: PoseJointPoint?
     let leftKnee: PoseJointPoint?
     let leftAnkle: PoseJointPoint?
+    let rightShoulder: PoseJointPoint?
     let rightHip: PoseJointPoint?
     let rightKnee: PoseJointPoint?
     let rightAnkle: PoseJointPoint?
@@ -336,6 +338,8 @@ struct VideoJointAngleAnalysisResult {
     let modelFallbackNote: String?
     let dominantSide: VideoPoseBodySide
     let samples: [VideoJointAngleSample]
+    let crankCenter: PoseJointPoint?
+    let crankRadius: Double?
     let used3DAngleFrameCount: Int
     let kneeStats: JointAngleStats?
     let hipStats: JointAngleStats?
@@ -468,6 +472,19 @@ struct VideoJointAngleAnalyzer {
 
             let dominantSide = Self.dominantSide(from: samples)
             let resolvedView = Self.resolveView(requested: requestedView, from: samples)
+            let crankEstimate = resolvedView == .side
+                ? Self.estimateCrankCenter(samples: samples, side: dominantSide)
+                : nil
+
+            if let crankEstimate {
+                samples = samples.map { sample in
+                    let pedalPoint = Self.dominantPedalPoint(for: sample, side: dominantSide)
+                    return Self.updatingCrankPhase(
+                        sample: sample,
+                        phaseDegrees: Self.phaseAngleDegrees(center: crankEstimate.center, pedal: pedalPoint) ?? sample.crankPhaseDeg
+                    )
+                }
+            }
 
             let kneeStats = Self.stats(for: samples.compactMap(\.kneeAngleDeg))
             let hipStats = Self.stats(for: samples.compactMap(\.hipAngleDeg))
@@ -540,6 +557,8 @@ struct VideoJointAngleAnalyzer {
                 modelFallbackNote: modelFallbackNote,
                 dominantSide: dominantSide,
                 samples: samples,
+                crankCenter: crankEstimate?.center,
+                crankRadius: crankEstimate?.radius,
                 used3DAngleFrameCount: used3DAngleFrameCount,
                 kneeStats: kneeStats,
                 hipStats: hipStats,
@@ -588,7 +607,9 @@ struct VideoJointAngleAnalyzer {
 
         let phaseDeg = phaseAngleDegrees(
             hip: override.side == .right ? baseSample.rightHip : baseSample.leftHip,
-            ankle: override.side == .right ? baseSample.rightAnkle : baseSample.leftAnkle
+            pedal: override.side == .right
+                ? (baseSample.rightToe ?? baseSample.rightAnkle)
+                : (baseSample.leftToe ?? baseSample.leftAnkle)
         )
 
         let sample = VideoJointAngleSample(
@@ -599,9 +620,11 @@ struct VideoJointAngleAnalyzer {
             kneeAngleDeg: override.knee,
             hipAngleDeg: override.hip,
             crankPhaseDeg: phaseDeg,
+            leftShoulder: baseSample.leftShoulder,
             leftHip: baseSample.leftHip,
             leftKnee: baseSample.leftKnee,
             leftAnkle: baseSample.leftAnkle,
+            rightShoulder: baseSample.rightShoulder,
             rightHip: baseSample.rightHip,
             rightKnee: baseSample.rightKnee,
             rightAnkle: baseSample.rightAnkle,
@@ -638,15 +661,19 @@ struct VideoJointAngleAnalyzer {
         let leftHip = jointPoint(.leftHip, in: points)
         let leftKnee = jointPoint(.leftKnee, in: points)
         let leftAnkle = jointPoint(.leftAnkle, in: points)
+        let leftShoulder = jointPoint(.leftShoulder, in: points)
         let rightHip = jointPoint(.rightHip, in: points)
         let rightKnee = jointPoint(.rightKnee, in: points)
         let rightAnkle = jointPoint(.rightAnkle, in: points)
+        let rightShoulder = jointPoint(.rightShoulder, in: points)
         let leftToe = leftAnkle.map { approximateToePoint(knee: leftKnee, ankle: $0) }
         let rightToe = rightAnkle.map { approximateToePoint(knee: rightKnee, ankle: $0) }
 
         let crankPhaseDeg = phaseAngleDegrees(
             hip: picked.side == .right ? rightHip : leftHip,
-            ankle: picked.side == .right ? rightAnkle : leftAnkle
+            pedal: picked.side == .right
+                ? (rightToe ?? rightAnkle)
+                : (leftToe ?? leftAnkle)
         )
 
         return VideoJointAngleSample(
@@ -657,9 +684,11 @@ struct VideoJointAngleAnalyzer {
             kneeAngleDeg: picked.knee,
             hipAngleDeg: picked.hip,
             crankPhaseDeg: crankPhaseDeg,
+            leftShoulder: leftShoulder,
             leftHip: leftHip,
             leftKnee: leftKnee,
             leftAnkle: leftAnkle,
+            rightShoulder: rightShoulder,
             rightHip: rightHip,
             rightKnee: rightKnee,
             rightAnkle: rightAnkle,
@@ -1782,13 +1811,177 @@ struct VideoJointAngleAnalyzer {
         )
     }
 
-    private static func phaseAngleDegrees(hip: PoseJointPoint?, ankle: PoseJointPoint?) -> Double? {
-        guard let hip, let ankle else { return nil }
-        let dx = ankle.x - hip.x
-        let dy = ankle.y - hip.y
+    private static func phaseAngleDegrees(hip: PoseJointPoint?, pedal: PoseJointPoint?) -> Double? {
+        guard let hip, let pedal else { return nil }
+        let dx = pedal.x - hip.x
+        let dy = pedal.y - hip.y
         guard abs(dx) + abs(dy) > 0.000001 else { return nil }
         let raw = atan2(dx, dy) * 180.0 / Double.pi
         return normalizeDegrees(raw)
+    }
+
+    private static func phaseAngleDegrees(center: PoseJointPoint?, pedal: PoseJointPoint?) -> Double? {
+        guard let center, let pedal else { return nil }
+        let dx = pedal.x - center.x
+        let dy = pedal.y - center.y
+        guard abs(dx) + abs(dy) > 0.000001 else { return nil }
+        let raw = atan2(dx, dy) * 180.0 / Double.pi
+        return normalizeDegrees(raw)
+    }
+
+    private static func dominantPedalPoint(for sample: VideoJointAngleSample, side: VideoPoseBodySide) -> PoseJointPoint? {
+        switch side {
+        case .left:
+            return sample.leftToe ?? sample.leftAnkle
+        case .right:
+            return sample.rightToe ?? sample.rightAnkle
+        case .unknown:
+            return sample.leftToe ?? sample.leftAnkle ?? sample.rightToe ?? sample.rightAnkle
+        }
+    }
+
+    private static func updatingCrankPhase(sample: VideoJointAngleSample, phaseDegrees: Double?) -> VideoJointAngleSample {
+        VideoJointAngleSample(
+            id: sample.id,
+            timeSeconds: sample.timeSeconds,
+            side: sample.side,
+            confidence: sample.confidence,
+            kneeAngleDeg: sample.kneeAngleDeg,
+            hipAngleDeg: sample.hipAngleDeg,
+            crankPhaseDeg: phaseDegrees,
+            leftShoulder: sample.leftShoulder,
+            leftHip: sample.leftHip,
+            leftKnee: sample.leftKnee,
+            leftAnkle: sample.leftAnkle,
+            rightShoulder: sample.rightShoulder,
+            rightHip: sample.rightHip,
+            rightKnee: sample.rightKnee,
+            rightAnkle: sample.rightAnkle,
+            leftToe: sample.leftToe,
+            rightToe: sample.rightToe
+        )
+    }
+
+    private static func estimateCrankCenter(
+        samples: [VideoJointAngleSample],
+        side: VideoPoseBodySide
+    ) -> (center: PoseJointPoint, radius: Double)? {
+        let pedalPoints = samples.compactMap { dominantPedalPoint(for: $0, side: side) }
+            .filter { $0.x.isFinite && $0.y.isFinite }
+        guard pedalPoints.count >= 6 else { return nil }
+
+        let xs = pedalPoints.map(\.x)
+        let ys = pedalPoints.map(\.y)
+        guard
+            (xs.max() ?? 0) - (xs.min() ?? 0) >= 0.02,
+            (ys.max() ?? 0) - (ys.min() ?? 0) >= 0.02,
+            let fit = solveCircle(points: pedalPoints)
+        else {
+            return nil
+        }
+
+        let centerX = Double(fit.center.x)
+        let centerY = Double(fit.center.y)
+        let radius = fit.radius
+        guard
+            centerX.isFinite,
+            centerY.isFinite,
+            radius.isFinite,
+            radius >= 0.02,
+            radius <= 0.25,
+            centerX >= 0.15,
+            centerX <= 0.85,
+            centerY >= 0.25,
+            centerY <= 0.90
+        else {
+            return nil
+        }
+
+        let rmsError = sqrt(
+            pedalPoints
+                .map { point -> Double in
+                    let dx = point.x - centerX
+                    let dy = point.y - centerY
+                    let error = hypot(dx, dy) - radius
+                    return error * error
+                }
+                .reduce(0, +) / Double(pedalPoints.count)
+        )
+        guard rmsError <= max(0.04, radius * 0.45) else { return nil }
+
+        let confidence = median(pedalPoints.map(\.confidence)) ?? 0.7
+        return (
+            center: PoseJointPoint(x: centerX, y: centerY, confidence: confidence),
+            radius: radius
+        )
+    }
+
+    private static func solveCircle(points: [PoseJointPoint]) -> (center: CGPoint, radius: Double)? {
+        let count = Double(points.count)
+        guard count >= 3 else { return nil }
+
+        var sumX = 0.0
+        var sumY = 0.0
+        var sumXX = 0.0
+        var sumYY = 0.0
+        var sumXY = 0.0
+        var sumZ = 0.0
+        var sumXZ = 0.0
+        var sumYZ = 0.0
+
+        for point in points {
+            let x = point.x
+            let y = point.y
+            let z = x * x + y * y
+            sumX += x
+            sumY += y
+            sumXX += x * x
+            sumYY += y * y
+            sumXY += x * y
+            sumZ += z
+            sumXZ += x * z
+            sumYZ += y * z
+        }
+
+        let matrix = (
+            SIMD3<Double>(sumXX, sumXY, sumX),
+            SIMD3<Double>(sumXY, sumYY, sumY),
+            SIMD3<Double>(sumX, sumY, count)
+        )
+        let vector = SIMD3<Double>(-sumXZ, -sumYZ, -sumZ)
+        guard let solution = solveLinear3x3(matrix: matrix, vector: vector) else { return nil }
+
+        let a = solution.x
+        let b = solution.y
+        let c = solution.z
+        let center = CGPoint(x: -a / 2.0, y: -b / 2.0)
+        let radiusSquared = center.x * center.x + center.y * center.y - c
+        guard radiusSquared.isFinite, radiusSquared > 0 else { return nil }
+
+        return (center: center, radius: sqrt(radiusSquared))
+    }
+
+    private static func solveLinear3x3(
+        matrix: (SIMD3<Double>, SIMD3<Double>, SIMD3<Double>),
+        vector: SIMD3<Double>
+    ) -> SIMD3<Double>? {
+        let determinant = det3(matrix)
+        guard determinant.isFinite, abs(determinant) > 1e-9 else { return nil }
+
+        let dx = det3((vector, matrix.1, matrix.2))
+        let dy = det3((matrix.0, vector, matrix.2))
+        let dz = det3((matrix.0, matrix.1, vector))
+        return SIMD3<Double>(dx / determinant, dy / determinant, dz / determinant)
+    }
+
+    private static func det3(_ matrix: (SIMD3<Double>, SIMD3<Double>, SIMD3<Double>)) -> Double {
+        let a = matrix.0
+        let b = matrix.1
+        let c = matrix.2
+        return
+            a.x * (b.y * c.z - b.z * c.y) -
+            a.y * (b.x * c.z - b.z * c.x) +
+            a.z * (b.x * c.y - b.y * c.x)
     }
 
     private static func circularPhaseDifference(_ lhs: Double, _ rhs: Double) -> Double {
@@ -2047,7 +2240,9 @@ struct VideoJointAngleAnalyzer {
             let resolvedRightToe = rightToe ?? rightAnkle.map { VideoJointAngleAnalyzer.approximateToePoint(knee: rightKnee, ankle: $0) }
             let phase = VideoJointAngleAnalyzer.phaseAngleDegrees(
                 hip: side == .right ? rightHip : leftHip,
-                ankle: side == .right ? rightAnkle : leftAnkle
+                pedal: side == .right
+                    ? (resolvedRightToe ?? rightAnkle)
+                    : (resolvedLeftToe ?? leftAnkle)
             )
 
             return VideoJointAngleSample(
@@ -2058,9 +2253,11 @@ struct VideoJointAngleAnalyzer {
                 kneeAngleDeg: kneeAngle,
                 hipAngleDeg: hipAngle,
                 crankPhaseDeg: phase,
+                leftShoulder: leftShoulder,
                 leftHip: leftHip,
                 leftKnee: leftKnee,
                 leftAnkle: leftAnkle,
+                rightShoulder: rightShoulder,
                 rightHip: rightHip,
                 rightKnee: rightKnee,
                 rightAnkle: rightAnkle,

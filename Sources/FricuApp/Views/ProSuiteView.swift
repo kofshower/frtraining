@@ -804,13 +804,6 @@ private struct MetricsLabModuleView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-
-                LightChartLegendStrip(
-                    items:
-                        [LightChartLegendItem(label: "蓝实线: \(primaryMetric.name)", tint: .blue, style: .solid)] +
-                        (secondaryMetric.map { [LightChartLegendItem(label: "橙实线: \($0.name)", tint: .orange, style: .solid)] } ?? []) +
-                        (comparePrevious ? [LightChartLegendItem(label: "灰虚线: 上一周期", tint: .gray.opacity(0.8), style: .dashed)] : [])
-                )
             }
         }
         .task(id: metricQueryKey) {

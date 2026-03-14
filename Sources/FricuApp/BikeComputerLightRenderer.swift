@@ -119,10 +119,27 @@ struct LightTimeSeriesSeries: Identifiable {
 
 struct LightTimeSeriesBand: Identifiable {
     let id: String
+    let label: String?
     let lower: Double
     let upper: Double
     let tint: Color
     let opacity: Double
+
+    init(
+        id: String,
+        label: String? = nil,
+        lower: Double,
+        upper: Double,
+        tint: Color,
+        opacity: Double
+    ) {
+        self.id = id
+        self.label = label
+        self.lower = lower
+        self.upper = upper
+        self.tint = tint
+        self.opacity = opacity
+    }
 }
 
 struct LightTimeSeriesRule: Identifiable {
@@ -452,8 +469,8 @@ struct BikeComputerLightDashboardView: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color(red: 0.95, green: 0.92, blue: 0.85),
-                    Color(red: 0.97, green: 0.95, blue: 0.90)
+                    LightChartVisualStyle.surfaceBackground,
+                    LightChartVisualStyle.surfaceBackgroundAlt
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -461,7 +478,7 @@ struct BikeComputerLightDashboardView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(LightChartVisualStyle.controlBorder, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
@@ -472,10 +489,10 @@ struct BikeComputerLightDashboardView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(model.title)
                         .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                        .foregroundStyle(LightChartVisualStyle.ink)
                     Text(model.subtitle)
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(LightChartVisualStyle.secondaryInk)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 6) {
@@ -483,10 +500,10 @@ struct BikeComputerLightDashboardView: View {
                         HStack(spacing: 8) {
                             Text(item.label)
                                 .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(LightChartVisualStyle.secondaryInk)
                             Text(item.value)
                                 .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                                .foregroundStyle(LightChartVisualStyle.ink)
                         }
                     }
                 }
@@ -495,7 +512,7 @@ struct BikeComputerLightDashboardView: View {
             metricGrid
         }
         .padding(20)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(LightChartVisualStyle.cardBackgroundEmphasis, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var metricGrid: some View {
@@ -509,7 +526,7 @@ struct BikeComputerLightDashboardView: View {
                         .foregroundStyle(.secondary)
                     Text(metric.value)
                         .font(.system(size: 28, weight: .heavy, design: .rounded))
-                        .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                        .foregroundStyle(LightChartVisualStyle.ink)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
                     Text(metric.meta)
@@ -549,7 +566,7 @@ struct BikeComputerLightDashboardView: View {
             }
         }
         .padding(18)
-        .background(Color.white.opacity(0.76), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(LightChartVisualStyle.cardBackgroundEmphasis, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
@@ -560,22 +577,22 @@ private struct BikeComputerLightZoneGroupView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(group.title)
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(group.tint)
+                .foregroundStyle(LightChartVisualStyle.strokeTint(group.tint))
             Text(group.summary)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LightChartVisualStyle.secondaryInk)
                 .lineLimit(2)
             VStack(spacing: 8) {
                 ForEach(group.rows) { row in
                     HStack(spacing: 8) {
                         Text(row.name)
                             .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                            .foregroundStyle(LightChartVisualStyle.ink)
                             .frame(width: 28, alignment: .leading)
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
                                 Capsule()
-                                    .fill(Color.black.opacity(0.06))
+                                    .fill(LightChartVisualStyle.gridStroke)
                                 Capsule()
                                     .fill(row.color)
                                     .frame(width: geo.size.width * min(max(row.percent, 0), 1))
@@ -584,11 +601,11 @@ private struct BikeComputerLightZoneGroupView: View {
                         .frame(height: 8)
                         Text(row.seconds.asDuration)
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(LightChartVisualStyle.secondaryInk)
                             .frame(width: 54, alignment: .trailing)
                         Text(String(format: "%.0f%%", row.percent * 100))
                             .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(LightChartVisualStyle.secondaryInk)
                             .frame(width: 38, alignment: .trailing)
                     }
                     .frame(height: 16)
@@ -597,7 +614,7 @@ private struct BikeComputerLightZoneGroupView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.76), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(LightChartVisualStyle.cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -620,7 +637,7 @@ struct BikeComputerLightChartCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(chart.title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
                 Spacer()
                 HStack(spacing: 8) {
                     LightChartScaleToggle(selection: $scaleMode)
@@ -631,11 +648,11 @@ struct BikeComputerLightChartCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(chart.value)
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                    .foregroundStyle(LightChartVisualStyle.ink)
                 Spacer()
                 Text(chart.detail)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
                     .multilineTextAlignment(.trailing)
             }
 
@@ -650,10 +667,10 @@ struct BikeComputerLightChartCard: View {
             .frame(height: 118)
         }
         .padding(16)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(LightChartVisualStyle.cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(chart.tint.opacity(0.18), lineWidth: 1)
+                .stroke(LightChartVisualStyle.borderTint(chart.tint), lineWidth: 1)
         )
         .onChange(of: mode) { _, newValue in
             UserDefaults.standard.set(newValue.rawValue, forKey: chart.storageKey)
@@ -678,11 +695,11 @@ struct BikeComputerLightRouteProfileView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
                 Spacer()
                 Text("\(distanceAxisLabel) · \(elevationAxisLabel)")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
             }
 
             BikeComputerLightRouteProfilePlot(
@@ -694,10 +711,10 @@ struct BikeComputerLightRouteProfileView: View {
             .frame(height: 170)
         }
         .padding(16)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(LightChartVisualStyle.cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(tint.opacity(0.18), lineWidth: 1)
+                .stroke(LightChartVisualStyle.borderTint(tint), lineWidth: 1)
         )
     }
 }
@@ -714,12 +731,34 @@ struct LightTimeSeriesCard: View {
         _scaleMode = State(initialValue: LightChartScaleMode(rawValue: storedScale ?? "") ?? .auto)
     }
 
+    private var legendItems: [LightChartLegendItem] {
+        guard model.series.count > 1 else { return [] }
+        return model.series.map { series in
+            LightChartLegendItem(
+                label: series.title,
+                tint: LightChartVisualStyle.strokeTint(series.tint),
+                style: series.dashed ? .dashed : .solid
+            )
+        }
+    }
+
+    private var bandLegendItems: [LightChartLegendItem] {
+        model.bands.compactMap { band in
+            guard let label = band.label, !label.isEmpty else { return nil }
+            return LightChartLegendItem(
+                label: label,
+                tint: band.tint.opacity(max(0.25, band.opacity + 0.12)),
+                style: .solid
+            )
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(model.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    Text(model.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LightChartVisualStyle.secondaryInk)
                 Spacer()
                 HStack(spacing: 8) {
                     LightChartScaleToggle(selection: $scaleMode)
@@ -730,13 +769,13 @@ struct LightTimeSeriesCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(model.valueText)
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                    .foregroundStyle(LightChartVisualStyle.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer()
                 Text(model.detailText)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
                     .multilineTextAlignment(.trailing)
             }
 
@@ -747,15 +786,23 @@ struct LightTimeSeriesCard: View {
             )
             .frame(height: model.plotHeight)
 
+            if !legendItems.isEmpty {
+                LightChartLegendStrip(items: legendItems)
+            }
+
+            if !bandLegendItems.isEmpty {
+                LightChartLegendStrip(items: bandLegendItems)
+            }
+
             if !model.footerNotes.isEmpty {
                 LightChartNotesBlock(notes: model.footerNotes)
             }
         }
         .padding(16)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(LightChartVisualStyle.cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(model.tint.opacity(0.18), lineWidth: 1)
+                .stroke(LightChartVisualStyle.borderTint(model.tint), lineWidth: 1)
         )
         .onChange(of: scaleMode) { _, newValue in
             UserDefaults.standard.set(newValue.rawValue, forKey: LightChartScaleMode.storageKey(for: model.storageKey))
@@ -778,9 +825,9 @@ struct LightCategoricalCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(model.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    Text(model.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LightChartVisualStyle.secondaryInk)
                 Spacer()
                 HStack(spacing: 8) {
                     LightChartScaleToggle(selection: $scaleMode)
@@ -791,13 +838,13 @@ struct LightCategoricalCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(model.valueText)
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                    .foregroundStyle(LightChartVisualStyle.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer()
                 Text(model.detailText)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
                     .multilineTextAlignment(.trailing)
             }
 
@@ -809,10 +856,10 @@ struct LightCategoricalCard: View {
             }
         }
         .padding(16)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(LightChartVisualStyle.cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(model.tint.opacity(0.18), lineWidth: 1)
+                .stroke(LightChartVisualStyle.borderTint(model.tint), lineWidth: 1)
         )
         .onChange(of: scaleMode) { _, newValue in
             UserDefaults.standard.set(newValue.rawValue, forKey: LightChartScaleMode.storageKey(for: model.storageKey))
@@ -835,9 +882,9 @@ struct LightScatterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(model.title)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    Text(model.title)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(LightChartVisualStyle.secondaryInk)
                 Spacer()
                 HStack(spacing: 8) {
                     LightChartScaleToggle(selection: $scaleMode)
@@ -848,13 +895,13 @@ struct LightScatterCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(model.valueText)
                     .font(.system(size: 28, weight: .heavy, design: .rounded))
-                    .foregroundStyle(Color(red: 0.07, green: 0.13, blue: 0.18))
+                    .foregroundStyle(LightChartVisualStyle.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 Spacer()
                 Text(model.detailText)
                     .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
                     .multilineTextAlignment(.trailing)
             }
 
@@ -866,10 +913,10 @@ struct LightScatterCard: View {
             }
         }
         .padding(16)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(LightChartVisualStyle.cardBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(model.tint.opacity(0.18), lineWidth: 1)
+                .stroke(LightChartVisualStyle.borderTint(model.tint), lineWidth: 1)
         )
         .onChange(of: scaleMode) { _, newValue in
             UserDefaults.standard.set(newValue.rawValue, forKey: LightChartScaleMode.storageKey(for: model.storageKey))
@@ -900,7 +947,7 @@ struct LightChartLegendStrip: View {
                         .minimumScaleFactor(0.85)
                 }
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(LightChartVisualStyle.secondaryInk)
             }
         }
     }
@@ -914,7 +961,7 @@ struct LightChartNotesBlock: View {
             ForEach(notes) { note in
                 Text(note.text)
                     .font(note.style == .monospaced ? .caption2.monospaced() : .caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(LightChartVisualStyle.secondaryInk)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -932,12 +979,12 @@ private struct LightChartScaleToggle: View {
                 } label: {
                     Text(mode.title)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selection == mode ? Color.white : Color.secondary)
+                        .foregroundStyle(selection == mode ? Color.white : LightChartVisualStyle.secondaryInk)
                         .padding(.horizontal, 12)
                         .frame(height: 34)
                         .background(
                             Capsule(style: .continuous)
-                                .fill(selection == mode ? Color(red: 0.07, green: 0.13, blue: 0.18) : Color.clear)
+                                .fill(selection == mode ? LightChartVisualStyle.controlSelected : Color.clear)
                         )
                 }
                 .buttonStyle(.plain)
@@ -946,11 +993,11 @@ private struct LightChartScaleToggle: View {
         .padding(4)
         .background(
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.82))
+                .fill(LightChartVisualStyle.controlBackground)
         )
         .overlay(
             Capsule(style: .continuous)
-                .stroke(Color.black.opacity(0.12), lineWidth: 1)
+                .stroke(LightChartVisualStyle.controlBorder, lineWidth: 1)
         )
     }
 }
@@ -963,14 +1010,84 @@ private struct LightChartBoundsOverlay: View {
         VStack(alignment: .trailing, spacing: 0) {
             Text(maxText)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.black.opacity(0.46))
+                .foregroundStyle(LightChartVisualStyle.tertiaryInk)
             Spacer()
             Text(minText)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(Color.black.opacity(0.46))
+                .foregroundStyle(LightChartVisualStyle.tertiaryInk)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
         .padding(.vertical, 8)
-        .padding(.trailing, 8)
+        .padding(.trailing, 10)
+        .allowsHitTesting(false)
+    }
+}
+
+private enum LightChartVisualStyle {
+    static let surfaceBackground = Color(red: 0.94, green: 0.92, blue: 0.87)
+    static let surfaceBackgroundAlt = Color(red: 0.96, green: 0.95, blue: 0.91)
+    static let cardBackground = Color(red: 0.975, green: 0.968, blue: 0.948).opacity(0.94)
+    static let cardBackgroundEmphasis = Color(red: 0.985, green: 0.978, blue: 0.958).opacity(0.96)
+    static let ink = Color(red: 0.10, green: 0.14, blue: 0.19)
+    static let secondaryInk = Color(red: 0.38, green: 0.40, blue: 0.41)
+    static let tertiaryInk = Color(red: 0.56, green: 0.58, blue: 0.58)
+    static let gridStroke = Color(red: 0.41, green: 0.42, blue: 0.40).opacity(0.11)
+    static let controlBackground = Color(red: 0.99, green: 0.985, blue: 0.968).opacity(0.9)
+    static let controlBorder = Color(red: 0.58, green: 0.50, blue: 0.38).opacity(0.30)
+    static let controlSelected = Color(red: 0.07, green: 0.13, blue: 0.20)
+
+    static func borderTint(_ tint: Color) -> Color {
+        tinted(tint, amount: 0.22).opacity(0.42)
+    }
+
+    static func plotBackground(_ tint: Color) -> Color {
+        tinted(tint, amount: 0.12).opacity(0.22)
+    }
+
+    static func strokeTint(_ tint: Color) -> Color {
+        tinted(tint, amount: 0.72)
+    }
+
+    static func secondaryStrokeTint(_ tint: Color) -> Color {
+        tinted(tint, amount: 0.58)
+    }
+
+    static func pointTint(_ tint: Color) -> Color {
+        tinted(tint, amount: 0.68)
+    }
+
+    static func ruleTint(_ tint: Color) -> Color {
+        tinted(tint, amount: 0.34)
+    }
+
+    static func areaGradient(for tint: Color) -> LinearGradient {
+        LinearGradient(
+            colors: [tinted(tint, amount: 0.24), tinted(tint, amount: 0.06)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+
+    static func barFill(_ tint: Color) -> AnyShapeStyle {
+        AnyShapeStyle(tinted(tint, amount: 0.56))
+    }
+
+    static func flameFill(_ tint: Color) -> AnyShapeStyle {
+        AnyShapeStyle(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.92, green: 0.80, blue: 0.63).opacity(0.56),
+                    Color(red: 0.88, green: 0.70, blue: 0.52).opacity(0.58),
+                    tinted(tint, amount: 0.56)
+                ],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+        )
+    }
+
+    private static func tinted(_ tint: Color, amount: Double) -> Color {
+        tint.opacity(amount)
     }
 }
 
@@ -1016,9 +1133,9 @@ private struct BikeComputerLightChartPlot: View {
                 )
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(tint.opacity(0.07))
+                        .fill(LightChartVisualStyle.plotBackground(tint))
                     BikeComputerLightGrid()
-                        .stroke(Color.black.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        .stroke(LightChartVisualStyle.gridStroke, style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
                     BikeComputerLightCartesianPlot(
                         points: points,
                         tint: tint,
@@ -1058,9 +1175,9 @@ private struct LightTimeSeriesPlot: View {
                 let yDomain = LightTimeSeriesDomainResolver.yDomain(for: model, scaleMode: scaleMode)
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(model.tint.opacity(0.07))
+                        .fill(LightChartVisualStyle.plotBackground(model.tint))
                     BikeComputerLightGrid()
-                        .stroke(Color.black.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        .stroke(LightChartVisualStyle.gridStroke, style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
                     LightTimeSeriesCartesianPlot(
                         model: model,
                         mode: mode,
@@ -1098,9 +1215,9 @@ private struct LightCategoricalPlot: View {
                 let yDomain = LightCategoricalDomainResolver.yDomain(for: model, scaleMode: scaleMode)
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(model.tint.opacity(0.07))
+                        .fill(LightChartVisualStyle.plotBackground(model.tint))
                     BikeComputerLightGrid()
-                        .stroke(Color.black.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        .stroke(LightChartVisualStyle.gridStroke, style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
                     LightCategoricalCartesianPlot(model: model, mode: mode, size: proxy.size, yDomain: yDomain)
                     LightChartBoundsOverlay(
                         maxText: model.yAxisFormat.string(for: yDomain.upperBound),
@@ -1133,9 +1250,9 @@ private struct LightScatterPlot: View {
                 let domains = LightScatterDomainResolver.domains(for: model, scaleMode: scaleMode)
                 ZStack {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(model.tint.opacity(0.07))
+                        .fill(LightChartVisualStyle.plotBackground(model.tint))
                     BikeComputerLightGrid()
-                        .stroke(Color.black.opacity(0.08), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        .stroke(LightChartVisualStyle.gridStroke, style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
                     LightScatterCartesianPlot(model: model, mode: mode, size: proxy.size, xDomain: domains.x, yDomain: domains.y)
                     LightChartBoundsOverlay(
                         maxText: model.yAxisFormat.string(for: domains.y.upperBound),
@@ -1342,31 +1459,42 @@ private struct LightTimeSeriesCartesianPlot: View {
 
     @ViewBuilder
     private func lineSeriesView(_ series: LightTimeSeriesSeries) -> some View {
-        let samples = positions(for: series.points)
+        let segments = lineSegments(for: series.points)
         switch series.renderStyle {
         case .areaLine:
-            BikeComputerAreaShape(samples: samples)
-                .fill(
-                    LinearGradient(
-                        colors: [series.tint.opacity(0.22), series.tint.opacity(0.04)],
-                        startPoint: .top,
-                        endPoint: .bottom
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, samples in
+                BikeComputerAreaShape(samples: samples)
+                    .fill(LightChartVisualStyle.areaGradient(for: series.tint))
+            }
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, samples in
+                BikeComputerLineShape(samples: samples)
+                    .stroke(
+                        LightChartVisualStyle.strokeTint(series.tint),
+                        style: LightTimeSeriesRendererStyle.lineStrokeStyle(width: 2.3, dashed: series.dashed)
                     )
-                )
-            BikeComputerLineShape(samples: samples)
-                .stroke(series.tint, style: LightTimeSeriesRendererStyle.lineStrokeStyle(width: 2.3, dashed: series.dashed))
+            }
         case .step:
-            BikeComputerStepShape(samples: samples)
-                .stroke(series.tint, style: LightTimeSeriesRendererStyle.lineStrokeStyle(width: 2.1, dashed: series.dashed))
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, samples in
+                BikeComputerStepShape(samples: samples)
+                    .stroke(
+                        LightChartVisualStyle.secondaryStrokeTint(series.tint),
+                        style: LightTimeSeriesRendererStyle.lineStrokeStyle(width: 2.1, dashed: series.dashed)
+                    )
+            }
         case .line, .bar:
-            BikeComputerLineShape(samples: samples)
-                .stroke(series.tint, style: LightTimeSeriesRendererStyle.lineStrokeStyle(width: 2.1, dashed: series.dashed))
+            ForEach(Array(segments.enumerated()), id: \.offset) { _, samples in
+                BikeComputerLineShape(samples: samples)
+                    .stroke(
+                        LightChartVisualStyle.strokeTint(series.tint),
+                        style: LightTimeSeriesRendererStyle.lineStrokeStyle(width: 2.1, dashed: series.dashed)
+                    )
+            }
         }
     }
 
     @ViewBuilder
     private func barSeriesView(_ series: LightTimeSeriesSeries, flame: Bool) -> some View {
-        let samples = positions(for: series.points)
+        let samples = pointPositions(for: series.points)
         let barWidth = max(3, plotWidth / CGFloat(max(series.points.count, 1)))
         ForEach(Array(samples.enumerated()), id: \.offset) { index, sample in
             let valueY = sample.y
@@ -1375,14 +1503,8 @@ private struct LightTimeSeriesCartesianPlot: View {
             RoundedRectangle(cornerRadius: 3, style: .continuous)
                 .fill(
                     flame
-                        ? AnyShapeStyle(
-                            LinearGradient(
-                                colors: [.yellow.opacity(0.95), .orange.opacity(0.92), series.tint.opacity(0.9)],
-                                startPoint: .bottom,
-                                endPoint: .top
-                            )
-                        )
-                        : AnyShapeStyle(series.tint.opacity(0.82))
+                        ? LightChartVisualStyle.flameFill(series.tint)
+                        : LightChartVisualStyle.barFill(series.tint)
                 )
                 .frame(width: barWidth, height: max(3, barHeight))
                 .position(x: sample.x, y: centerY)
@@ -1405,13 +1527,18 @@ private struct LightTimeSeriesCartesianPlot: View {
             path.addLine(to: CGPoint(x: 6 + plotWidth, y: y))
         }
         .stroke(
-            rule.tint.opacity(0.5),
+            LightChartVisualStyle.ruleTint(rule.tint),
             style: StrokeStyle(lineWidth: 1, dash: rule.dashed ? [4, 4] : [])
         )
     }
 
-    private func positions(for points: [LightTimeSeriesPoint]) -> [CGPoint] {
+    private func lineSegments(for points: [LightTimeSeriesPoint]) -> [[CGPoint]] {
+        LightTimeSeriesLayout.segments(for: points, in: size, yDomain: yDomain)
+    }
+
+    private func pointPositions(for points: [LightTimeSeriesPoint]) -> [CGPoint] {
         LightTimeSeriesLayout.positions(for: points, in: size, yDomain: yDomain)
+            .filter { $0.x.isFinite && $0.y.isFinite }
     }
 
     private func yPosition(for value: Double) -> CGFloat {
@@ -1433,10 +1560,10 @@ private struct LightCategoricalCartesianPlot: View {
         ZStack {
             if mode == .line {
                 BikeComputerLineShape(samples: samples)
-                    .stroke(model.tint, style: StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round))
+                    .stroke(LightChartVisualStyle.strokeTint(model.tint), style: StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round))
                 ForEach(Array(samples.enumerated()), id: \.offset) { index, sample in
                     Circle()
-                        .fill(model.points[index].tint)
+                        .fill(LightChartVisualStyle.pointTint(model.points[index].tint))
                         .frame(width: 8, height: 8)
                         .position(sample)
                 }
@@ -1447,14 +1574,8 @@ private struct LightCategoricalCartesianPlot: View {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(
                             mode == .flame
-                                ? AnyShapeStyle(
-                                    LinearGradient(
-                                        colors: [.yellow.opacity(0.95), .orange.opacity(0.92), model.points[index].tint.opacity(0.9)],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                                : AnyShapeStyle(model.points[index].tint.opacity(0.85))
+                                ? LightChartVisualStyle.flameFill(model.points[index].tint)
+                                : LightChartVisualStyle.barFill(model.points[index].tint)
                         )
                         .frame(width: barWidth, height: max(3, barHeight))
                         .position(x: sample.x, y: sample.y + max(3, barHeight) / 2)
@@ -1509,7 +1630,7 @@ private struct LightScatterCartesianPlot: View {
                 let samples = curve.points.map(position(for:))
                 BikeComputerLineShape(samples: samples)
                     .stroke(
-                        curve.tint,
+                        LightChartVisualStyle.strokeTint(curve.tint),
                         style: StrokeStyle(lineWidth: 2.1, lineCap: .round, lineJoin: .round, dash: curve.dashed ? [4, 4] : [])
                     )
             }
@@ -1517,7 +1638,7 @@ private struct LightScatterCartesianPlot: View {
             if mode == .line {
                 ForEach(model.samples) { sample in
                     Circle()
-                        .fill(sample.tint)
+                        .fill(LightChartVisualStyle.pointTint(sample.tint))
                         .frame(width: sample.size, height: sample.size)
                         .position(position(for: sample.x, y: sample.y))
                 }
@@ -1529,14 +1650,8 @@ private struct LightScatterCartesianPlot: View {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(
                             mode == .flame
-                                ? AnyShapeStyle(
-                                    LinearGradient(
-                                        colors: [.yellow.opacity(0.95), .orange.opacity(0.92), sample.tint.opacity(0.9)],
-                                        startPoint: .bottom,
-                                        endPoint: .top
-                                    )
-                                )
-                                : AnyShapeStyle(sample.tint.opacity(0.82))
+                                ? LightChartVisualStyle.flameFill(sample.tint)
+                                : LightChartVisualStyle.barFill(sample.tint)
                         )
                         .frame(width: barWidth, height: max(3, barHeight))
                         .position(x: point.x, y: point.y + max(3, barHeight) / 2)
@@ -1589,13 +1704,13 @@ private struct LightScatterCartesianPlot: View {
             }
         }
         .stroke(
-            rule.tint.opacity(0.5),
+            LightChartVisualStyle.ruleTint(rule.tint),
             style: StrokeStyle(lineWidth: 1, dash: rule.dashed ? [4, 4] : [])
         )
     }
 }
 
-private enum LightTimeSeriesLayout {
+enum LightTimeSeriesLayout {
     static func positions(
         for points: [LightTimeSeriesPoint],
         in size: CGSize,
@@ -1611,6 +1726,64 @@ private enum LightTimeSeriesLayout {
             let y = yPosition(for: point.value, in: size, yDomain: yDomain)
             return CGPoint(x: x, y: y)
         }
+    }
+
+    static func segments(
+        for points: [LightTimeSeriesPoint],
+        in size: CGSize,
+        yDomain: ClosedRange<Double>
+    ) -> [[CGPoint]] {
+        guard !points.isEmpty else { return [] }
+
+        let threshold = gapThreshold(for: points)
+        let minTime = points.first?.timestamp.timeIntervalSinceReferenceDate ?? 0
+        let maxTime = points.last?.timestamp.timeIntervalSinceReferenceDate ?? minTime + 1
+        let timeSpan = max(1, maxTime - minTime)
+        var segments: [[CGPoint]] = []
+        var current: [CGPoint] = []
+        var lastTimestamp: TimeInterval?
+
+        for point in points {
+            guard point.value.isFinite else {
+                if !current.isEmpty {
+                    segments.append(current)
+                    current = []
+                }
+                lastTimestamp = nil
+                continue
+            }
+
+            let currentTimestamp = point.timestamp.timeIntervalSinceReferenceDate
+            if let lastTimestamp, currentTimestamp - lastTimestamp > threshold, !current.isEmpty {
+                segments.append(current)
+                current = []
+            }
+
+            let x = ((currentTimestamp - minTime) / timeSpan) * max(1, size.width - 12) + 6
+            let y = yPosition(for: point.value, in: size, yDomain: yDomain)
+            current.append(CGPoint(x: x, y: y))
+            lastTimestamp = currentTimestamp
+        }
+
+        if !current.isEmpty {
+            segments.append(current)
+        }
+        return segments.filter { !$0.isEmpty }
+    }
+
+    private static func gapThreshold(for points: [LightTimeSeriesPoint]) -> TimeInterval {
+        let valid = points
+            .filter { $0.value.isFinite }
+            .map(\.timestamp.timeIntervalSinceReferenceDate)
+        guard valid.count > 2 else { return .infinity }
+
+        let intervals = zip(valid, valid.dropFirst())
+            .map { $1 - $0 }
+            .filter { $0.isFinite && $0 > 0 }
+            .sorted()
+        guard !intervals.isEmpty else { return .infinity }
+        let median = intervals[intervals.count / 2]
+        return max(1, median * 1.8)
     }
 
     static func yPosition(

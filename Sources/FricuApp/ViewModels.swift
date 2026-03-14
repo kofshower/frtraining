@@ -1594,7 +1594,7 @@ final class AppStore: ObservableObject {
         return LiveRideSample(
             timestamp: timestamp,
             powerWatts: effectivePower,
-            heartRateBPM: rider.heartRateMonitor.liveHeartRateBPM,
+            heartRateBPM: rider.heartRateMonitor.freshHeartRateBPM(at: timestamp),
             cadenceRPM: rider.trainer.liveCadenceRPM ?? rider.powerMeter.liveCadenceRPM,
             speedKPH: rider.trainer.liveSpeedKPH,
             distanceMeters: max(0, distanceMeters),

@@ -22,6 +22,7 @@ final class HeartRateMonitorManager: NSObject, ObservableObject {
     @Published private(set) var isConnected = false
     @Published private(set) var connectedDeviceName: String?
     @Published private(set) var liveHeartRateBPM: Int?
+    @Published private(set) var lastHeartRateMeasurementAt: Date?
     @Published private(set) var oneMinuteAverageHeartRateBPM: Double?
     @Published private(set) var liveRRIntervalMS: Double?
     @Published private(set) var liveHRVRMSSDMS: Double?
@@ -199,6 +200,7 @@ final class HeartRateMonitorManager: NSObject, ObservableObject {
         isConnected = false
         connectedDeviceName = nil
         liveHeartRateBPM = nil
+        lastHeartRateMeasurementAt = nil
         liveRRIntervalMS = nil
         liveHRVRMSSDMS = nil
         liveHRVSDNNMS = nil
@@ -234,20 +236,39 @@ final class HeartRateMonitorManager: NSObject, ObservableObject {
 
     private func parseHeartRateMeasurement(_ data: Data) {
         guard let rawMeasurement = HeartRateParsers.parseMeasurement(data) else { return }
+        ingestHeartRateMeasurement(rawMeasurement, receivedAt: Date())
+    }
+
+    func ingestHeartRateMeasurement(
+        _ rawMeasurement: HeartRateMeasurement,
+        receivedAt timestamp: Date = Date()
+    ) {
         let measurement = mergedHeartRateMeasurement(current: rawMeasurement, previous: liveHeartRateMeasurement)
         liveHeartRateMeasurement = measurement
         liveHeartRateBPM = rawMeasurement.heartRateBPM
+        lastHeartRateMeasurementAt = timestamp
 
         if let latestRR = rawMeasurement.latestRRIntervalMS {
             liveRRIntervalMS = latestRR
-            appendTrendPoint(value: latestRR, to: &rrTrendPoints)
+            appendTrendPoint(value: latestRR, at: timestamp, to: &rrTrendPoints)
         }
-        recordRRIntervals(rawMeasurement.rrIntervalsMS)
+        recordRRIntervals(rawMeasurement.rrIntervalsMS, at: timestamp)
         if let energy = rawMeasurement.energyExpendedKJ {
             liveEnergyExpendedKJ = energy
-            appendTrendPoint(value: Double(energy), to: &energyTrendPoints)
+            appendTrendPoint(value: Double(energy), at: timestamp, to: &energyTrendPoints)
         }
-        recordHeartRateSample(rawMeasurement.heartRateBPM)
+        recordHeartRateSample(rawMeasurement.heartRateBPM, at: timestamp)
+    }
+
+    func freshHeartRateBPM(
+        at timestamp: Date = Date(),
+        policy: HeartRateFreshnessPolicy = .recording
+    ) -> Int? {
+        policy.resolvedHeartRate(
+            liveHeartRateBPM: liveHeartRateBPM,
+            lastUpdatedAt: lastHeartRateMeasurementAt,
+            now: timestamp
+        )
     }
 
     private func parseBodySensorLocation(_ data: Data) {

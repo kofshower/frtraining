@@ -891,6 +891,7 @@ struct VideoDownloaderPageView: View {
     @State private var virtualSaddleDeltaMM = 0.0
     @State private var virtualSetbackDeltaMM = 0.0
     @State private var selectedJointAnalysisView: CyclingCameraView = .side
+    @State private var selectedFittingResultTab: VideoFittingResultTab = .overview
     @State private var frontCameraVideoURL: URL?
     @State private var sideCameraVideoURL: URL?
     @State private var rearCameraVideoURL: URL?
@@ -1089,6 +1090,8 @@ struct VideoDownloaderPageView: View {
                 }
 
                 if isFittingPage {
+                    VideoFittingSessionSummaryCard(summary: fittingSessionSummary)
+
                     GroupBox(L10n.choose(simplifiedChinese: "视频 Fitting 流程", english: "Video Fitting Workflow")) {
                         VStack(alignment: .leading, spacing: 12) {
                             fittingFlowCard(
@@ -1100,27 +1103,31 @@ struct VideoDownloaderPageView: View {
                                 ),
                                 state: viewAssignmentStepState
                             ) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    jointAnalysisSourceRow(for: .front)
-                                    jointAnalysisSourceRow(for: .side)
-                                    jointAnalysisSourceRow(for: .rear)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    VideoFittingCaptureGuidePanel(
+                                        highlightMissingSetup: !hasAnyAssignedCameraSources
+                                    )
+
+                                    VideoFittingCameraViewCards(
+                                        cards: cameraViewCardSummaries,
+                                        isBusy: isAnalyzingJointAngles,
+                                        chooseAction: { view in
+                                            presentCameraVideoImporter(for: view)
+                                        },
+                                        clearAction: { view in
+                                            setCameraVideoURL(nil, for: view)
+                                        }
+                                    )
 
                                     if !missingRequiredCameraViews.isEmpty {
-                                        let missingText = missingRequiredCameraViews.map(\.displayName).joined(separator: " / ")
                                         Text(
                                             L10n.choose(
-                                                simplifiedChinese: "未配置机位：\(missingText)。对应结果不会展示。",
-                                                english: "Unassigned views: \(missingText). Corresponding results will not be shown."
+                                                simplifiedChinese: "每张机位卡都会直接说明缺失后会失去什么结论；补齐三机位后，分析覆盖最完整。",
+                                                english: "Each view card explains what conclusion is missing. Fill all three views for complete coverage."
                                             )
                                         )
                                         .font(.caption)
-                                        .foregroundStyle(.orange)
-
-                                        ForEach(missingRequiredCameraViews) { view in
-                                            Text("• \(missingViewImpactText(for: view))")
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                        }
+                                        .foregroundStyle(.secondary)
                                     }
                                 }
                             }
@@ -1142,8 +1149,14 @@ struct VideoDownloaderPageView: View {
                                     .buttonStyle(.borderedProminent)
                                     .disabled(isRunningFlowComplianceCheck || !hasAnyAssignedCameraSources)
 
-                                    ForEach(supportedCyclingViews) { view in
-                                        captureGuidanceRow(for: view)
+                                    VideoFittingComplianceResultCardsView(summaries: complianceViewSummaries)
+
+                                    if let recoverySummary = fittingFailureRecoverySummary {
+                                        VideoFittingFailureRecoveryPanel(
+                                            summary: recoverySummary,
+                                            isRetrying: isRunningFlowComplianceCheck,
+                                            retryAction: handleRunFlowComplianceCheckTapped
+                                        )
                                     }
 
                                     if !missingRequiredCameraViews.isEmpty {
@@ -1155,12 +1168,6 @@ struct VideoDownloaderPageView: View {
                                         )
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    }
-
-                                    if !flowComplianceFailureDetails.isEmpty {
-                                        Text(flowComplianceFailureDetails.joined(separator: "\n\n"))
-                                            .font(.caption)
-                                            .foregroundStyle(.orange)
                                     }
 
                                     Text(
@@ -1253,8 +1260,17 @@ struct VideoDownloaderPageView: View {
                                         }
                                     }
 
-                                    if let result = selectedJointAngleResult {
-                                        jointAnalysisResultSection(result: result)
+                                    VideoFittingJointRecognitionQualityPanel(summary: selectedJointRecognitionQualitySummary)
+
+                                    if selectedJointAngleResult != nil {
+                                        Text(
+                                            L10n.choose(
+                                                simplifiedChinese: "当前视角已生成结果。请在下方“分析并导出报告 / 视频”中的结果标签页查看结论、指标、建议与证据。",
+                                                english: "The selected view already produced a result. Review conclusions, metrics, suggestions, and evidence in the result tabs below."
+                                            )
+                                        )
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                     } else {
                                         Text(
                                             L10n.choose(
@@ -1281,6 +1297,10 @@ struct VideoDownloaderPageView: View {
                                 state: reportStepState
                             ) {
                                 VStack(alignment: .leading, spacing: 10) {
+                                    VideoFittingResultTabBar(selection: $selectedFittingResultTab)
+
+                                    fittingResultTabContent()
+
                                     statusRow(
                                         title: L10n.choose(simplifiedChinese: "输出路径", english: "Output"),
                                         value: outputLocationText
@@ -1863,8 +1883,65 @@ struct VideoDownloaderPageView: View {
         VideoFittingCapabilityMatrix.build(assignedViews: assignedCameraViews)
     }
 
+    private var fittingSessionSummary: VideoFittingSessionSummary {
+        VideoFittingSessionSummaryResolver.resolve(
+            snapshot: fittingWorkflowSnapshot,
+            states: fittingWorkflowStates,
+            capabilityMatrix: fittingCapabilityMatrix
+        )
+    }
+
+    private var selectedFittingResultOverviewSummary: VideoFittingResultOverviewSummary {
+        VideoFittingResultOverviewSummaryResolver.resolve(
+            result: selectedJointAngleResult,
+            qualitySummary: selectedJointRecognitionQualitySummary,
+            selectedView: selectedJointAnalysisView
+        )
+    }
+
     private var missingRequiredCameraViews: [CyclingCameraView] {
         supportedCyclingViews.filter { explicitCameraVideoURL(for: $0) == nil }
+    }
+
+
+    private var cameraViewCardSummaries: [VideoFittingCameraViewCardSummary] {
+        supportedCyclingViews.map { view in
+            VideoFittingCameraViewCardSummaryResolver.resolve(
+                view: view,
+                sourceURL: explicitCameraVideoURL(for: view),
+                guidance: captureGuidanceByView[view],
+                hasAnalysisResult: jointAngleResultsByView[view] != nil
+            )
+        }
+    }
+
+    private var complianceViewSummaries: [VideoFittingComplianceViewSummary] {
+        supportedCyclingViews.map { view in
+            VideoFittingComplianceViewSummaryResolver.resolve(
+                view: view,
+                sourceURL: explicitCameraVideoURL(for: view),
+                guidance: captureGuidanceByView[view]
+            )
+        }
+    }
+
+    private var fittingFailureRecoverySummary: VideoFittingFailureRecoverySummary? {
+        VideoFittingFailureRecoverySummaryResolver.resolve(
+            supportedViews: supportedCyclingViews,
+            sourceURL: { explicitCameraVideoURL(for: $0) },
+            guidanceByView: captureGuidanceByView,
+            complianceChecked: flowComplianceChecked,
+            compliancePassed: flowCompliancePassed
+        )
+    }
+
+    private var selectedJointRecognitionQualitySummary: VideoFittingJointRecognitionQualitySummary {
+        VideoFittingJointRecognitionQualitySummaryResolver.resolve(
+            selectedView: selectedJointAnalysisView,
+            sourceURL: sourceVideoURL(for: selectedJointAnalysisView),
+            guidance: captureGuidanceByView[selectedJointAnalysisView],
+            result: selectedJointAngleResult
+        )
     }
 
     private var hasAnyAssignedCameraSources: Bool {
@@ -2119,20 +2196,6 @@ struct VideoDownloaderPageView: View {
         case .auto:
             return analyzableLocalVideoURL
         }
-    }
-
-    private func cameraVideoPathText(for view: CyclingCameraView) -> String {
-        if let explicit = {
-            switch view {
-            case .front: return frontCameraVideoURL
-            case .side: return sideCameraVideoURL
-            case .rear: return rearCameraVideoURL
-            case .auto: return nil
-            }
-        }() {
-            return explicit.lastPathComponent
-        }
-        return L10n.choose(simplifiedChinese: "未设置", english: "Not set")
     }
 
     private func resetPlaybackAndAnalysisFeedback() {
@@ -3162,58 +3225,6 @@ struct VideoDownloaderPageView: View {
         }
     }
 
-    @ViewBuilder
-    private func jointAnalysisSourceRow(for view: CyclingCameraView) -> some View {
-        HStack(spacing: 8) {
-            Text(view.displayName)
-                .font(.subheadline.weight(.semibold))
-                .frame(width: 64, alignment: .leading)
-            Text(cameraVideoPathText(for: view))
-                .font(.caption)
-                .lineLimit(1)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-
-            Button(L10n.choose(simplifiedChinese: "选择视频", english: "Choose")) {
-                presentCameraVideoImporter(for: view)
-            }
-            .buttonStyle(.bordered)
-            .disabled(isAnalyzingJointAngles)
-
-            Button(L10n.choose(simplifiedChinese: "清除", english: "Clear")) {
-                setCameraVideoURL(nil, for: view)
-            }
-            .buttonStyle(.bordered)
-            .disabled(isAnalyzingJointAngles || explicitCameraVideoURL(for: view) == nil)
-        }
-    }
-
-    private func missingViewImpactText(for view: CyclingCameraView) -> String {
-        switch view {
-        case .front:
-            return L10n.choose(
-                simplifiedChinese: "前视缺失：无法输出膝/踝/足尖轨迹与关节对位。",
-                english: "Front view missing: knee/ankle/toe trajectories and alignment will be unavailable."
-            )
-        case .side:
-            return L10n.choose(
-                simplifiedChinese: "侧视缺失：无法输出髋/膝角、BDC 与座高建议。",
-                english: "Side view missing: hip/knee angles, BDC, and saddle-height guidance will be unavailable."
-            )
-        case .rear:
-            return L10n.choose(
-                simplifiedChinese: "后视缺失：无法输出盆骨倾斜、重心漂移与顺拐风险。",
-                english: "Rear view missing: pelvic tilt, center-of-mass drift, and crossover-risk analysis will be unavailable."
-            )
-        case .auto:
-            return L10n.choose(
-                simplifiedChinese: "缺少机位视频：对应分析结果不可用。",
-                english: "Missing view video: corresponding analysis output is unavailable."
-            )
-        }
-    }
-
     private func presentPrimaryFittingVideoImporter() {
         activeVideoImportTarget = .primary
         isVideoImporterSheetPresented = true
@@ -3370,6 +3381,489 @@ struct VideoDownloaderPageView: View {
     }
 
     @ViewBuilder
+    private func fittingResultTabContent() -> some View {
+        switch selectedFittingResultTab {
+        case .overview:
+            fittingResultOverviewTab()
+        case .metrics:
+            fittingResultMetricsTab()
+        case .suggestions:
+            fittingResultSuggestionsTab()
+        case .evidence:
+            fittingResultEvidenceTab()
+        }
+    }
+
+    @ViewBuilder
+    private func fittingResultOverviewTab() -> some View {
+        let summary = selectedFittingResultOverviewSummary
+        VideoFittingResultSectionCard(
+            title: L10n.choose(simplifiedChinese: "核心结论", english: "Core Conclusion"),
+            subtitle: L10n.choose(simplifiedChinese: "先看这里，快速了解当前机位最重要的判断。", english: "Start here for the most important conclusion of the current view.")
+        ) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(summary.headline)
+                            .font(.title3.weight(.bold))
+                        Text(summary.detail)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    VideoFittingResultBadge(
+                        text: summary.riskTitle,
+                        tint: fittingResultToneColor(summary.tone)
+                    )
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.choose(simplifiedChinese: "风险提示", english: "Risk"))
+                        .font(.caption.weight(.semibold))
+                    Text(summary.riskDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if !summary.availableConclusions.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L10n.choose(simplifiedChinese: "当前可输出结论", english: "Available Conclusions"))
+                            .font(.caption.weight(.semibold))
+                        flowLayout(tags: summary.availableConclusions, tint: fittingResultToneColor(summary.tone))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L10n.choose(simplifiedChinese: "推荐下一步动作", english: "Recommended Next Actions"))
+                        .font(.caption.weight(.semibold))
+                    if summary.nextActions.isEmpty {
+                        Text(L10n.choose(simplifiedChinese: "暂无额外动作。", english: "No extra action is needed right now."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(Array(summary.nextActions.enumerated()), id: \.offset) { _, action in
+                            Text("• \(action)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func fittingResultMetricsTab() -> some View {
+        guard let result = selectedJointAngleResult else {
+            return AnyView(fittingResultEmptyState(for: .metrics))
+        }
+
+        return AnyView(VStack(alignment: .leading, spacing: 12) {
+            let durationText = String(format: "%.1f", result.durationSeconds)
+            let modelText: String = {
+                switch result.modelUsed {
+                case .mediaPipeBlazePoseGHUM:
+                    return L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
+                case .appleVision, .auto:
+                    if result.used3DAngleFrameCount > 0 {
+                        return L10n.choose(
+                            simplifiedChinese: "Vision 3D 优先（\(result.used3DAngleFrameCount) 帧）",
+                            english: "Vision 3D preferred (\(result.used3DAngleFrameCount) frames)"
+                        )
+                    }
+                    return L10n.choose(simplifiedChinese: "Vision 2D", english: "Vision 2D")
+                }
+            }()
+
+            VideoFittingResultSectionCard(
+                title: L10n.choose(simplifiedChinese: "结果元信息", english: "Result Metadata"),
+                subtitle: L10n.choose(simplifiedChinese: "先确认当前结果来自哪个机位、模型和样本范围。", english: "Confirm the source view, model, and sample range first.")
+            ) {
+                Text(
+                    L10n.choose(
+                        simplifiedChinese: "视角: \(result.resolvedView.displayName) · 模型: \(modelText) · 主侧: \(result.dominantSide.displayName) · 有效帧 \(result.analyzedFrameCount)/\(result.targetFrameCount) · 视频时长 \(durationText)s",
+                        english: "View: \(result.resolvedView.displayName) · model: \(modelText) · dominant side: \(result.dominantSide.displayName) · valid frames \(result.analyzedFrameCount)/\(result.targetFrameCount) · duration \(durationText)s"
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                jointAngleStatsCard(
+                    title: L10n.choose(simplifiedChinese: "膝关节角", english: "Knee Angle"),
+                    stats: result.kneeStats,
+                    tint: .orange
+                )
+                jointAngleStatsCard(
+                    title: L10n.choose(simplifiedChinese: "髋关节角", english: "Hip Angle"),
+                    stats: result.hipStats,
+                    tint: .blue
+                )
+            }
+
+            fittingRangeDashboard(result: result)
+            longDurationStabilitySection(result: result)
+
+            switch result.resolvedView {
+            case .side:
+                if !result.sideCheckpoints.isEmpty {
+                    VideoFittingResultSectionCard(
+                        title: L10n.choose(simplifiedChinese: "侧视关键点", english: "Side Checkpoints"),
+                        subtitle: L10n.choose(simplifiedChinese: "0 / 3 / 6 / 9 点的关节快照。", english: "Joint snapshots at 0 / 3 / 6 / 9 o'clock.")
+                    ) {
+                        HStack(spacing: 8) {
+                            ForEach(result.sideCheckpoints) { snapshot in
+                                sideCheckpointCard(snapshot)
+                            }
+                        }
+                    }
+                }
+                if let cadenceSummary = result.cadenceSummary {
+                    VideoFittingResultSectionCard(
+                        title: L10n.choose(simplifiedChinese: "踏频周期与 BDC", english: "Cadence Cycles and BDC"),
+                        subtitle: L10n.choose(simplifiedChinese: "用于判断节奏稳定性、BDC 膝角与座高区间。", english: "Used to assess cadence stability, BDC knee angle, and saddle range.")
+                    ) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 10) {
+                                metricCard(
+                                    title: L10n.choose(simplifiedChinese: "周期数", english: "Cycle Count"),
+                                    value: "\(cadenceSummary.cycleCount)",
+                                    tint: .cyan
+                                )
+                                metricCard(
+                                    title: L10n.choose(simplifiedChinese: "平均踏频", english: "Avg Cadence"),
+                                    value: String(format: "%.1f rpm", cadenceSummary.meanCadenceRPM),
+                                    tint: .cyan
+                                )
+                                metricCard(
+                                    title: L10n.choose(simplifiedChinese: "BDC 膝角均值", english: "BDC Knee Mean"),
+                                    value: cadenceSummary.bdcKneeStats.map { String(format: "%.1f°", $0.mean) } ?? "--",
+                                    tint: .orange
+                                )
+                            }
+
+                            if let recommendation = cadenceSummary.saddleHeightRecommendation {
+                                Text(
+                                    L10n.choose(
+                                        simplifiedChinese: "座高建议区间：目标 BDC 膝角 \(String(format: "%.0f-%.0f°", recommendation.targetKneeAngleMinDeg, recommendation.targetKneeAngleMaxDeg))。当前 \(String(format: "%.1f°", recommendation.meanBDCKneeAngleDeg))，建议\(saddleAdjustmentText(recommendation.direction)) \(String(format: "%.0f-%.0f mm", recommendation.suggestedAdjustmentMinMM, recommendation.suggestedAdjustmentMaxMM))。",
+                                        english: "Saddle recommendation: target BDC knee angle \(String(format: "%.0f-%.0f°", recommendation.targetKneeAngleMinDeg, recommendation.targetKneeAngleMaxDeg)). Current \(String(format: "%.1f°", recommendation.meanBDCKneeAngleDeg)); \(saddleAdjustmentText(recommendation.direction)) by \(String(format: "%.0f-%.0f mm", recommendation.suggestedAdjustmentMinMM, recommendation.suggestedAdjustmentMaxMM))."
+                                    )
+                                )
+                                .font(.caption)
+                                .foregroundStyle(saddleAdjustmentColor(recommendation.direction))
+                            }
+                        }
+                    }
+                }
+            case .front:
+                if let alignment = result.frontAlignment {
+                    VideoFittingResultSectionCard(
+                        title: L10n.choose(simplifiedChinese: "前视对位", english: "Front Alignment"),
+                        subtitle: L10n.choose(simplifiedChinese: "主要看膝 / 踝 / 足尖与中线关系。", english: "Focus on knee / ankle / toe alignment to the centerline.")
+                    ) {
+                        HStack(spacing: 10) {
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "膝-足对位均值", english: "Knee-Foot Mean"),
+                                value: String(format: "%.3f", alignment.meanKneeFootOffset),
+                                tint: .teal
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "最大偏移", english: "Max Offset"),
+                                value: String(format: "%.3f", alignment.maxKneeFootOffset),
+                                tint: .teal
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "左右不对称", english: "Asymmetry"),
+                                value: String(format: "%.3f", alignment.kneeTrackAsymmetry),
+                                tint: .mint
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "膝宽/髋宽", english: "Knee/Hip Width"),
+                                value: String(format: "%.3f", alignment.hipKneeWidthRatio),
+                                tint: .indigo
+                            )
+                        }
+                    }
+                }
+                if let trajectory = result.frontTrajectory {
+                    VideoFittingResultSectionCard(
+                        title: L10n.choose(simplifiedChinese: "前视轨迹", english: "Front Trajectory"),
+                        subtitle: frontTrajectorySummary(trajectory)
+                    ) {
+                        HStack(spacing: 10) {
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "膝轨迹宽度", english: "Knee Path Width"),
+                                value: String(format: "%.3f", trajectory.kneeTrajectorySpanNorm),
+                                tint: trajectory.kneeTrajectorySpanNorm <= 0.36 ? .green : .orange
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "踝轨迹宽度", english: "Ankle Path Width"),
+                                value: String(format: "%.3f", trajectory.ankleTrajectorySpanNorm),
+                                tint: trajectory.ankleTrajectorySpanNorm <= 0.28 ? .green : .orange
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "足尖轨迹宽度", english: "Toe Path Width"),
+                                value: trajectory.toeTrajectorySpanNorm.map { String(format: "%.3f", $0) } ?? "--",
+                                tint: (trajectory.toeTrajectorySpanNorm ?? 0.0) <= 0.34 ? .green : .orange
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "膝踝合理占比", english: "Knee-Ankle In-Range"),
+                                value: String(format: "%.0f%%", trajectory.kneeOverAnkleInRangeRatio * 100.0),
+                                tint: trajectory.kneeOverAnkleInRangeRatio >= 0.7 ? .green : .orange
+                            )
+                        }
+                    }
+                }
+            case .rear:
+                VideoFittingResultSectionCard(
+                    title: L10n.choose(simplifiedChinese: "后视稳定性", english: "Rear Stability"),
+                    subtitle: result.rearStability.map { rearStabilitySummary(stability: $0, pelvic: result.rearPelvic, coordination: result.rearCoordination) }
+                        ?? L10n.choose(simplifiedChinese: "用于判断盆骨稳定、重心漂移与顺拐风险。", english: "Used to assess pelvic stability, center-of-mass drift, and crossover risk.")
+                ) {
+                    HStack(spacing: 10) {
+                        if let pelvic = result.rearPelvic {
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "平均盆骨倾斜", english: "Mean Pelvic Tilt"),
+                                value: String(format: "%.1f°", pelvic.meanPelvicTiltDeg),
+                                tint: .purple
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "最大倾斜", english: "Max Pelvic Tilt"),
+                                value: String(format: "%.1f°", pelvic.maxPelvicTiltDeg),
+                                tint: .purple
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "左髋下沉占比", english: "Left Hip Drop Ratio"),
+                                value: String(format: "%.0f%%", pelvic.leftHipDropRatio * 100),
+                                tint: .pink
+                            )
+                        }
+                        if let coordination = result.rearCoordination {
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "左右膝横向相关", english: "Knee Lateral Corr."),
+                                value: String(format: "%.2f", coordination.kneeLateralCorrelation),
+                                tint: .brown
+                            )
+                            metricCard(
+                                title: L10n.choose(simplifiedChinese: "顺拐判定", english: "Shun-Guai"),
+                                value: coordination.isShunGuaiSuspected
+                                    ? L10n.choose(simplifiedChinese: "疑似", english: "Suspected")
+                                    : L10n.choose(simplifiedChinese: "未见明显异常", english: "Not obvious"),
+                                tint: coordination.isShunGuaiSuspected ? .red : .green
+                            )
+                        }
+                    }
+                }
+            case .auto:
+                EmptyView()
+            }
+        })
+    }
+
+    @ViewBuilder
+    private func fittingResultSuggestionsTab() -> some View {
+        let summary = selectedFittingResultOverviewSummary
+
+        VStack(alignment: .leading, spacing: 12) {
+            VideoFittingResultSectionCard(
+                title: L10n.choose(simplifiedChinese: "建议优先级", english: "Suggested Next Steps"),
+                subtitle: L10n.choose(simplifiedChinese: "把调整动作写成能直接执行的步骤。", english: "Turn the fitting output into concrete actions.")
+            ) {
+                if summary.nextActions.isEmpty {
+                    Text(L10n.choose(simplifiedChinese: "暂无建议，先完成分析。", english: "No suggestion yet. Complete analysis first."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(Array(summary.nextActions.enumerated()), id: \.offset) { index, action in
+                        Text("\(index + 1). \(action)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+
+            if let result = selectedJointAngleResult, !result.adjustmentPlan.isEmpty {
+                adjustmentDecisionSection(result.adjustmentPlan)
+            } else {
+                VideoFittingResultSectionCard(
+                    title: L10n.choose(simplifiedChinese: "动作调整建议", english: "Adjustment Suggestions"),
+                    subtitle: L10n.choose(simplifiedChinese: "真实分析结果接入后，这里会显示座高、前后位置等建议。", english: "Real analysis will surface saddle height, setback, and other recommendations here.")
+                ) {
+                    Text(L10n.choose(simplifiedChinese: "当前没有可执行调整建议。", english: "No executable adjustment suggestion is available yet."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let result = selectedJointAngleResult, !result.fittingHints.isEmpty {
+                VideoFittingResultSectionCard(
+                    title: L10n.choose(simplifiedChinese: "精度与拍摄提示", english: "Precision and Capture Hints"),
+                    subtitle: L10n.choose(simplifiedChinese: "这些提示帮助你判断是否需要补标记点或重拍。", english: "These hints help you decide whether to add markers or retake the video.")
+                ) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(result.fittingHints.enumerated()), id: \.offset) { _, hint in
+                            Text("• \(hint)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func fittingResultEvidenceTab() -> some View {
+        guard let result = selectedJointAngleResult else {
+            return AnyView(fittingResultEmptyState(for: .evidence))
+        }
+
+        return AnyView(VStack(alignment: .leading, spacing: 12) {
+            VideoFittingResultSectionCard(
+                title: L10n.choose(simplifiedChinese: "关键帧与叠加线", english: "Keyframes and Overlays"),
+                subtitle: L10n.choose(simplifiedChinese: "这里保留证据位，后续可平滑接入真实关键帧和叠加线。", english: "Evidence placeholders live here and can be smoothly replaced with real keyframes and overlays.")
+            ) {
+                HStack(spacing: 10) {
+                    fittingEvidencePlaceholderCard(
+                        title: L10n.choose(simplifiedChinese: "关键帧", english: "Keyframes"),
+                        detail: L10n.choose(simplifiedChinese: "将展示代表性帧位与时刻。", english: "Will show representative frames and timestamps.")
+                    )
+                    fittingEvidencePlaceholderCard(
+                        title: L10n.choose(simplifiedChinese: "骨架叠加线", english: "Skeleton Overlay"),
+                        detail: L10n.choose(simplifiedChinese: "将展示骨架对位和角度叠加。", english: "Will show skeleton alignment and angle overlays.")
+                    )
+                    fittingEvidencePlaceholderCard(
+                        title: L10n.choose(simplifiedChinese: "置信度", english: "Confidence"),
+                        detail: selectedJointRecognitionQualitySummary.confidenceText
+                    )
+                }
+            }
+
+            if result.resolvedView == .side && !result.sideCheckpoints.isEmpty {
+                VideoFittingResultSectionCard(
+                    title: L10n.choose(simplifiedChinese: "关键点证据", english: "Checkpoint Evidence"),
+                    subtitle: L10n.choose(simplifiedChinese: "0 / 3 / 6 / 9 点位快照可作为关键证据。", english: "0 / 3 / 6 / 9 checkpoints serve as key evidence.")
+                ) {
+                    HStack(spacing: 8) {
+                        ForEach(result.sideCheckpoints) { snapshot in
+                            sideCheckpointCard(snapshot)
+                        }
+                    }
+                }
+            }
+
+            VideoFittingResultSectionCard(
+                title: L10n.choose(simplifiedChinese: "角度证据曲线", english: "Angle Evidence Chart"),
+                subtitle: L10n.choose(simplifiedChinese: "展示本次识别生成的膝角 / 髋角时序曲线。", english: "Shows knee and hip time-series curves produced by this recognition run.")
+            ) {
+                fittingEvidenceChart(result: result)
+            }
+        })
+    }
+
+    private func fittingResultEmptyState(for tab: VideoFittingResultTab) -> some View {
+        let title: String
+        let detail: String
+        switch tab {
+        case .overview:
+            title = L10n.choose(simplifiedChinese: "等待核心结论", english: "Awaiting overview")
+            detail = L10n.choose(simplifiedChinese: "先完成合规检查和骨点识别，这里会优先展示结论与风险。", english: "Complete compliance and skeleton recognition first. This tab will highlight conclusions and risks.")
+        case .metrics:
+            title = L10n.choose(simplifiedChinese: "等待指标结果", english: "Awaiting metrics")
+            detail = L10n.choose(simplifiedChinese: "识别完成后，这里会显示角度、轨迹和稳定性指标。", english: "Metrics, trajectories, and stability outputs appear here after recognition.")
+        case .suggestions:
+            title = L10n.choose(simplifiedChinese: "等待动作建议", english: "Awaiting suggestions")
+            detail = L10n.choose(simplifiedChinese: "结果产出后，这里会整理为可执行的调整建议。", english: "Actionable fitting suggestions appear here after analysis.")
+        case .evidence:
+            title = L10n.choose(simplifiedChinese: "等待证据内容", english: "Awaiting evidence")
+            detail = L10n.choose(simplifiedChinese: "关键帧、叠加线和置信度证据会显示在这里。", english: "Keyframes, overlays, and confidence evidence will appear here.")
+        }
+
+        return VideoFittingResultEmptyStateCard(
+            title: title,
+            detail: detail,
+            footnote: L10n.choose(
+                simplifiedChinese: "当前可先在上方完成合规检查与骨点识别。",
+                english: "You can complete compliance and skeleton recognition above first."
+            )
+        )
+    }
+
+    @ViewBuilder
+    private func fittingEvidencePlaceholderCard(title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+            Spacer(minLength: 0)
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 120, alignment: .leading)
+        .padding(12)
+        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func fittingEvidenceChart(result: VideoJointAngleAnalysisResult) -> some View {
+        Chart {
+            ForEach(result.samples) { sample in
+                if let knee = sample.kneeAngleDeg {
+                    LineMark(
+                        x: .value("Time", sample.timeSeconds),
+                        y: .value("Knee", knee)
+                    )
+                    .foregroundStyle(.orange)
+                }
+                if let hip = sample.hipAngleDeg {
+                    LineMark(
+                        x: .value("Time", sample.timeSeconds),
+                        y: .value("Hip", hip)
+                    )
+                    .foregroundStyle(.blue)
+                }
+            }
+        }
+        .frame(height: 210)
+        .chartYAxis {
+            AxisMarks(position: .trailing)
+        }
+        .chartXAxisLabel(L10n.choose(simplifiedChinese: "时间(s)", english: "Time (s)"))
+        .chartYAxisLabel(L10n.choose(simplifiedChinese: "角度(°)", english: "Angle (°)"))
+        .chartLegend(position: .bottom, spacing: 12)
+    }
+
+    @ViewBuilder
+    private func flowLayout(tags: [String], tint: Color) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8, alignment: .leading)], alignment: .leading, spacing: 8) {
+            ForEach(tags, id: \.self) { tag in
+                Text(tag)
+                    .font(.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(tint.opacity(0.10), in: Capsule())
+                    .foregroundStyle(tint)
+            }
+        }
+    }
+
+    private func fittingResultToneColor(_ tone: VideoFittingResultRiskTone) -> Color {
+        switch tone {
+        case .low:
+            return .green
+        case .moderate:
+            return .orange
+        case .high:
+            return .red
+        case .pending:
+            return .secondary
+        }
+    }
+
+    @ViewBuilder
     private func jointAnalysisResultSection(result: VideoJointAngleAnalysisResult) -> some View {
         let durationText = String(format: "%.1f", result.durationSeconds)
         let modelText: String = {
@@ -3418,7 +3912,7 @@ struct VideoDownloaderPageView: View {
         case .side:
             if !result.sideCheckpoints.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(L10n.choose(simplifiedChinese: "侧视角关键点（0/3/9/12 点）", english: "Side View Checkpoints (0/3/9/12)"))
+                    Text(L10n.choose(simplifiedChinese: "侧视角关键点（0/3/6/9 点）", english: "Side View Checkpoints (0/3/6/9)"))
                         .font(.caption.weight(.semibold))
                     HStack(spacing: 8) {
                         ForEach(result.sideCheckpoints) { snapshot in
@@ -4273,46 +4767,6 @@ struct VideoDownloaderPageView: View {
             return .ready
         case .done:
             return .done
-        }
-    }
-
-    @ViewBuilder
-    private func captureGuidanceRow(for view: CyclingCameraView) -> some View {
-        let guidance = captureGuidanceByView[view]
-        HStack(spacing: 10) {
-            Text(view.displayName)
-                .font(.caption.weight(.semibold))
-                .frame(width: 64, alignment: .leading)
-
-            Text(
-                guidance.map {
-                    let lumaText = $0.luma.map { String(format: "%.2f", $0) } ?? "--"
-                    let sharpnessText = $0.sharpness.map { String(format: "%.3f", $0) } ?? "--"
-                    let occlusionText = $0.occlusionRatio.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
-                    let distortionText = $0.distortionRisk.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
-                    let alignText = $0.skeletonAlignability.map { String(format: "%.0f%%", $0 * 100) } ?? "--"
-                    let scoreText = String(format: "%.0f", $0.qualityScore * 100)
-                    return L10n.choose(
-                        simplifiedChinese: "FPS \(String(format: "%.1f", $0.fps)) · 亮度 \(lumaText) · 清晰 \(sharpnessText) · 遮挡 \(occlusionText) · 畸变风险 \(distortionText) · 对位 \(alignText) · 质量 \(scoreText)",
-                        english: "FPS \(String(format: "%.1f", $0.fps)) · Luma \(lumaText) · Sharpness \(sharpnessText) · Occlusion \(occlusionText) · Distortion \(distortionText) · Align \(alignText) · Quality \(scoreText)"
-                    )
-                } ?? L10n.choose(simplifiedChinese: "未检测", english: "Not measured")
-            )
-            .font(.caption.monospacedDigit())
-            .foregroundStyle(.secondary)
-
-            Spacer()
-
-            if let guidance {
-                Label(
-                    guidance.qualityGatePass
-                        ? L10n.choose(simplifiedChinese: "通过·\(guidance.qualityGrade.label)", english: "Pass·\(guidance.qualityGrade.label)")
-                        : L10n.choose(simplifiedChinese: "拒绝·\(guidance.qualityGrade.label)", english: "Rejected·\(guidance.qualityGrade.label)"),
-                    systemImage: guidance.qualityGatePass ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(guidance.qualityGatePass ? .green : .orange)
-            }
         }
     }
 

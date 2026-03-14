@@ -1319,37 +1319,10 @@ private struct ActivityDetailSheet: View {
     }
 
     private func distributionBins(from points: [ActivityTracePoint], binCount: Int) -> [ActivityDistributionBin] {
-        let values = points.map(\.value).filter { $0.isFinite && $0 > 0 }
-        guard values.count >= 2 else { return [] }
-        let minValue = values.min() ?? 0
-        let maxValue = values.max() ?? 0
-        let span = max(1.0, maxValue - minValue)
-        let safeBinCount = max(4, binCount)
-        let binWidth = span / Double(safeBinCount)
-
-        var counts = Array(repeating: 0, count: safeBinCount)
-        for value in values {
-            let rawIndex = Int((value - minValue) / binWidth)
-            let index = min(max(rawIndex, 0), safeBinCount - 1)
-            counts[index] += 1
-        }
-
-        let total = max(1, counts.reduce(0, +))
-        return counts.enumerated().map { idx, count in
-            let lower = minValue + Double(idx) * binWidth
-            let upper = idx == safeBinCount - 1 ? maxValue : lower + binWidth
-            let lowerInt = Int(lower.rounded())
-            let upperInt = Int(upper.rounded())
-            return ActivityDistributionBin(
-                id: idx,
-                lowerBound: lowerInt,
-                upperBound: upperInt,
-                rangeLabel: "\(lowerInt)-\(upperInt)",
-                valueMidpoint: (lower + upper) * 0.5,
-                sampleCount: count,
-                fraction: Double(count) / Double(total)
-            )
-        }
+        ActivityDistributionBinner.buildBins(
+            values: points.map(\.value),
+            requestedBinCount: binCount
+        )
     }
 
     private var durationHours: Double {
@@ -2971,7 +2944,7 @@ private struct ActivityPowerZoneBand: Identifiable {
     let color: Color
 }
 
-private struct ActivityDistributionBin: Identifiable {
+struct ActivityDistributionBin: Identifiable {
     let id: Int
     let lowerBound: Int
     let upperBound: Int
@@ -3031,7 +3004,7 @@ private struct ActivityDistributionCard: View {
                             guard bins.indices.contains(idx) else { return nil }
                             let bin = bins[idx]
                             return LightChartNote(
-                                text: "\(bin.lowerBound)-\(bin.upperBound): \(bin.sampleCount)",
+                                text: "\(bin.rangeLabel): \(bin.sampleCount)",
                                 style: .monospaced
                             )
                         },
@@ -3041,7 +3014,7 @@ private struct ActivityDistributionCard: View {
                         points: bins.map { bin in
                             LightCategoricalPoint(
                                 id: "\(title)-\(bin.id)",
-                                label: "\(bin.lowerBound)-\(bin.upperBound)",
+                                label: bin.rangeLabel,
                                 value: Double(bin.sampleCount),
                                 tint: color
                             )
@@ -3171,4 +3144,59 @@ private extension Double {
 
 private func clamp(_ value: Double, min lower: Double, max upper: Double) -> Double {
     Swift.max(lower, Swift.min(upper, value))
+}
+
+enum ActivityDistributionBinner {
+    static func buildBins(values: [Double], requestedBinCount: Int) -> [ActivityDistributionBin] {
+        let cleaned = values.filter { $0.isFinite && $0 > 0 }
+        guard cleaned.count >= 2 else { return [] }
+
+        let minValue = cleaned.min() ?? 0
+        let maxValue = cleaned.max() ?? 0
+        let rawSpan = maxValue - minValue
+
+        if rawSpan < 0.0001 {
+            let bucket = Int(minValue.rounded())
+            return [
+                ActivityDistributionBin(
+                    id: 0,
+                    lowerBound: bucket,
+                    upperBound: bucket,
+                    rangeLabel: "\(bucket)",
+                    valueMidpoint: minValue,
+                    sampleCount: cleaned.count,
+                    fraction: 1.0
+                )
+            ]
+        }
+
+        let safeBinCount = max(1, min(max(1, requestedBinCount), Int(ceil(rawSpan))))
+        let binWidth = rawSpan / Double(safeBinCount)
+        guard binWidth > 0 else { return [] }
+
+        var counts = Array(repeating: 0, count: safeBinCount)
+        for value in cleaned {
+            let rawIndex = Int((value - minValue) / binWidth)
+            let index = min(max(rawIndex, 0), safeBinCount - 1)
+            counts[index] += 1
+        }
+
+        let total = max(1, counts.reduce(0, +))
+        return counts.enumerated().map { idx, count in
+            let lower = minValue + Double(idx) * binWidth
+            let upper = idx == safeBinCount - 1 ? maxValue : lower + binWidth
+            let lowerInt = Int(floor(lower))
+            let upperInt = max(lowerInt, Int(ceil(upper)))
+            let label = lowerInt == upperInt ? "\(lowerInt)" : "\(lowerInt)-\(upperInt)"
+            return ActivityDistributionBin(
+                id: idx,
+                lowerBound: lowerInt,
+                upperBound: upperInt,
+                rangeLabel: label,
+                valueMidpoint: (lower + upper) * 0.5,
+                sampleCount: count,
+                fraction: Double(count) / Double(total)
+            )
+        }
+    }
 }
