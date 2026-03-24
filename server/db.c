@@ -17,6 +17,44 @@
 
 #define PENDING_WRITES_DIR "pending_writes"
 
+sqlite_durability_mode_t sqlite_durability_mode_from_env(void) {
+    const char *value = getenv("FRICU_SQLITE_DURABILITY");
+    if (!value || value[0] == '\0') return SQLITE_DURABILITY_NORMAL;
+    if (strcasecmp(value, "full") == 0) return SQLITE_DURABILITY_FULL;
+    if (strcasecmp(value, "normal") == 0) return SQLITE_DURABILITY_NORMAL;
+    return SQLITE_DURABILITY_NORMAL;
+}
+
+const char *sqlite_durability_mode_name(sqlite_durability_mode_t mode) {
+    switch (mode) {
+        case SQLITE_DURABILITY_FULL:
+            return "FULL";
+        case SQLITE_DURABILITY_NORMAL:
+        default:
+            return "NORMAL";
+    }
+}
+
+void sqlite_apply_durability_pragmas(sqlite3 *db, sqlite_durability_mode_t mode) {
+    const char *synchronous_mode = mode == SQLITE_DURABILITY_FULL ? "FULL" : "NORMAL";
+    const char *fullfsync_value = mode == SQLITE_DURABILITY_FULL ? "ON" : "OFF";
+    const char *busy_timeout = mode == SQLITE_DURABILITY_FULL ? "5000" : "750";
+    const char *wal_autocheckpoint = mode == SQLITE_DURABILITY_FULL ? "1000" : "4000";
+    char pragma_sql[128] = {0};
+
+    sqlite3_exec(db, "PRAGMA journal_mode=WAL;", NULL, NULL, NULL);
+    snprintf(pragma_sql, sizeof(pragma_sql), "PRAGMA busy_timeout=%s;", busy_timeout);
+    sqlite3_exec(db, pragma_sql, NULL, NULL, NULL);
+    snprintf(pragma_sql, sizeof(pragma_sql), "PRAGMA wal_autocheckpoint=%s;", wal_autocheckpoint);
+    sqlite3_exec(db, pragma_sql, NULL, NULL, NULL);
+    snprintf(pragma_sql, sizeof(pragma_sql), "PRAGMA synchronous=%s;", synchronous_mode);
+    sqlite3_exec(db, pragma_sql, NULL, NULL, NULL);
+    snprintf(pragma_sql, sizeof(pragma_sql), "PRAGMA fullfsync=%s;", fullfsync_value);
+    sqlite3_exec(db, pragma_sql, NULL, NULL, NULL);
+    snprintf(pragma_sql, sizeof(pragma_sql), "PRAGMA checkpoint_fullfsync=%s;", fullfsync_value);
+    sqlite3_exec(db, pragma_sql, NULL, NULL, NULL);
+}
+
 static int fsync_directory(const char *dir_path) {
     DIR *d = opendir(dir_path);
     if (!d) return -1;
@@ -214,6 +252,7 @@ static int replay_pending_writes(sqlite3 *db) {
 
 int init_db(const char *db_path) {
     sqlite3 *db = NULL;
+    sqlite_durability_mode_t durability_mode = sqlite_durability_mode_from_env();
     if (sqlite3_open_v2(db_path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, NULL) != SQLITE_OK) {
         log_error("failed to open db: %s", sqlite3_errmsg(db));
         if (db) sqlite3_close(db);
@@ -221,10 +260,6 @@ int init_db(const char *db_path) {
     }
 
     const char *schema_sql =
-        "PRAGMA journal_mode=WAL;"
-        "PRAGMA synchronous=FULL;"
-        "PRAGMA fullfsync=ON;"
-        "PRAGMA checkpoint_fullfsync=ON;"
         "PRAGMA temp_store=MEMORY;"
         "PRAGMA mmap_size=268435456;"
         "CREATE TABLE IF NOT EXISTS kv_store ("
@@ -240,6 +275,7 @@ int init_db(const char *db_path) {
         sqlite3_close(db);
         return -1;
     }
+    sqlite_apply_durability_pragmas(db, durability_mode);
 
     if (replay_pending_writes(db) != 0) {
         log_error("failed to replay pending writes");
@@ -277,6 +313,7 @@ int init_db(const char *db_path) {
 
 int worker_db_open(worker_db_t *db, const char *db_path) {
     memset(db, 0, sizeof(*db));
+    sqlite_durability_mode_t durability_mode = sqlite_durability_mode_from_env();
     if (sqlite3_open_v2(db_path, &db->db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_NOMUTEX, NULL) != SQLITE_OK) {
         log_error("worker failed to open db: %s", sqlite3_errmsg(db->db));
         if (db->db) sqlite3_close(db->db);
@@ -294,10 +331,7 @@ int worker_db_open(worker_db_t *db, const char *db_path) {
         return -1;
     }
 
-    sqlite3_exec(db->db, "PRAGMA busy_timeout=5000;", NULL, NULL, NULL);
-    sqlite3_exec(db->db, "PRAGMA synchronous=FULL;", NULL, NULL, NULL);
-    sqlite3_exec(db->db, "PRAGMA fullfsync=ON;", NULL, NULL, NULL);
-    sqlite3_exec(db->db, "PRAGMA checkpoint_fullfsync=ON;", NULL, NULL, NULL);
+    sqlite_apply_durability_pragmas(db->db, durability_mode);
     sqlite3_exec(db->db, "PRAGMA temp_store=MEMORY;", NULL, NULL, NULL);
     sqlite3_exec(db->db, "PRAGMA mmap_size=268435456;", NULL, NULL, NULL);
     sqlite3_exec(db->db, "PRAGMA cache_size=-32768;", NULL, NULL, NULL);

@@ -74,6 +74,7 @@ final class VideoFittingChaosTests: XCTestCase {
             let guidance = makePassingGuidance(generator: &generator)
             let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
                 selectedView: .side,
+                selectedModel: .auto,
                 sourceURL: URL(fileURLWithPath: "/tmp/chaos-side-\(iteration).mp4"),
                 guidance: guidance,
                 result: result
@@ -129,12 +130,13 @@ final class VideoFittingChaosTests: XCTestCase {
         let result = makeRandomSideResult(generator: &generator, idBase: 9000, includeShoulders: false)
         let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: .side,
+            selectedModel: .auto,
             sourceURL: URL(fileURLWithPath: "/tmp/chaos-side-fallback.mp4"),
             guidance: makePassingGuidance(generator: &generator),
             result: result
         )
 
-        let hipVisual = summary.angleVisuals.first(where: { $0.kind == .hip })
+        let hipVisual = summary.angleVisuals.first(where: { $0.kind == VideoFittingJointAngleVisualKind.hip })
         if let hipVisual {
             XCTAssertNotNil(hipVisual.frameTimeSeconds)
             XCTAssertNil(hipVisual.firstPoint)

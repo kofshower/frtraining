@@ -17,6 +17,11 @@ typedef struct {
     char db_path[512];
 } worker_db_t;
 
+typedef enum {
+    SQLITE_DURABILITY_NORMAL = 0,
+    SQLITE_DURABILITY_FULL = 1
+} sqlite_durability_mode_t;
+
 typedef struct {
     int fd;
     size_t len;
@@ -31,6 +36,9 @@ int tune_fd_limit(void);
 int set_nonblocking(int fd);
 int socket_send_flags(void);
 int configure_socket_after_accept(int fd);
+sqlite_durability_mode_t sqlite_durability_mode_from_env(void);
+const char *sqlite_durability_mode_name(sqlite_durability_mode_t mode);
+void sqlite_apply_durability_pragmas(sqlite3 *db, sqlite_durability_mode_t mode);
 int init_db(const char *db_path);
 int worker_db_open(worker_db_t *db, const char *db_path);
 void worker_db_close(worker_db_t *db);

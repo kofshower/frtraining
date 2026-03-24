@@ -108,6 +108,7 @@ enum RepositoryError: Error {
     case invalidAccountID
     case httpError(Int)
     case noResponse
+    case requestTimedOut
 }
 
 struct ActivityRecoveryRepositoryDiagnostics: Equatable {
@@ -451,6 +452,8 @@ final class RemoteHTTPRepository: DataRepository, @unchecked Sendable {
                 return "HTTP \(statusCode)"
             case .noResponse:
                 return "No response"
+            case .requestTimedOut:
+                return "Request timed out"
             case .invalidServerURL:
                 return "Invalid server URL"
             case .invalidAccountID:
@@ -460,6 +463,39 @@ final class RemoteHTTPRepository: DataRepository, @unchecked Sendable {
             }
         }
         return (error as NSError).localizedDescription
+    }
+
+    private func shouldRetryPendingWrite(after error: Error) -> Bool {
+        if let repositoryError = error as? RepositoryError {
+            switch repositoryError {
+            case .noResponse, .requestTimedOut:
+                return true
+            case .httpError(let statusCode):
+                if statusCode == 408 || statusCode == 425 || statusCode == 429 {
+                    return true
+                }
+                return (500..<600).contains(statusCode)
+            case .invalidServerURL, .invalidAccountID, .appSupportUnavailable:
+                return false
+            }
+        }
+
+        let nsError = error as NSError
+        guard nsError.domain == NSURLErrorDomain else { return false }
+        switch nsError.code {
+        case NSURLErrorTimedOut,
+             NSURLErrorCannotFindHost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorNetworkConnectionLost,
+             NSURLErrorDNSLookupFailed,
+             NSURLErrorNotConnectedToInternet,
+             NSURLErrorInternationalRoamingOff,
+             NSURLErrorCallIsActive,
+             NSURLErrorDataNotAllowed:
+            return true
+        default:
+            return false
+        }
     }
 
     private func fetch<T: Decodable>(_ key: String, as type: T.Type) throws -> T {
@@ -483,7 +519,14 @@ final class RemoteHTTPRepository: DataRepository, @unchecked Sendable {
         // Write-ahead queue: persist first so abrupt power loss during request cannot lose the payload.
         try enqueuePendingWrite(key: key, payload: body, logID: logID)
 
-        _ = try execute(req)
+        do {
+            _ = try execute(req)
+        } catch {
+            if !shouldRetryPendingWrite(after: error) {
+                clearPendingWrite(for: key)
+            }
+            throw error
+        }
         clearPendingWrite(for: key)
         // Opportunistically replay older pending writes when network/server becomes available again.
         try? flushPendingWrites()
@@ -506,16 +549,19 @@ final class RemoteHTTPRepository: DataRepository, @unchecked Sendable {
             do {
                 _ = try execute(req)
             } catch {
-                var failed = entry
-                failed.logID = logID
-                failed.retryCount = nextRetryCount
-                stillPending.append(failed)
+                if shouldRetryPendingWrite(after: error) {
+                    var failed = entry
+                    failed.logID = logID
+                    failed.retryCount = nextRetryCount
+                    stillPending.append(failed)
+                }
             }
         }
         try savePendingWrites(stillPending)
     }
 
     private func execute(_ req: URLRequest) throws -> Data {
+        let timeout = max(5.0, req.timeoutInterval > 0 ? req.timeoutInterval : 30.0)
         let semaphore = DispatchSemaphore(value: 0)
         var responseData = Data()
         var responseError: Error?
@@ -528,7 +574,12 @@ final class RemoteHTTPRepository: DataRepository, @unchecked Sendable {
             semaphore.signal()
         }
         task.resume()
-        semaphore.wait()
+
+        let waitResult = semaphore.wait(timeout: .now() + timeout)
+        if waitResult == .timedOut {
+            task.cancel()
+            throw RepositoryError.requestTimedOut
+        }
 
         if let responseError {
             throw responseError

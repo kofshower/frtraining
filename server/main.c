@@ -36,6 +36,7 @@ int main(void) {
     const char *workers_env = getenv("FRICU_SERVER_WORKERS");
     const char *bind_addr_str = bind_env ? bind_env : "0.0.0.0:8080";
     const char *db_path = db_env ? db_env : "fricu_server.db";
+    sqlite_durability_mode_t durability_mode = sqlite_durability_mode_from_env();
 
     size_t worker_count = workers_env ? (size_t)strtoul(workers_env, NULL, 10) : DEFAULT_WORKERS;
     if (worker_count == 0 || worker_count > 1024) worker_count = DEFAULT_WORKERS;
@@ -128,7 +129,11 @@ int main(void) {
         }
     }
 
-    log_info("fricu-server listening on %s (workers=%zu, async_io=auto)", bind_addr_str, worker_count);
+    log_info(
+        "fricu-server listening on %s (workers=%zu, async_io=auto, sqlite_durability=%s)",
+        bind_addr_str,
+        worker_count,
+        sqlite_durability_mode_name(durability_mode));
 
     for (size_t i = 0; i < worker_count; i++) {
         pthread_join(threads[i], NULL);

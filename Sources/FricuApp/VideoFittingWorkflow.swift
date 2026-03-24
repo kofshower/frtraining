@@ -736,6 +736,9 @@ struct VideoFittingJointRecognitionQualitySummary: Equatable {
 
     let statusTitle: String
     let statusDetail: String
+    let requestedModelText: String
+    let actualModelText: String
+    let modelDecisionText: String?
     let confidenceText: String
     let dropRateText: String
     let occlusionHint: String
@@ -863,11 +866,13 @@ struct VideoFittingPlaybackCheckpointMarker: Identifiable, Equatable {
 enum VideoFittingJointRecognitionQualitySummaryResolver {
     static func resolve(
         selectedView: CyclingCameraView,
+        selectedModel: VideoPoseEstimationModel,
         sourceURL: URL?,
         guidance: VideoCaptureGuidance?,
         result: VideoJointAngleAnalysisResult?
     ) -> VideoFittingJointRecognitionQualitySummary {
         let fallbackIndicators = videoFittingSupportedConclusions(for: selectedView)
+        let requestedModelText = requestedModelDisplayText(selectedModel)
 
         guard selectedView != .auto else {
             return VideoFittingJointRecognitionQualitySummary(
@@ -876,6 +881,9 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                     simplifiedChinese: "先选择前视、侧视或后视机位，再查看骨点识别质量。",
                     english: "Choose front, side, or rear first to inspect recognition quality."
                 ),
+                requestedModelText: requestedModelText,
+                actualModelText: L10n.choose(simplifiedChinese: "等待识别", english: "Pending"),
+                modelDecisionText: modelDecisionText(selectedModel: selectedModel, result: nil),
                 confidenceText: "--",
                 dropRateText: "--",
                 occlusionHint: L10n.choose(simplifiedChinese: "等待选择机位。", english: "Awaiting view selection."),
@@ -896,6 +904,9 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                     simplifiedChinese: "当前机位没有视频，骨点识别质量面板暂不可用。",
                     english: "This view has no video yet, so the skeleton quality panel is unavailable."
                 ),
+                requestedModelText: requestedModelText,
+                actualModelText: L10n.choose(simplifiedChinese: "等待识别", english: "Pending"),
+                modelDecisionText: modelDecisionText(selectedModel: selectedModel, result: nil),
                 confidenceText: "--",
                 dropRateText: "--",
                 occlusionHint: videoFittingMissingImpactText(for: selectedView),
@@ -920,6 +931,9 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                     simplifiedChinese: "当前机位尚未通过合规检查，因此还不能稳定识别骨点。",
                     english: "This view has not passed compliance, so stable keypoint recognition is blocked."
                 ),
+                requestedModelText: requestedModelText,
+                actualModelText: L10n.choose(simplifiedChinese: "等待识别", english: "Pending"),
+                modelDecisionText: modelDecisionText(selectedModel: selectedModel, result: nil),
                 confidenceText: "--",
                 dropRateText: "--",
                 occlusionHint: hint,
@@ -940,6 +954,9 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                     simplifiedChinese: "这个机位已经可以进入骨点识别，运行后会在这里持续显示质量结果。",
                     english: "This view is ready for skeleton recognition. Run it to persist quality feedback here."
                 ),
+                requestedModelText: requestedModelText,
+                actualModelText: L10n.choose(simplifiedChinese: "等待识别", english: "Pending"),
+                modelDecisionText: modelDecisionText(selectedModel: selectedModel, result: nil),
                 confidenceText: "--",
                 dropRateText: "--",
                 occlusionHint: L10n.choose(
@@ -974,6 +991,9 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                 simplifiedChinese: "当前面板会持续保留本次识别的稳定性结果，便于判断是否值得继续看结论。",
                 english: "This panel keeps the latest recognition stability result so you can judge whether downstream conclusions are reliable."
             ),
+            requestedModelText: requestedModelText,
+            actualModelText: actualModelDisplayText(for: result),
+            modelDecisionText: modelDecisionText(selectedModel: selectedModel, result: result),
             confidenceText: L10n.choose(
                 simplifiedChinese: "均值 \(String(format: "%.2f", averageConfidence)) · 高置信 \(String(format: "%.0f%%", strongRatio * 100))",
                 english: "Avg \(String(format: "%.2f", averageConfidence)) · High-confidence \(String(format: "%.0f%%", strongRatio * 100))"
@@ -987,6 +1007,69 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
             playbackOverlay: playbackOverlay(for: result),
             previewVideoURL: sourceURL,
             tone: .ready
+        )
+    }
+
+    private static func requestedModelDisplayText(_ model: VideoPoseEstimationModel) -> String {
+        model.displayName
+    }
+
+    private static func actualModelDisplayText(for result: VideoJointAngleAnalysisResult) -> String {
+        switch result.modelUsed {
+        case .mmposeMotionBERT:
+            return L10n.choose(
+                simplifiedChinese: "MotionBERT 3D（\(result.used3DAngleFrameCount) 帧）",
+                english: "MotionBERT 3D (\(result.used3DAngleFrameCount) frames)"
+            )
+        case .mediaPipeBlazePoseGHUM:
+            return L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
+        case .appleVision, .auto:
+            if result.used3DAngleFrameCount > 0 {
+                return L10n.choose(
+                    simplifiedChinese: "Vision 3D 优先（\(result.used3DAngleFrameCount) 帧）",
+                    english: "Vision 3D preferred (\(result.used3DAngleFrameCount) frames)"
+                )
+            }
+            return L10n.choose(simplifiedChinese: "Vision 2D", english: "Vision 2D")
+        }
+    }
+
+    private static func modelDecisionText(
+        selectedModel: VideoPoseEstimationModel,
+        result: VideoJointAngleAnalysisResult?
+    ) -> String? {
+        guard let result else {
+            if selectedModel == .auto {
+                return L10n.choose(
+                    simplifiedChinese: "当前为自动模式，识别完成后会在这里显示系统本次实际采用的模型。",
+                    english: "Auto mode is enabled. The effective model used for this run will appear here after recognition."
+                )
+            }
+            return nil
+        }
+
+        if let fallbackNote = result.modelFallbackNote, !fallbackNote.isEmpty {
+            return fallbackNote
+        }
+
+        let actual = actualModelDisplayText(for: result)
+        if selectedModel == .auto {
+            return L10n.choose(
+                simplifiedChinese: "当前为自动模式，系统本次实际采用：\(actual)。",
+                english: "Auto mode selected \(actual) for this run."
+            )
+        }
+
+        if selectedModel != result.modelUsed {
+            return L10n.choose(
+                simplifiedChinese: "本次已从 \(selectedModel.displayName) 切换为 \(actual)。",
+                english: "This run switched from \(selectedModel.displayName) to \(actual)."
+            )
+        }
+
+        return L10n.choose(
+            simplifiedChinese: "本次结果由 \(actual) 生成。",
+            english: "This result was generated with \(actual)."
         )
     }
 

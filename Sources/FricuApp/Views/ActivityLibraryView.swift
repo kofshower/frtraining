@@ -1005,6 +1005,10 @@ private struct ActivityDetailSheet: View {
     @State private var isComputingDerived = false
     @State private var showDeleteActivityConfirm = false
 
+    private var derivedCacheKey: ActivityDetailDerivedCacheKey {
+        ActivityDetailDerivedCacheKey(activity: activity, sensorSamples: preloadedSensorSamples)
+    }
+
     private var activityFTP: Int {
         profile.ftpWatts(for: activity.sport)
     }
@@ -1049,7 +1053,10 @@ private struct ActivityDetailSheet: View {
         return Double(np * activity.durationSec) / 1000.0
     }
 
-    private var peakPowerSourceText: String {
+    private func peakPowerSourceText(sensorSamples: [ActivitySensorSample]) -> String {
+        if sensorSamples.contains(where: { ($0.power ?? 0) > 0 }) {
+            return "原始传感器流"
+        }
         if activity.intervals.contains(where: { $0.actualPower != nil || $0.targetPower != nil }) {
             return "区间功率"
         }
@@ -1059,7 +1066,12 @@ private struct ActivityDetailSheet: View {
         return "无功率数据"
     }
 
-    private var peakPowerTimelineWatts: [Double] {
+    private func peakPowerTimelineWatts(from sensorSamples: [ActivitySensorSample]) -> [Double] {
+        let rawPowerTimeline = peakPowerTimelineFromSensorSamples(sensorSamples)
+        if !rawPowerTimeline.isEmpty {
+            return rawPowerTimeline
+        }
+
         guard activity.durationSec > 0 else { return [] }
 
         let fallbackPower = activity.normalizedPower.map(Double.init)
@@ -1090,6 +1102,42 @@ private struct ActivityDetailSheet: View {
 
         guard let fallbackPower else { return [] }
         return Array(repeating: fallbackPower, count: activity.durationSec)
+    }
+
+    private func peakPowerTimelineFromSensorSamples(_ sensorSamples: [ActivitySensorSample]) -> [Double] {
+        let powerSamples = sensorSamples
+            .filter { ($0.power ?? 0) > 0 }
+            .sorted { $0.timeSec < $1.timeSec }
+        guard !powerSamples.isEmpty else { return [] }
+
+        let maxSecond = max(0, Int(powerSamples.last?.timeSec.rounded(.down) ?? 0))
+        var sums = Array(repeating: 0.0, count: maxSecond + 1)
+        var counts = Array(repeating: 0, count: maxSecond + 1)
+
+        for sample in powerSamples {
+            let second = min(maxSecond, max(0, Int(sample.timeSec.rounded(.down))))
+            guard let power = sample.power, power > 0 else { continue }
+            sums[second] += power
+            counts[second] += 1
+        }
+
+        var rows: [Double] = []
+        rows.reserveCapacity(maxSecond + 1)
+        var lastKnownPower: Double?
+
+        for second in 0...maxSecond {
+            if counts[second] > 0 {
+                let averagePower = sums[second] / Double(counts[second])
+                rows.append(averagePower)
+                lastKnownPower = averagePower
+            } else if let lastKnownPower {
+                // FIT/TCX streams are usually sampled near 1 Hz; carry forward short holes
+                // so a missing record does not collapse rolling-window power calculations.
+                rows.append(lastKnownPower)
+            }
+        }
+
+        return rows
     }
 
     private func peakPower(minutes: Int, timeline: [Double]) -> Double? {
@@ -1797,12 +1845,14 @@ private struct ActivityDetailSheet: View {
     }
 
     private func buildMetrics(
+        sensorSamples: [ActivitySensorSample],
         decouplingSummary: ActivityDecouplingSummary?,
         balanceSummary: ActivityBalanceSummary?
     ) -> [ActivityMetricCardModel] {
         let peakPowerWindowsMin = [60, 30, 20, 10, 5, 1]
         let peakPowerWindowsSec = [30, 20, 15, 10, 1]
-        let peakPowerTimeline = peakPowerTimelineWatts
+        let peakPowerTimeline = peakPowerTimelineWatts(from: sensorSamples)
+        let peakPowerSourceText = peakPowerSourceText(sensorSamples: sensorSamples)
         let peakPowerValues: [Int: Double?] = Dictionary(
             uniqueKeysWithValues: peakPowerWindowsMin.map { minutes in
                 (minutes, peakPower(minutes: minutes, timeline: peakPowerTimeline))
@@ -2210,7 +2260,11 @@ private struct ActivityDetailSheet: View {
             heartRatePoints: heartRatePoints
         )
 
-        let metricRows = buildMetrics(decouplingSummary: decoupling, balanceSummary: balance)
+        let metricRows = buildMetrics(
+            sensorSamples: sensorSamples,
+            decouplingSummary: decoupling,
+            balanceSummary: balance
+        )
         let storyRows = buildStories(decouplingSummary: decoupling, balanceSummary: balance)
 
         return ActivityDetailDerived(
@@ -2239,10 +2293,17 @@ private struct ActivityDetailSheet: View {
         derivedComputationGeneration &+= 1
         let generation = derivedComputationGeneration
         let snapshot = preloadedSensorSamples
+        let cacheKey = ActivityDetailDerivedCacheKey(activity: activity, sensorSamples: snapshot)
+        if let cached = ActivityDetailDerivedCache.shared.value(for: cacheKey) {
+            derived = cached
+            isComputingDerived = false
+            return
+        }
         isComputingDerived = true
 
         DispatchQueue.global(qos: .userInitiated).async {
             let computed = self.buildDerived(sensorSamples: snapshot)
+            ActivityDetailDerivedCache.shared.insert(computed, for: cacheKey)
             DispatchQueue.main.async {
                 guard generation == self.derivedComputationGeneration else { return }
                 self.derived = computed
@@ -2708,7 +2769,11 @@ private struct ActivityDetailSheet: View {
             isComputingDerived = false
             derived = .empty
             await preloadSensorSamplesIfNeeded()
-            recomputeDerivedCaches()
+            if let cached = ActivityDetailDerivedCache.shared.value(for: derivedCacheKey) {
+                derived = cached
+            } else {
+                recomputeDerivedCaches()
+            }
             await store.ensureActivityMetricInsightCached(for: activity)
         }
         .confirmationDialog(
@@ -2775,6 +2840,66 @@ private struct ActivityDetailDerived {
         metrics: [],
         stories: []
     )
+}
+
+struct ActivityDetailDerivedCacheKey: Hashable {
+    let activityID: UUID
+    let durationSec: Int
+    let normalizedPower: Int?
+    let avgHeartRate: Int?
+    let intervalFingerprint: Int
+    let sampleCount: Int
+    let lastSampleSecond: Int
+
+    init(activity: Activity, sensorSamples: [ActivitySensorSample]) {
+        activityID = activity.id
+        durationSec = activity.durationSec
+        normalizedPower = activity.normalizedPower
+        avgHeartRate = activity.avgHeartRate
+        intervalFingerprint = activity.intervals.reduce(into: 17) { partial, effort in
+            partial = partial &* 31 &+ effort.durationSec
+            partial = partial &* 31 &+ (effort.actualPower ?? -1)
+            partial = partial &* 31 &+ (effort.targetPower ?? -1)
+        }
+        sampleCount = sensorSamples.count
+        lastSampleSecond = Int(sensorSamples.last?.timeSec.rounded(.down) ?? 0)
+    }
+}
+
+final class ActivityDetailDerivedCache {
+    static let shared = ActivityDetailDerivedCache()
+
+    private struct Entry {
+        let key: ActivityDetailDerivedCacheKey
+        let value: ActivityDetailDerived
+    }
+
+    private let lock = NSLock()
+    private var entries: [ActivityDetailDerivedCacheKey: Entry] = [:]
+    private var order: [ActivityDetailDerivedCacheKey] = []
+    private let maxEntries = 24
+
+    fileprivate func value(for key: ActivityDetailDerivedCacheKey) -> ActivityDetailDerived? {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries[key]?.value
+    }
+
+    fileprivate func insert(_ value: ActivityDetailDerived, for key: ActivityDetailDerivedCacheKey) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        entries[key] = Entry(key: key, value: value)
+        if let index = order.firstIndex(of: key) {
+            order.remove(at: index)
+        }
+        order.append(key)
+
+        while order.count > maxEntries {
+            let evicted = order.removeFirst()
+            entries.removeValue(forKey: evicted)
+        }
+    }
 }
 
 private struct ActivityMetricCardModel: Identifiable {

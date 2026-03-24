@@ -85,6 +85,25 @@ static void test_configure_socket_after_accept(void) {
     close(fds[1]);
 }
 
+static void test_sqlite_durability_mode_from_env(void) {
+    unsetenv("FRICU_SQLITE_DURABILITY");
+    assert(sqlite_durability_mode_from_env() == SQLITE_DURABILITY_NORMAL);
+
+    assert(setenv("FRICU_SQLITE_DURABILITY", "full", 1) == 0);
+    assert(sqlite_durability_mode_from_env() == SQLITE_DURABILITY_FULL);
+
+    assert(setenv("FRICU_SQLITE_DURABILITY", "FULL", 1) == 0);
+    assert(sqlite_durability_mode_from_env() == SQLITE_DURABILITY_FULL);
+
+    assert(setenv("FRICU_SQLITE_DURABILITY", "normal", 1) == 0);
+    assert(sqlite_durability_mode_from_env() == SQLITE_DURABILITY_NORMAL);
+
+    assert(setenv("FRICU_SQLITE_DURABILITY", "unexpected", 1) == 0);
+    assert(sqlite_durability_mode_from_env() == SQLITE_DURABILITY_NORMAL);
+
+    unsetenv("FRICU_SQLITE_DURABILITY");
+}
+
 static void must_write_all(int fd, const char *buf, size_t len) {
     size_t off = 0;
     while (off < len) {
@@ -411,6 +430,7 @@ int main(void) {
     test_read_content_length();
     test_socket_send_flags();
     test_configure_socket_after_accept();
+    test_sqlite_durability_mode_from_env();
     test_put_is_journaled_and_persisted();
     test_missing_account_id_rejected();
     test_write_queue_diagnostics_endpoint();

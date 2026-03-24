@@ -11,6 +11,14 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+static void apply_socket_timeouts(int fd) {
+    struct timeval timeout;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+}
+
 typedef struct {
     const char *host;
     int port;
@@ -32,6 +40,7 @@ static int send_all(int fd, const char *buf, size_t len) {
 static int request_once(const char *host, int port, const char *req) {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;
+    apply_socket_timeouts(fd);
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -119,7 +128,12 @@ int main(int argc, char **argv) {
         args[i].requests = base + (i < rem ? 1 : 0);
         args[i].success = &success;
         args[i].failed = &failed;
-        pthread_create(&threads[i], NULL, worker, &args[i]);
+        if (pthread_create(&threads[i], NULL, worker, &args[i]) != 0) {
+            fprintf(stderr, "failed to create worker thread %d\n", i);
+            free(threads);
+            free(args);
+            return 1;
+        }
     }
 
     for (int i = 0; i < concurrency; i++) pthread_join(threads[i], NULL);

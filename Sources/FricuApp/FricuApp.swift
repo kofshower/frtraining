@@ -57,11 +57,9 @@ enum AppSection: String, CaseIterable, Identifiable {
     case lactateLab
     case videoDownloader
     case videoFitting
-    case proSuite
+    case training
     case fatLossAssistant
-    case workoutBuilder
     case library
-    case insights
     case settings
 
     var id: String { rawValue }
@@ -73,11 +71,9 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .lactateLab: return "app.section.lactateLab"
         case .videoDownloader: return "app.section.videoDownloader"
         case .videoFitting: return "app.section.videoFitting"
-        case .proSuite: return "app.section.prosuite"
+        case .training: return "app.section.training"
         case .fatLossAssistant: return "app.section.fatLossAssistant"
-        case .workoutBuilder: return "app.section.workoutBuilder"
         case .library: return "app.section.library"
-        case .insights: return "app.section.insights"
         case .settings: return "app.section.settings"
         }
     }
@@ -94,16 +90,12 @@ enum AppSection: String, CaseIterable, Identifiable {
             return L10n.choose(simplifiedChinese: "视频下载", english: "Video Downloader")
         case .videoFitting:
             return L10n.choose(simplifiedChinese: "视频 Fitting", english: "Video Fitting")
-        case .proSuite:
-            return L10n.choose(simplifiedChinese: "专业套件", english: "Pro Suite")
+        case .training:
+            return L10n.choose(simplifiedChinese: "训练规划", english: "Training")
         case .fatLossAssistant:
             return L10n.choose(simplifiedChinese: "减脂助手", english: "Fat-loss Assistant")
-        case .workoutBuilder:
-            return L10n.choose(simplifiedChinese: "训练构建", english: "Workout Builder")
         case .library:
             return L10n.choose(simplifiedChinese: "活动库", english: "Library")
-        case .insights:
-            return L10n.choose(simplifiedChinese: "洞察", english: "Insights")
         case .settings:
             return L10n.choose(simplifiedChinese: "设置", english: "Settings")
         }
@@ -116,11 +108,9 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .lactateLab: return "testtube.2"
         case .videoDownloader: return "square.and.arrow.down"
         case .videoFitting: return "figure.cooldown"
-        case .proSuite: return "square.grid.3x3"
+        case .training: return "calendar.badge.plus"
         case .fatLossAssistant: return "figure.run"
-        case .workoutBuilder: return "pencil.and.ruler"
         case .library: return "calendar"
-        case .insights: return "chart.xyaxis.line"
         case .settings: return "gearshape"
         }
     }
@@ -134,7 +124,7 @@ struct RootView: View {
         Group {
             switch section {
             case .dashboard:
-                DashboardView()
+                DashboardWorkspaceView()
             case .trainer:
                 TrainerPageView()
             case .lactateLab:
@@ -143,16 +133,12 @@ struct RootView: View {
                 VideoDownloaderPageView()
             case .videoFitting:
                 VideoFittingPageView()
-            case .proSuite:
-                ProSuiteView()
+            case .training:
+                TrainingWorkspaceView()
             case .fatLossAssistant:
                 FatLossAssistantPageView()
-            case .workoutBuilder:
-                WorkoutBuilderView()
             case .library:
                 ActivityLibraryView()
-            case .insights:
-                InsightsView()
             case .settings:
                 SettingsView()
             }

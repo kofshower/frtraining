@@ -155,6 +155,7 @@ static void abandon_job(write_job_t *job) {
 
 static int dispatcher_open_db(write_dispatcher_t *dispatcher) {
     if (dispatcher->db) return 0;
+    sqlite_durability_mode_t durability_mode = sqlite_durability_mode_from_env();
 
     if (sqlite3_open_v2(
             dispatcher->db_path,
@@ -167,10 +168,7 @@ static int dispatcher_open_db(write_dispatcher_t *dispatcher) {
         return -1;
     }
 
-    sqlite3_exec(dispatcher->db, "PRAGMA busy_timeout=250;", NULL, NULL, NULL);
-    sqlite3_exec(dispatcher->db, "PRAGMA synchronous=FULL;", NULL, NULL, NULL);
-    sqlite3_exec(dispatcher->db, "PRAGMA fullfsync=ON;", NULL, NULL, NULL);
-    sqlite3_exec(dispatcher->db, "PRAGMA checkpoint_fullfsync=ON;", NULL, NULL, NULL);
+    sqlite_apply_durability_pragmas(dispatcher->db, durability_mode);
     sqlite3_exec(dispatcher->db, "PRAGMA temp_store=MEMORY;", NULL, NULL, NULL);
     sqlite3_exec(dispatcher->db, "PRAGMA mmap_size=268435456;", NULL, NULL, NULL);
     sqlite3_exec(dispatcher->db, "PRAGMA cache_size=-32768;", NULL, NULL, NULL);

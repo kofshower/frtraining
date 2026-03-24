@@ -10,6 +10,11 @@ if [[ "$BUILD_CONFIG" != "release" && "$BUILD_CONFIG" != "debug" ]]; then
 fi
 
 cd "$ROOT_DIR"
+
+if [[ "${FRICU_SKIP_VERIFY:-0}" != "1" ]]; then
+  "$ROOT_DIR/scripts/verify-release.sh"
+fi
+
 swift build -c "$BUILD_CONFIG" -Xswiftc -gnone
 
 APP_BUNDLE="$("$ROOT_DIR/scripts/make-app-bundle.sh" "$BUILD_CONFIG")"

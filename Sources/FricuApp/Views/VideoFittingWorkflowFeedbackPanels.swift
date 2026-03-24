@@ -223,6 +223,29 @@ struct VideoFittingJointRecognitionQualityPanel: View {
                     .multilineTextAlignment(.trailing)
             }
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.choose(simplifiedChinese: "识别模型", english: "Recognition Model"))
+                    .font(.caption.weight(.semibold))
+                HStack(spacing: 10) {
+                    modelMetricCard(
+                        title: L10n.choose(simplifiedChinese: "已选模型", english: "Requested"),
+                        value: summary.requestedModelText,
+                        tint: .secondary
+                    )
+                    modelMetricCard(
+                        title: L10n.choose(simplifiedChinese: "实际识别", english: "Effective"),
+                        value: summary.actualModelText,
+                        tint: toneColor
+                    )
+                }
+                if let modelDecisionText = summary.modelDecisionText, !modelDecisionText.isEmpty {
+                    Text(modelDecisionText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
             HStack(spacing: 10) {
                 qualityMetricCard(
                     title: L10n.choose(simplifiedChinese: "置信度", english: "Confidence"),
@@ -343,6 +366,21 @@ struct VideoFittingJointRecognitionQualityPanel: View {
         .sheet(item: $expandedVisual) { visual in
             VideoFittingExpandedVisualSheet(visual: visual)
         }
+    }
+
+    @ViewBuilder
+    private func modelMetricCard(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     @ViewBuilder
@@ -1843,7 +1881,17 @@ private struct VideoFittingExpandedVisualSheet: View {
         }
         .padding(20)
         .frame(minWidth: 860, minHeight: 620)
-        .background(Color(NSColor.windowBackgroundColor))
+        .background(panelBackgroundColor)
+    }
+
+    private var panelBackgroundColor: Color {
+#if canImport(AppKit)
+        return Color(NSColor.windowBackgroundColor)
+#elseif canImport(UIKit)
+        return Color(UIColor.systemBackground)
+#else
+        return Color(.systemBackground)
+#endif
     }
 
     private var title: String {

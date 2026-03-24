@@ -1939,7 +1939,7 @@ final class AppStore: ObservableObject {
     private func isRetryableRemoteWriteError(_ error: Error) -> Bool {
         if let repoError = error as? RepositoryError {
             switch repoError {
-            case .httpError, .noResponse:
+            case .httpError, .noResponse, .requestTimedOut:
                 return true
             default:
                 return false
@@ -4836,7 +4836,6 @@ final class AppStore: ObservableObject {
     }
 }
 
-#if canImport(SwiftUI) && canImport(AppKit)
 struct TrainerBikeComputerSnapshotPayload {
     let riderName: String
     let startDate: Date
@@ -4872,6 +4871,7 @@ struct TrainerBikeComputerSnapshotPayload {
     let cadenceTrace: [Double]
 }
 
+#if canImport(SwiftUI) && canImport(AppKit)
 private struct TrainerBikeComputerSnapshotView: View {
     let payload: TrainerBikeComputerSnapshotPayload
 
@@ -4904,6 +4904,13 @@ extension AppStore {
            let png = bitmap.representation(using: .png, properties: [:]) {
             return png
         }
+        return nil
+    }
+}
+#else
+extension AppStore {
+    static func renderTrainerBikeComputerSnapshot(payload: TrainerBikeComputerSnapshotPayload) -> Data? {
+        let _ = payload
         return nil
     }
 }

@@ -24,7 +24,8 @@ let package = Package(
                 .product(name: "FricuCore", package: "CorePackage")
             ],
             exclude: [
-                "Info.plist"
+                "Info.plist",
+                "LaunchScreen.storyboard"
             ],
             resources: [
                 .process("Resources")

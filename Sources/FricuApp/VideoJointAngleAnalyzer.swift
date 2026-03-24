@@ -26,6 +26,7 @@ enum VideoJointAngleAnalysisError: LocalizedError {
 
 enum VideoPoseEstimationModel: String, CaseIterable, Identifiable {
     case auto
+    case mmposeMotionBERT
     case mediaPipeBlazePoseGHUM
     case appleVision
 
@@ -34,12 +35,91 @@ enum VideoPoseEstimationModel: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .auto:
-            return L10n.choose(simplifiedChinese: "自动（优先 BlazePose GHUM）", english: "Auto (prefer BlazePose GHUM)")
+            return L10n.choose(simplifiedChinese: "自动（优先 MotionBERT 3D）", english: "Auto (prefer MotionBERT 3D)")
+        case .mmposeMotionBERT:
+            return L10n.choose(simplifiedChinese: "MotionBERT 3D（MMPose）", english: "MotionBERT 3D (MMPose)")
         case .mediaPipeBlazePoseGHUM:
             return L10n.choose(simplifiedChinese: "BlazePose GHUM（GitHub/MediaPipe）", english: "BlazePose GHUM (GitHub/MediaPipe)")
         case .appleVision:
             return L10n.choose(simplifiedChinese: "Apple Vision 3D/2D", english: "Apple Vision 3D/2D")
         }
+    }
+}
+
+/// Locates a bundled Python runtime packaged inside the desktop app for MotionBERT inference.
+struct MotionBERTRuntimeLocator {
+    static let runtimeDirectoryName = "MotionBERTRuntime"
+
+    /// Resolves the packaged runtime root when the build includes a bundled MotionBERT environment.
+    func resolveBundledRuntimeRootURL(
+        bundle: Bundle = .main,
+        fallbackSearchRoots: [URL] = []
+    ) -> URL? {
+        let fm = FileManager.default
+        let bundledCandidates: [URL] = [
+            bundle.resourceURL?.appendingPathComponent(Self.runtimeDirectoryName, isDirectory: true),
+            bundle.bundleURL.appendingPathComponent("Contents/Resources/\(Self.runtimeDirectoryName)", isDirectory: true)
+        ].compactMap { $0 }
+
+        for root in fallbackSearchRoots {
+            let rootCandidates = [
+                root.appendingPathComponent(Self.runtimeDirectoryName, isDirectory: true),
+                root
+            ]
+            for candidate in rootCandidates where fm.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        for candidate in bundledCandidates where fm.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+
+        return nil
+    }
+
+    /// Resolves the bundled python executable path inside the packaged MotionBERT runtime.
+    func resolveBundledPythonPath(
+        bundle: Bundle = .main,
+        fallbackSearchRoots: [URL] = []
+    ) -> String? {
+        let fm = FileManager.default
+        guard let runtimeRoot = resolveBundledRuntimeRootURL(bundle: bundle, fallbackSearchRoots: fallbackSearchRoots) else {
+            return nil
+        }
+
+        let candidates = [
+            runtimeRoot.appendingPathComponent("bin/python3").path,
+            runtimeRoot.appendingPathComponent("bin/python").path
+        ]
+
+        for candidate in candidates where fm.isExecutableFile(atPath: candidate) {
+            return candidate
+        }
+
+        return nil
+    }
+
+    /// Resolves an optional packaged cache root copied alongside the bundled runtime.
+    func resolveBundledCacheRootURL(
+        bundle: Bundle = .main,
+        fallbackSearchRoots: [URL] = []
+    ) -> URL? {
+        let fm = FileManager.default
+        guard let runtimeRoot = resolveBundledRuntimeRootURL(bundle: bundle, fallbackSearchRoots: fallbackSearchRoots) else {
+            return nil
+        }
+
+        let cacheRoot = runtimeRoot.appendingPathComponent("cache", isDirectory: true)
+        let packagedCacheDirectories = [
+            cacheRoot.appendingPathComponent("mim", isDirectory: true).path,
+            cacheRoot.appendingPathComponent("openmmlab", isDirectory: true).path,
+            cacheRoot.appendingPathComponent("torch", isDirectory: true).path
+        ]
+        guard packagedCacheDirectories.contains(where: { fm.fileExists(atPath: $0) }) else {
+            return nil
+        }
+        return cacheRoot
     }
 }
 
@@ -358,6 +438,15 @@ struct VideoJointAngleAnalysisResult {
     let fittingHints: [String]
 }
 
+struct External3DAngleSample {
+    let timeSeconds: Double
+    let leftKneeAngleDeg: Double?
+    let leftHipAngleDeg: Double?
+    let rightKneeAngleDeg: Double?
+    let rightHipAngleDeg: Double?
+    let confidence: Double
+}
+
 struct VideoJointAngleAnalyzer {
     private static let minJointConfidence: Float = 0.2
 
@@ -392,82 +481,93 @@ struct VideoJointAngleAnalyzer {
             var modelFallbackNote: String?
             var modelRuntimeHints: [String] = []
             var used3DAngleFrameCount = 0
+            let allowsExternalPythonBackends = Self.allowsExternalPythonPoseBackends
+            let attemptOrder = Self.poseModelAttemptOrder(
+                preferredModel: preferredModel,
+                allowsExternalPythonBackends: allowsExternalPythonBackends
+            )
+            let basePoseOrder = attemptOrder.filter { $0 != .mmposeMotionBERT }
 
-            if preferredModel != .appleVision {
-                if let mediaPipeResult = try? MediaPipePoseEstimator.sampleVideo(
-                    videoURL: videoURL,
-                    maxSamples: targetFrameCount
-                ), !mediaPipeResult.samples.isEmpty {
-                    samples = mediaPipeResult.samples
-                    modelRuntimeHints = mediaPipeResult.warnings
-                    modelUsed = .mediaPipeBlazePoseGHUM
-                } else if preferredModel == .mediaPipeBlazePoseGHUM {
-                    modelFallbackNote = L10n.choose(
-                        simplifiedChinese: "BlazePose GHUM 不可用，已回退到 Apple Vision。",
-                        english: "BlazePose GHUM is unavailable. Fell back to Apple Vision."
+            for candidate in basePoseOrder {
+                switch candidate {
+                case .mediaPipeBlazePoseGHUM:
+                    if let mediaPipeResult = try? MediaPipePoseEstimator.sampleVideo(
+                        videoURL: videoURL,
+                        maxSamples: targetFrameCount
+                    ), !mediaPipeResult.samples.isEmpty {
+                        samples = mediaPipeResult.samples
+                        modelRuntimeHints = mediaPipeResult.warnings
+                        modelUsed = .mediaPipeBlazePoseGHUM
+                    } else if preferredModel == .mediaPipeBlazePoseGHUM {
+                        modelFallbackNote = L10n.choose(
+                            simplifiedChinese: "BlazePose GHUM 不可用，已回退到 Apple Vision。",
+                            english: "BlazePose GHUM is unavailable. Fell back to Apple Vision."
+                        )
+                    }
+                case .appleVision:
+                    let visionResult = try Self.sampleVideoWithAppleVision(
+                        asset: asset,
+                        durationSeconds: durationSeconds,
+                        interval: interval,
+                        targetFrameCount: targetFrameCount
                     )
-                }
-            }
-
-            if samples.isEmpty {
-                let generator = AVAssetImageGenerator(asset: asset)
-                generator.appliesPreferredTrackTransform = true
-                generator.requestedTimeToleranceAfter = .zero
-                generator.requestedTimeToleranceBefore = .zero
-
-                let pose2DRequest = VNDetectHumanBodyPoseRequest()
-                var pose3DRequest: VNDetectHumanBodyPose3DRequest?
-                if #available(macOS 14.0, iOS 17.0, tvOS 17.0, *) {
-                    pose3DRequest = VNDetectHumanBodyPose3DRequest()
+                    samples = visionResult.samples
+                    used3DAngleFrameCount = visionResult.used3DAngleFrameCount
+                    modelUsed = .appleVision
+                case .auto, .mmposeMotionBERT:
+                    break
                 }
 
-                for index in 0..<targetFrameCount {
-                    let rawSecond = min(durationSeconds, Double(index) * interval)
-                    let time = CMTime(seconds: rawSecond, preferredTimescale: 600)
-                    let image: CGImage
-                    do {
-                        image = try generator.copyCGImage(at: time, actualTime: nil)
-                    } catch {
-                        continue
-                    }
-
-                    let handler = VNImageRequestHandler(cgImage: image, options: [:])
-                    var observation2D: VNHumanBodyPoseObservation?
-                    do {
-                        try handler.perform([pose2DRequest])
-                        observation2D = pose2DRequest.results?.first
-                    } catch {
-                        observation2D = nil
-                    }
-
-                    var observation3D: VNHumanBodyPose3DObservation?
-                    if let pose3DRequest {
-                        do {
-                            try handler.perform([pose3DRequest])
-                            observation3D = pose3DRequest.results?.first
-                        } catch {
-                            observation3D = nil
-                        }
-                    }
-
-                    guard let extracted = Self.sampleFromObservations(
-                        observation2D: observation2D,
-                        observation3D: observation3D,
-                        sampleIndex: index,
-                        timeSeconds: rawSecond
-                    ) else {
-                        continue
-                    }
-                    samples.append(extracted.sample)
-                    if extracted.used3D {
-                        used3DAngleFrameCount += 1
-                    }
+                if !samples.isEmpty {
+                    break
                 }
-                modelUsed = .appleVision
             }
 
             guard !samples.isEmpty else {
                 throw VideoJointAngleAnalysisError.noPoseDetected
+            }
+
+            if attemptOrder.contains(.mmposeMotionBERT) {
+                do {
+                    let motionBERTResult = try MMPoseMotionBERTEstimator.sampleVideo(
+                        videoURL: videoURL,
+                        maxSamples: targetFrameCount
+                    )
+                    let merged = Self.mergeExternal3DAngles(
+                        into: samples,
+                        from: motionBERTResult.samples,
+                        toleranceSeconds: max(interval * 0.9, 0.1)
+                    )
+                    if merged.matchedFrameCount >= max(8, samples.count / 3) {
+                        samples = merged.samples
+                        used3DAngleFrameCount = merged.matchedFrameCount
+                        modelUsed = .mmposeMotionBERT
+                        modelRuntimeHints.append(contentsOf: motionBERTResult.warnings)
+                        modelRuntimeHints.append(
+                            L10n.choose(
+                                simplifiedChinese: "3D 角度由 MotionBERT 提供，叠加可视化与踏频相位仍依赖 2D 关键点。",
+                                english: "3D angles come from MotionBERT; overlay rendering and crank-phase detection still rely on 2D keypoints."
+                            )
+                        )
+                    } else if preferredModel == .mmposeMotionBERT {
+                        modelFallbackNote = L10n.choose(
+                            simplifiedChinese: "MotionBERT 返回的可匹配角度帧太少，已回退到当前 2D/本地角度链路。",
+                            english: "MotionBERT returned too few matched 3D-angle frames. Fell back to the current 2D/local angle pipeline."
+                        )
+                    }
+                } catch {
+                    if preferredModel == .mmposeMotionBERT {
+                        modelFallbackNote = L10n.choose(
+                            simplifiedChinese: "MotionBERT（MMPose）当前不可用，已回退到本地后端。桌面发版会优先使用 app 内置运行时；开发环境未打包时才回退到本机 Python。",
+                            english: "MotionBERT (MMPose) is currently unavailable. Fell back to the local backend. Desktop releases prefer the app-bundled runtime; development builds fall back to a local Python runtime only when it is not packaged."
+                        )
+                    }
+                }
+            } else if preferredModel == .mmposeMotionBERT {
+                modelFallbackNote = L10n.choose(
+                    simplifiedChinese: "当前平台不支持直接执行 MotionBERT Python 后端，已回退到 Apple Vision。",
+                    english: "The current platform cannot run the MotionBERT Python backend directly. Fell back to Apple Vision."
+                )
             }
 
             let dominantSide = Self.dominantSide(from: samples)
@@ -577,6 +677,172 @@ struct VideoJointAngleAnalyzer {
                 fittingHints: fittingHints
             )
         }.value
+    }
+
+    static func poseModelAttemptOrder(
+        preferredModel: VideoPoseEstimationModel,
+        allowsExternalPythonBackends: Bool
+    ) -> [VideoPoseEstimationModel] {
+        switch preferredModel {
+        case .appleVision:
+            return [.appleVision]
+        case .mediaPipeBlazePoseGHUM:
+            return allowsExternalPythonBackends
+                ? [.mediaPipeBlazePoseGHUM, .appleVision]
+                : [.appleVision]
+        case .mmposeMotionBERT:
+            return allowsExternalPythonBackends
+                ? [.mmposeMotionBERT, .mediaPipeBlazePoseGHUM, .appleVision]
+                : [.appleVision]
+        case .auto:
+            return allowsExternalPythonBackends
+                ? [.mmposeMotionBERT, .mediaPipeBlazePoseGHUM, .appleVision]
+                : [.appleVision]
+        }
+    }
+
+    static func mergeExternal3DAngles(
+        into samples: [VideoJointAngleSample],
+        from externalAngles: [External3DAngleSample],
+        toleranceSeconds: Double
+    ) -> (samples: [VideoJointAngleSample], matchedFrameCount: Int) {
+        guard !samples.isEmpty, !externalAngles.isEmpty else {
+            return (samples, 0)
+        }
+
+        let sortedExternal = externalAngles.sorted { $0.timeSeconds < $1.timeSeconds }
+        var matchedFrameCount = 0
+        let merged = samples.map { sample -> VideoJointAngleSample in
+            guard let nearest = sortedExternal.min(by: {
+                abs($0.timeSeconds - sample.timeSeconds) < abs($1.timeSeconds - sample.timeSeconds)
+            }) else {
+                return sample
+            }
+            guard abs(nearest.timeSeconds - sample.timeSeconds) <= toleranceSeconds else {
+                return sample
+            }
+
+            let fusedKnee: Double?
+            let fusedHip: Double?
+            switch sample.side {
+            case .left:
+                fusedKnee = nearest.leftKneeAngleDeg ?? sample.kneeAngleDeg
+                fusedHip = nearest.leftHipAngleDeg ?? sample.hipAngleDeg
+            case .right:
+                fusedKnee = nearest.rightKneeAngleDeg ?? sample.kneeAngleDeg
+                fusedHip = nearest.rightHipAngleDeg ?? sample.hipAngleDeg
+            case .unknown:
+                if nearest.leftKneeAngleDeg != nil || nearest.leftHipAngleDeg != nil {
+                    fusedKnee = nearest.leftKneeAngleDeg ?? sample.kneeAngleDeg
+                    fusedHip = nearest.leftHipAngleDeg ?? sample.hipAngleDeg
+                } else {
+                    fusedKnee = nearest.rightKneeAngleDeg ?? sample.kneeAngleDeg
+                    fusedHip = nearest.rightHipAngleDeg ?? sample.hipAngleDeg
+                }
+            }
+
+            guard fusedKnee != sample.kneeAngleDeg || fusedHip != sample.hipAngleDeg else {
+                return sample
+            }
+
+            matchedFrameCount += 1
+            return VideoJointAngleSample(
+                id: sample.id,
+                timeSeconds: sample.timeSeconds,
+                side: sample.side,
+                confidence: max(sample.confidence, nearest.confidence),
+                kneeAngleDeg: fusedKnee,
+                hipAngleDeg: fusedHip,
+                crankPhaseDeg: sample.crankPhaseDeg,
+                leftShoulder: sample.leftShoulder,
+                leftHip: sample.leftHip,
+                leftKnee: sample.leftKnee,
+                leftAnkle: sample.leftAnkle,
+                rightShoulder: sample.rightShoulder,
+                rightHip: sample.rightHip,
+                rightKnee: sample.rightKnee,
+                rightAnkle: sample.rightAnkle,
+                leftToe: sample.leftToe,
+                rightToe: sample.rightToe
+            )
+        }
+
+        return (merged, matchedFrameCount)
+    }
+
+    private static var allowsExternalPythonPoseBackends: Bool {
+#if os(iOS)
+        false
+#else
+        true
+#endif
+    }
+
+    private static func sampleVideoWithAppleVision(
+        asset: AVURLAsset,
+        durationSeconds: Double,
+        interval: Double,
+        targetFrameCount: Int
+    ) throws -> (samples: [VideoJointAngleSample], used3DAngleFrameCount: Int) {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceAfter = .zero
+        generator.requestedTimeToleranceBefore = .zero
+
+        let pose2DRequest = VNDetectHumanBodyPoseRequest()
+        var pose3DRequest: VNDetectHumanBodyPose3DRequest?
+        if #available(macOS 14.0, iOS 17.0, tvOS 17.0, *) {
+            pose3DRequest = VNDetectHumanBodyPose3DRequest()
+        }
+
+        var samples: [VideoJointAngleSample] = []
+        samples.reserveCapacity(targetFrameCount)
+        var used3DAngleFrameCount = 0
+
+        for index in 0..<targetFrameCount {
+            let rawSecond = min(durationSeconds, Double(index) * interval)
+            let time = CMTime(seconds: rawSecond, preferredTimescale: 600)
+            let image: CGImage
+            do {
+                image = try generator.copyCGImage(at: time, actualTime: nil)
+            } catch {
+                continue
+            }
+
+            let handler = VNImageRequestHandler(cgImage: image, options: [:])
+            var observation2D: VNHumanBodyPoseObservation?
+            do {
+                try handler.perform([pose2DRequest])
+                observation2D = pose2DRequest.results?.first
+            } catch {
+                observation2D = nil
+            }
+
+            var observation3D: VNHumanBodyPose3DObservation?
+            if let pose3DRequest {
+                do {
+                    try handler.perform([pose3DRequest])
+                    observation3D = pose3DRequest.results?.first
+                } catch {
+                    observation3D = nil
+                }
+            }
+
+            guard let extracted = Self.sampleFromObservations(
+                observation2D: observation2D,
+                observation3D: observation3D,
+                sampleIndex: index,
+                timeSeconds: rawSecond
+            ) else {
+                continue
+            }
+            samples.append(extracted.sample)
+            if extracted.used3D {
+                used3DAngleFrameCount += 1
+            }
+        }
+
+        return (samples, used3DAngleFrameCount)
     }
 
     private static func sampleFromObservations(
@@ -1258,11 +1524,18 @@ struct VideoJointAngleAnalyzer {
             }
         }
 
-        if modelUsed == .appleVision {
+        if modelUsed == .mmposeMotionBERT {
             hints.append(
                 L10n.choose(
-                    simplifiedChinese: "若需更高精度，建议安装 Python + MediaPipe 以启用 BlazePose GHUM。",
-                    english: "For higher precision, install Python + MediaPipe to enable BlazePose GHUM."
+                    simplifiedChinese: "当前 3D 关节角来自 MotionBERT；若鞋尖或踝部被遮挡，BDC 与踏频相位仍会受 2D 关键点质量影响。",
+                    english: "3D joint angles now come from MotionBERT; if toe or ankle visibility is poor, BDC and cadence phase still depend on 2D keypoint quality."
+                )
+            )
+        } else if modelUsed == .appleVision {
+            hints.append(
+                L10n.choose(
+                    simplifiedChinese: "若需更高精度的 3D 关节角，桌面版会优先使用随 app 打包的 MotionBERT 运行时；开发构建未打包时才回退到本机 Python 环境。",
+                    english: "For higher-accuracy 3D joint angles, desktop builds prefer the MotionBERT runtime packaged inside the app; development builds fall back to a local Python runtime only when that bundle is unavailable."
                 )
             )
         }
@@ -2115,6 +2388,188 @@ struct VideoJointAngleAnalyzer {
         Swift.max(minValue, Swift.min(maxValue, value))
     }
 
+    enum PythonPoseProcessRunner {
+        struct Invocation {
+            let executableURL: URL
+            let prefixArguments: [String]
+        }
+
+        static func resolveInvocation(
+            preferredEnvironmentVariables: [String],
+            preferredCondaEnvironment: String? = nil,
+            bundledRuntimeLocator: MotionBERTRuntimeLocator? = nil,
+            bundle: Bundle = .main,
+            environment: [String: String] = ProcessInfo.processInfo.environment,
+            fileManager: FileManager = .default
+        ) -> Invocation {
+            let env = environment
+
+            if let bundledRuntimeLocator,
+               let bundledPython = bundledRuntimeLocator.resolveBundledPythonPath(bundle: bundle) {
+                return Invocation(executableURL: URL(fileURLWithPath: bundledPython), prefixArguments: [])
+            }
+
+            for key in preferredEnvironmentVariables {
+                if let path = env[key], fileManager.isExecutableFile(atPath: path) {
+                    return Invocation(executableURL: URL(fileURLWithPath: path), prefixArguments: [])
+                }
+            }
+
+            if let home = env["HOME"], let preferredCondaEnvironment {
+                let candidatePaths = [
+                    "\(home)/miniconda3/envs/\(preferredCondaEnvironment)/bin/python",
+                    "\(home)/anaconda3/envs/\(preferredCondaEnvironment)/bin/python",
+                    "\(home)/micromamba/envs/\(preferredCondaEnvironment)/bin/python"
+                ]
+                for path in candidatePaths where fileManager.isExecutableFile(atPath: path) {
+                    return Invocation(executableURL: URL(fileURLWithPath: path), prefixArguments: [])
+                }
+            }
+
+            if let condaPrefix = env["CONDA_PREFIX"] {
+                let candidate = URL(fileURLWithPath: condaPrefix).appendingPathComponent("bin/python").path
+                if fileManager.isExecutableFile(atPath: candidate) {
+                    return Invocation(executableURL: URL(fileURLWithPath: candidate), prefixArguments: [])
+                }
+            }
+
+            return Invocation(
+                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
+                prefixArguments: ["python3"]
+            )
+        }
+    }
+
+    private enum MMPoseMotionBERTEstimator {
+        struct Result {
+            let samples: [External3DAngleSample]
+            let warnings: [String]
+        }
+
+        private struct RawFrame: Decodable {
+            let timeSeconds: Double
+            let leftKneeAngleDeg: Double?
+            let leftHipAngleDeg: Double?
+            let rightKneeAngleDeg: Double?
+            let rightHipAngleDeg: Double?
+            let confidence: Double?
+
+            private enum CodingKeys: String, CodingKey {
+                case timeSeconds = "time_seconds"
+                case leftKneeAngleDeg = "left_knee_angle_deg"
+                case leftHipAngleDeg = "left_hip_angle_deg"
+                case rightKneeAngleDeg = "right_knee_angle_deg"
+                case rightHipAngleDeg = "right_hip_angle_deg"
+                case confidence
+            }
+        }
+
+        private struct RawOutput: Decodable {
+            let backend: String?
+            let samples: [RawFrame]
+            let warnings: [String]?
+        }
+
+        static func sampleVideo(videoURL: URL, maxSamples: Int) throws -> Result {
+            guard let scriptPath = resolveScriptPath() else {
+                throw NSError(
+                    domain: "Fricu.VideoPose.MotionBERT",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "MotionBERT script not found"]
+                )
+            }
+
+#if os(iOS)
+            let _ = videoURL
+            let _ = maxSamples
+            let _ = scriptPath
+            throw NSError(
+                domain: "Fricu.VideoPose.MotionBERT",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "MotionBERT script execution is unavailable on iOS. Use Apple Vision instead."]
+            )
+#else
+            let runtimeLocator = MotionBERTRuntimeLocator()
+            let invocation = PythonPoseProcessRunner.resolveInvocation(
+                preferredEnvironmentVariables: [
+                    "FRICU_MMPPOSE_PYTHON",
+                    "FRICU_VIDEO_POSE_PYTHON"
+                ],
+                preferredCondaEnvironment: "mmpose-mac",
+                bundledRuntimeLocator: runtimeLocator
+            )
+
+            let process = Process()
+            process.executableURL = invocation.executableURL
+            process.arguments = invocation.prefixArguments + [
+                scriptPath,
+                "--video", videoURL.path,
+                "--max-samples", String(maxSamples)
+            ]
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+            var processEnvironment = ProcessInfo.processInfo.environment
+            if let bundledCacheRoot = runtimeLocator.resolveBundledCacheRootURL() {
+                processEnvironment["XDG_CACHE_HOME"] = bundledCacheRoot.path
+                let bundledTorchCache = bundledCacheRoot.appendingPathComponent("torch", isDirectory: true)
+                if FileManager.default.fileExists(atPath: bundledTorchCache.path) {
+                    processEnvironment["TORCH_HOME"] = bundledTorchCache.path
+                }
+            }
+            process.environment = processEnvironment
+
+            try process.run()
+            process.waitUntilExit()
+
+            let outData = stdout.fileHandleForReading.readDataToEndOfFile()
+            let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+
+            guard process.terminationStatus == 0 else {
+                let errorText = String(data: errData, encoding: .utf8) ?? "unknown error"
+                throw NSError(
+                    domain: "Fricu.VideoPose.MotionBERT",
+                    code: Int(process.terminationStatus),
+                    userInfo: [NSLocalizedDescriptionKey: errorText]
+                )
+            }
+
+            let decoder = JSONDecoder()
+            let payload = try decoder.decode(RawOutput.self, from: outData)
+            let mapped = payload.samples.map {
+                External3DAngleSample(
+                    timeSeconds: $0.timeSeconds,
+                    leftKneeAngleDeg: $0.leftKneeAngleDeg,
+                    leftHipAngleDeg: $0.leftHipAngleDeg,
+                    rightKneeAngleDeg: $0.rightKneeAngleDeg,
+                    rightHipAngleDeg: $0.rightHipAngleDeg,
+                    confidence: $0.confidence ?? 0.6
+                )
+            }
+            return Result(samples: mapped, warnings: payload.warnings ?? [])
+#endif
+        }
+
+        private static func resolveScriptPath() -> String? {
+            let fm = FileManager.default
+            let cwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
+            let bundle = Bundle.main
+            let candidates: [String] = [
+                bundle.resourceURL?.appendingPathComponent("PoseModels/video_pose_mmpose_motionbert.py").path,
+                bundle.bundleURL.appendingPathComponent("Contents/Resources/PoseModels/video_pose_mmpose_motionbert.py").path,
+                cwd.appendingPathComponent("Sources/FricuApp/Resources/PoseModels/video_pose_mmpose_motionbert.py").path,
+                cwd.appendingPathComponent("scripts/video_pose_mmpose_motionbert.py").path
+            ].compactMap { $0 }
+
+            for path in candidates where fm.fileExists(atPath: path) {
+                return path
+            }
+            return nil
+        }
+    }
+
     private enum MediaPipePoseEstimator {
         struct Result {
             let samples: [VideoJointAngleSample]
@@ -2162,10 +2617,25 @@ struct VideoJointAngleAnalyzer {
                 )
             }
 
+#if os(iOS)
+            let _ = videoURL
+            let _ = maxSamples
+            let _ = scriptPath
+            throw NSError(
+                domain: "Fricu.VideoPose.MediaPipe",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "MediaPipe script execution is unavailable on iOS. Use Apple Vision instead."]
+            )
+#else
+            let invocation = PythonPoseProcessRunner.resolveInvocation(
+                preferredEnvironmentVariables: [
+                    "FRICU_MEDIAPIPE_PYTHON",
+                    "FRICU_VIDEO_POSE_PYTHON"
+                ]
+            )
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            process.arguments = [
-                "python3",
+            process.executableURL = invocation.executableURL
+            process.arguments = invocation.prefixArguments + [
                 scriptPath,
                 "--video", videoURL.path,
                 "--max-samples", String(maxSamples)
@@ -2195,6 +2665,7 @@ struct VideoJointAngleAnalyzer {
             let payload = try decoder.decode(RawOutput.self, from: outData)
             let mapped = payload.samples.compactMap(mapFrameToSample)
             return Result(samples: mapped, warnings: payload.warnings ?? [])
+#endif
         }
 
         private static func mapFrameToSample(_ frame: RawFrame) -> VideoJointAngleSample? {

@@ -541,7 +541,7 @@ private final class Whoosh3DSceneModel: ObservableObject {
             let direction = end - start
             let length = max(0.001, direction.length)
 
-            let road = SCNBox(width: 7.0, height: 0.35, length: length, chamferRadius: 0.07)
+            let road = SCNBox(width: 7.0, height: 0.35, length: CGFloat(length), chamferRadius: 0.07)
             let roadMaterial = SCNMaterial()
             let base: CGFloat = index % 2 == 0 ? 0.18 : 0.20
             roadMaterial.diffuse.contents = PlatformColor(red: base, green: base + 0.02, blue: base + 0.03, alpha: 1)
@@ -554,7 +554,7 @@ private final class Whoosh3DSceneModel: ObservableObject {
             roadNode.simdOrientation = simd_quatf(from: SIMD3<Float>(0, 0, 1), to: direction.simd.normalized())
             trackNode.addChildNode(roadNode)
 
-            let centerLine = SCNBox(width: 0.26, height: 0.02, length: length * 0.96, chamferRadius: 0.02)
+            let centerLine = SCNBox(width: 0.26, height: 0.02, length: CGFloat(length * 0.96), chamferRadius: 0.02)
             centerLine.firstMaterial?.diffuse.contents = PlatformColor(red: 0.95, green: 0.84, blue: 0.3, alpha: 1)
             let centerNode = SCNNode(geometry: centerLine)
             centerNode.position = SCNVector3(0, 0.19, 0)
@@ -739,7 +739,7 @@ private final class Whoosh3DSceneModel: ObservableObject {
         let maxDimension = Swift.max(sizeX, Swift.max(sizeY, sizeZ))
         guard maxDimension.isFinite, maxDimension > 0.0001 else { return }
 
-        let targetSize: CGFloat = 3.4
+        let targetSize: SCNFloat = 3.4
         let scale = targetSize / maxDimension
         node.scale = SCNVector3(scale, scale, scale)
 
@@ -1116,13 +1116,13 @@ private final class Whoosh3DSceneModel: ObservableObject {
         let phaseF = Float(phase)
         let swing = sin(phaseF)
         let rearSwing = sin(phaseF + .pi)
-        let bodyBob = CGFloat(0.06 * (sin(phaseF * 2.0) + 1.0) * 0.5)
+        let bodyBob = SCNFloat(0.06 * (sin(phaseF * 2.0) + 1.0) * 0.5)
 
         let bodyNode = riderNode.childNode(withName: "body", recursively: true) ?? riderNode
         bodyNode.position.y = 0.04 + bodyBob
         
         if let headNode = riderNode.childNode(withName: "head", recursively: true) {
-            headNode.eulerAngles.z = CGFloat(0.04 * sin(phaseF * 2.0 + 0.6))
+            headNode.eulerAngles.z = SCNFloat(0.04 * sin(phaseF * 2.0 + 0.6))
         }
 
         let legAmplitude: Float = 0.42
@@ -1142,12 +1142,12 @@ private final class Whoosh3DSceneModel: ObservableObject {
         })
         
         if let legRoot = legNodes.first {
-            legRoot.eulerAngles.z = CGFloat(hipAngle)
-            legRoot.position.y += CGFloat(0.03 * cos(hipAngle))
+            legRoot.eulerAngles.z = SCNFloat(hipAngle)
+            legRoot.position.y += SCNFloat(0.03 * cos(hipAngle))
             
             // Try to find a "lower" leg part to bend the knee
             if let lowerLeg = legRoot.childNodes.first(where: { $0.name?.lowercased().contains("lower") ?? false }) {
-                lowerLeg.eulerAngles.z = CGFloat(-0.12 + kneeAngle)
+                lowerLeg.eulerAngles.z = SCNFloat(-0.12 + kneeAngle)
             }
         }
     }
@@ -1277,7 +1277,7 @@ private final class Whoosh3DSceneModel: ObservableObject {
             headRoot.scale = headScale
         }
         if let shadow = root.childNode(withName: "dog.shadow", recursively: true) {
-            shadow.scale.x = shadowScaleX
+            shadow.scale.x = SCNFloat(shadowScaleX)
         }
     }
 
@@ -1325,7 +1325,7 @@ private final class Whoosh3DSceneModel: ObservableObject {
 
         riderNode.enumerateChildNodes { child, _ in
             guard let name = child.name, name.hasPrefix("wheel.") else { return }
-            child.eulerAngles.x -= CGFloat(radians)
+            child.eulerAngles.x -= SCNFloat(radians)
         }
     }
 
@@ -1389,9 +1389,9 @@ private final class Whoosh3DSceneModel: ObservableObject {
             let radiusWave = 1.0 + 0.06 * sin(angle * 3.2)
             let radius = routeRadius * CGFloat(radiusWave)
 
-            let x = CGFloat(cos(angle)) * radius
-            let z = CGFloat(sin(angle)) * radius
-            let y = CGFloat((point.elevationM - minElevation) * verticalScale)
+            let x = SCNFloat(CGFloat(cos(angle)) * radius)
+            let z = SCNFloat(CGFloat(sin(angle)) * radius)
+            let y = SCNFloat((point.elevationM - minElevation) * verticalScale)
             samples.append(RouteSample(distanceKm: point.distanceKm, position: SCNVector3(x, y, z)))
         }
 
@@ -1439,7 +1439,7 @@ private final class Whoosh3DSceneModel: ObservableObject {
         let lower = routeSamples[upperIndex - 1]
         let upper = routeSamples[upperIndex]
         let span = max(0.000_001, upper.distanceKm - lower.distanceKm)
-        let t = CGFloat((wrapped - lower.distanceKm) / span)
+        let t = SCNFloat((wrapped - lower.distanceKm) / span)
         return lower.position + (upper.position - lower.position) * t
     }
 
@@ -1468,15 +1468,15 @@ private extension SCNVector3 {
         SCNVector3(lhs.x - rhs.x, lhs.y - rhs.y, lhs.z - rhs.z)
     }
 
-    static func *(lhs: SCNVector3, rhs: CGFloat) -> SCNVector3 {
+    static func *(lhs: SCNVector3, rhs: SCNFloat) -> SCNVector3 {
         SCNVector3(lhs.x * rhs, lhs.y * rhs, lhs.z * rhs)
     }
 
-    static func /(lhs: SCNVector3, rhs: CGFloat) -> SCNVector3 {
+    static func /(lhs: SCNVector3, rhs: SCNFloat) -> SCNVector3 {
         SCNVector3(lhs.x / rhs, lhs.y / rhs, lhs.z / rhs)
     }
 
-    var length: CGFloat {
+    var length: SCNFloat {
         sqrt(x * x + y * y + z * z)
     }
 

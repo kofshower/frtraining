@@ -109,6 +109,69 @@ final class ProfilePersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(loadedFromServer.intervalsAPIKey, "pending-key")
     }
 
+    func testNonRetryableActivitiesHTTP400DoesNotStayInPendingQueue() throws {
+        let accountID = makeAccountID("activities-http-400")
+        try cleanAccountArtifacts(accountID: accountID)
+
+        let repository = try makeRepository(accountID: accountID)
+        StatefulRemoteRepositoryURLProtocolStub.failPutActivitiesStatusCode = 400
+
+        let activity = Activity(
+            id: UUID(uuidString: "1F228640-D5A1-4AB7-B4C7-EAF4517EBA4A")!,
+            date: Date(timeIntervalSince1970: 1_773_018_000),
+            sport: .cycling,
+            athleteName: "君钧",
+            durationSec: 2400,
+            distanceKm: 18.2,
+            tss: 41,
+            normalizedPower: 188,
+            avgHeartRate: 146,
+            notes: "bad-request"
+        )
+
+        XCTAssertThrowsError(try repository.saveActivities([activity])) { error in
+            guard case RepositoryError.httpError(400) = error else {
+                return XCTFail("Expected HTTP 400, got \(error)")
+            }
+        }
+
+        XCTAssertEqual(try pendingWriteCount(accountID: accountID), 0)
+    }
+
+    func testRetryableActivitiesTransportFailureRemainsPendingUntilReplaySucceeds() throws {
+        let accountID = makeAccountID("activities-network-replay")
+        try cleanAccountArtifacts(accountID: accountID)
+
+        let repository = try makeRepository(accountID: accountID)
+        StatefulRemoteRepositoryURLProtocolStub.failPutActivitiesWithNetworkError = true
+
+        let activity = Activity(
+            id: UUID(uuidString: "79D9A632-C2D2-47F6-92FB-8A6A147D2E04")!,
+            date: Date(timeIntervalSince1970: 1_773_018_600),
+            sport: .cycling,
+            athleteName: "君钧",
+            durationSec: 3000,
+            distanceKm: 22.4,
+            tss: 52,
+            normalizedPower: 201,
+            avgHeartRate: 151,
+            notes: "network-retry"
+        )
+
+        XCTAssertThrowsError(try repository.saveActivities([activity]))
+        XCTAssertEqual(try pendingWriteCount(accountID: accountID), 1)
+
+        StatefulRemoteRepositoryURLProtocolStub.failPutActivitiesWithNetworkError = false
+        try repository.flushPendingWrites()
+
+        XCTAssertEqual(try pendingWriteCount(accountID: accountID), 0)
+
+        let restarted = try makeRepository(accountID: accountID)
+        let loadedFromServer = try restarted.loadActivities()
+        XCTAssertEqual(loadedFromServer.count, 1)
+        XCTAssertEqual(loadedFromServer[0].id, activity.id)
+    }
+
     /// Verifies brand-new account fallback still yields a valid default profile.
     func testLoadProfileReturnsDefaultWhenNoServerNoLocalData() throws {
         let accountID = makeAccountID("default-fallback")
@@ -236,6 +299,8 @@ private final class StatefulRemoteRepositoryURLProtocolStub: URLProtocol {
     static var storage: [String: Data] = [:]
     static var requests: [URLRequest] = []
     static var failPutProfile = false
+    static var failPutActivitiesStatusCode: Int?
+    static var failPutActivitiesWithNetworkError = false
     static var failGetProfile = false
     static var returnNotFoundForMissingProfile = false
 
@@ -243,6 +308,8 @@ private final class StatefulRemoteRepositoryURLProtocolStub: URLProtocol {
         storage = [:]
         requests = []
         failPutProfile = false
+        failPutActivitiesStatusCode = nil
+        failPutActivitiesWithNetworkError = false
         failGetProfile = false
         returnNotFoundForMissingProfile = false
     }
@@ -264,6 +331,13 @@ private final class StatefulRemoteRepositoryURLProtocolStub: URLProtocol {
 
             if request.httpMethod == "PUT" {
                 if key == "profile", Self.failPutProfile {
+                    throw URLError(.networkConnectionLost)
+                }
+                if key == "activities", let statusCode = Self.failPutActivitiesStatusCode {
+                    send(statusCode: statusCode, body: Data("{\"error\":\"bad_request\"}".utf8), client: client)
+                    return
+                }
+                if key == "activities", Self.failPutActivitiesWithNetworkError {
                     throw URLError(.networkConnectionLost)
                 }
                 Self.storage[storageKey] = requestBodyData(from: request)

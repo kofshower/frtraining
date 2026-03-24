@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-private enum ProSuiteModule: String, CaseIterable, Identifiable {
+enum ProSuiteModule: String, CaseIterable, Identifiable {
     case planner
     case intervals
     case metrics
@@ -46,24 +46,45 @@ private enum ProSuiteModule: String, CaseIterable, Identifiable {
             return L10n.choose(simplifiedChinese: "取证", english: "Forensic")
         }
     }
+
+    static var advancedCases: [ProSuiteModule] {
+        [.intervals, .metrics, .powerModels, .activityGrid, .collaboration, .integrations, .forensic]
+    }
 }
 
 struct ProSuiteView: View {
+    private let showsTitle: Bool
+    private let availableModules: [ProSuiteModule]
     @State private var module: ProSuiteModule = .planner
+
+    init(
+        showsTitle: Bool = true,
+        availableModules: [ProSuiteModule] = ProSuiteModule.allCases,
+        initialModule: ProSuiteModule = .planner
+    ) {
+        let resolvedModules = availableModules.isEmpty ? ProSuiteModule.allCases : availableModules
+        self.showsTitle = showsTitle
+        self.availableModules = resolvedModules
+        _module = State(initialValue: resolvedModules.contains(initialModule) ? initialModule : resolvedModules[0])
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Pro Training Suite")
-                .font(.largeTitle.bold())
-
-            Picker(selection: $module) {
-                ForEach(ProSuiteModule.allCases) { module in
-                    Text(verbatim: module.localizedTitle).tag(module)
-                }
-            } label: {
-                Text(L10n.choose(simplifiedChinese: "模块", english: "Module"))
+            if showsTitle {
+                Text("Pro Training Suite")
+                    .font(.largeTitle.bold())
             }
-            .appDropdownTheme()
+
+            if availableModules.count > 1 {
+                Picker(selection: $module) {
+                    ForEach(availableModules) { module in
+                        Text(verbatim: module.localizedTitle).tag(module)
+                    }
+                } label: {
+                    Text(L10n.choose(simplifiedChinese: "模块", english: "Module"))
+                }
+                .appDropdownTheme()
+            }
 
             Group {
                 switch module {

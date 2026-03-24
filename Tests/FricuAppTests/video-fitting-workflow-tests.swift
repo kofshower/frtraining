@@ -457,6 +457,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
 
         let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: .side,
+            selectedModel: .auto,
             sourceURL: URL(fileURLWithPath: "/tmp/side.mp4"),
             guidance: guidance,
             result: nil
@@ -471,6 +472,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
     func testJointRecognitionQualitySummaryReportsDerivedMetrics() {
         let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: .front,
+            selectedModel: .auto,
             sourceURL: URL(fileURLWithPath: "/tmp/front.mp4"),
             guidance: nil,
             result: makeRecognitionResult()
@@ -487,6 +489,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
     func testJointRecognitionQualitySummaryBuildsAngleVisualsForSideView() throws {
         let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: .side,
+            selectedModel: .auto,
             sourceURL: URL(fileURLWithPath: "/tmp/side.mp4"),
             guidance: nil,
             result: makeSideRecognitionResult()
@@ -496,9 +499,11 @@ final class VideoFittingWorkflowTests: XCTestCase {
         XCTAssertEqual(summary.angleVisuals.map(\.kind), [.knee, .hip, .bdcKnee])
         XCTAssertTrue(summary.angleVisuals.allSatisfy { $0.angleDegrees > 0 })
         XCTAssertEqual(summary.checkpointVisuals.map(\.checkpoint), [.point0, .point3, .point6, .point9])
-        XCTAssertEqual(summary.playbackOverlay?.checkpoints.map(\.checkpoint), [.point0, .point3, .point6, .point9])
+        let overlayCheckpoints = summary.playbackOverlay?.checkpoints.map { $0.checkpoint }
+        XCTAssertEqual(overlayCheckpoints, [.point0, .point3, .point6, .point9])
         XCTAssertEqual(summary.checkpointVisuals.map { Int($0.phaseDegrees.rounded()) }, [2, 90, 180, 270])
-        XCTAssertEqual(summary.playbackOverlay?.checkpoints.map { Int($0.phaseDegrees.rounded()) }, [2, 90, 180, 270])
+        let overlayPhaseDegrees = summary.playbackOverlay?.checkpoints.map { Int($0.phaseDegrees.rounded()) }
+        XCTAssertEqual(overlayPhaseDegrees, [2, 90, 180, 270])
         XCTAssertEqual(summary.playbackOverlay?.samples.count, 4)
         XCTAssertNotNil(summary.previewVideoURL)
         XCTAssertNotNil(summary.playbackOverlay?.crankCenter)
@@ -509,7 +514,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
         XCTAssertNotNil(summary.angleVisuals.first?.firstPoint)
         XCTAssertNotNil(summary.angleVisuals.first?.jointPoint)
         XCTAssertNotNil(summary.angleVisuals.first?.thirdPoint)
-        let hipVisual = try XCTUnwrap(summary.angleVisuals.first(where: { $0.kind == .hip }))
+        let hipVisual = try XCTUnwrap(summary.angleVisuals.first(where: { $0.kind == VideoFittingJointAngleVisualKind.hip }))
         XCTAssertNotNil(hipVisual.frameTimeSeconds)
         XCTAssertNotNil(hipVisual.crankCenter)
         XCTAssertNotNil(hipVisual.crankRadius)
@@ -518,9 +523,10 @@ final class VideoFittingWorkflowTests: XCTestCase {
         XCTAssertNotNil(hipVisual.thirdPoint)
         XCTAssertTrue(summary.checkpointVisuals.allSatisfy { $0.crankCenter != nil && $0.crankRadius != nil })
         XCTAssertTrue(summary.checkpointVisuals.allSatisfy { $0.firstPoint != nil && $0.jointPoint != nil && $0.thirdPoint != nil })
-        XCTAssertTrue(summary.playbackOverlay?.samples.allSatisfy { $0.firstPoint != nil && $0.jointPoint != nil && $0.thirdPoint != nil } ?? false)
-        XCTAssertTrue(summary.playbackOverlay?.samples.allSatisfy { $0.bodyBounds != nil } ?? false)
-        XCTAssertTrue(summary.playbackOverlay?.samples.allSatisfy { $0.allowsOverlayRendering() } ?? false)
+        let overlaySamples = summary.playbackOverlay?.samples ?? []
+        XCTAssertTrue(overlaySamples.allSatisfy { $0.firstPoint != nil && $0.jointPoint != nil && $0.thirdPoint != nil })
+        XCTAssertTrue(overlaySamples.allSatisfy { $0.bodyBounds != nil })
+        XCTAssertTrue(overlaySamples.allSatisfy { $0.allowsOverlayRendering() })
     }
 
     func testJointRecognitionQualitySummaryKeepsHipKeyframeWhenShoulderOverlayUnavailable() throws {
@@ -578,12 +584,13 @@ final class VideoFittingWorkflowTests: XCTestCase {
 
         let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: .side,
+            selectedModel: .auto,
             sourceURL: URL(fileURLWithPath: "/tmp/side.mp4"),
             guidance: nil,
             result: result
         )
 
-        let hipVisual = try XCTUnwrap(summary.angleVisuals.first(where: { $0.kind == .hip }))
+        let hipVisual = try XCTUnwrap(summary.angleVisuals.first(where: { $0.kind == VideoFittingJointAngleVisualKind.hip }))
         XCTAssertNotNil(hipVisual.frameTimeSeconds)
         XCTAssertNil(hipVisual.firstPoint)
         XCTAssertNil(hipVisual.jointPoint)
@@ -625,6 +632,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
     func testResultOverviewSummaryPendingStateExplainsNextStep() {
         let qualitySummary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: .side,
+            selectedModel: .auto,
             sourceURL: URL(fileURLWithPath: "/tmp/side.mp4"),
             guidance: nil,
             result: nil
@@ -645,6 +653,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
         let result = makeRecognitionResult()
         let qualitySummary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: .front,
+            selectedModel: .auto,
             sourceURL: URL(fileURLWithPath: "/tmp/front.mp4"),
             guidance: nil,
             result: result

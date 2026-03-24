@@ -2,6 +2,8 @@
 "app.section.trainer" = "Trainer";
 "app.section.lactateLab" = "Lactate Lab";
 "app.section.videoDownloader" = "Video Downloader";
+"app.section.videoFitting" = "Video Fitting";
+"app.section.training" = "Training";
 "app.section.prosuite" = "Pro Suite";
 "app.section.nutrition" = "Nutrition";
 "app.section.fatLossAssistant" = "Fat-loss Assistant";

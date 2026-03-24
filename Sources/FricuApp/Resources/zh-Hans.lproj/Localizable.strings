@@ -2,6 +2,8 @@
 "app.section.trainer" = "骑行台";
 "app.section.lactateLab" = "乳酸实验室";
 "app.section.videoDownloader" = "视频下载";
+"app.section.videoFitting" = "视频 Fitting";
+"app.section.training" = "训练规划";
 "app.section.prosuite" = "专业套件";
 "app.section.nutrition" = "饮食";
 "app.section.fatLossAssistant" = "减脂助手";

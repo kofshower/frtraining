@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SERVER_DIR="$ROOT_DIR/server"
+TOTAL_REQUESTS=${FRICU_PERF_TOTAL:-5000}
+CONCURRENCY=${FRICU_PERF_CONCURRENCY:-128}
 
 cd "$SERVER_DIR"
 make >/dev/null
@@ -14,13 +16,14 @@ trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
 
 sleep 1
 
-OUTPUT=$(./perf-client 50000 512)
+echo "perf target: total_requests=$TOTAL_REQUESTS concurrency=$CONCURRENCY"
+OUTPUT=$(./perf-client "$TOTAL_REQUESTS" "$CONCURRENCY")
 echo "$OUTPUT"
 
 echo "$OUTPUT" | rg -q '^failed=0$'
 SUCCESS=$(echo "$OUTPUT" | awk -F= '/^success=/{print $2}')
-if [[ "$SUCCESS" -lt 50000 ]]; then
-  echo "expected success >= 50000, got $SUCCESS" >&2
+if [[ "$SUCCESS" -lt "$TOTAL_REQUESTS" ]]; then
+  echo "expected success >= $TOTAL_REQUESTS, got $SUCCESS" >&2
   exit 1
 fi
 

@@ -696,7 +696,8 @@ struct VideoDownloadExecutor {
         let fm = FileManager.default
         let outputDirectory = try VideoWorkspaceDirectoryResolver().resolve(kind: .downloads)
 
-        let isDirect = isLikelyDirectMediaURL(sourceURL) || (try await remoteAppearsVideoAsset(sourceURL))
+        let remoteLooksDirect = try await remoteAppearsVideoAsset(sourceURL)
+        let isDirect = isLikelyDirectMediaURL(sourceURL) || remoteLooksDirect
         guard isDirect else {
             throw VideoDownloadExecutionError.commandFailed(
                 reason: L10n.choose(
@@ -1203,10 +1204,10 @@ struct VideoDownloaderPageView: View {
                                     }
 
                                     HStack(spacing: 10) {
-                                        Text(L10n.choose(simplifiedChinese: "骨骼模型", english: "Skeleton Model"))
+                                        Text(L10n.choose(simplifiedChinese: "骨骼 / 3D 模型", english: "Skeleton / 3D Model"))
                                             .font(.subheadline.weight(.semibold))
                                         Picker(
-                                            L10n.choose(simplifiedChinese: "骨骼模型", english: "Skeleton Model"),
+                                            L10n.choose(simplifiedChinese: "骨骼 / 3D 模型", english: "Skeleton / 3D Model"),
                                             selection: $poseEstimationModelRawValue
                                         ) {
                                             ForEach(VideoPoseEstimationModel.allCases) { model in
@@ -1215,6 +1216,12 @@ struct VideoDownloaderPageView: View {
                                         }
                                         .appDropdownTheme(width: 300, compact: true)
                                     }
+
+                                    Text(
+                                        motionBERTRuntimeCaption
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
 
                                     Stepper(
                                         L10n.choose(
@@ -1938,6 +1945,7 @@ struct VideoDownloaderPageView: View {
     private var selectedJointRecognitionQualitySummary: VideoFittingJointRecognitionQualitySummary {
         VideoFittingJointRecognitionQualitySummaryResolver.resolve(
             selectedView: selectedJointAnalysisView,
+            selectedModel: selectedPoseModel,
             sourceURL: sourceVideoURL(for: selectedJointAnalysisView),
             guidance: captureGuidanceByView[selectedJointAnalysisView],
             result: selectedJointAngleResult
@@ -3018,6 +3026,10 @@ struct VideoDownloaderPageView: View {
     /// Potential bottlenecks: high-resolution sources and slow storage can increase end-to-end latency.
     /// Optimization suggestion: expose codec preset and hardware acceleration flags as user-tunable settings.
     private func transcodeToPlayableCopy(inputURL: URL) async -> URL? {
+#if os(iOS)
+        let _ = inputURL
+        return nil
+#else
         guard let ffmpegCommand = resolveFFmpegCommand() else { return nil }
         return await Task.detached(priority: .utility) {
             let outputDirectory = inputURL.deletingLastPathComponent()
@@ -3052,6 +3064,7 @@ struct VideoDownloaderPageView: View {
                 return nil
             }
         }.value
+#endif
     }
 
     /// Builds a human-readable reason for local playback failure using ffprobe diagnostics.
@@ -3076,6 +3089,11 @@ struct VideoDownloaderPageView: View {
     /// Potential bottlenecks: network-mounted files can delay probe completion because ffprobe must read headers.
     /// Optimization suggestion: cache probe results keyed by file path and modification date.
     private func probeMediaDetails(ffprobeCommand: String, inputURL: URL) async -> MediaProbeDetails? {
+#if os(iOS)
+        let _ = ffprobeCommand
+        let _ = inputURL
+        return nil
+#else
         await Task.detached(priority: .utility) {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
@@ -3128,6 +3146,28 @@ struct VideoDownloaderPageView: View {
                 resolution: resolution
             )
         }.value
+#endif
+    }
+
+    private var motionBERTRuntimeCaption: String {
+#if os(iOS)
+        return L10n.choose(
+            simplifiedChinese: "iPhone/iPad 当前使用 Apple Vision 本地链路；macOS 桌面版会优先使用随 app 打包的 MotionBERT 3D 运行时。",
+            english: "iPhone and iPad currently use the local Apple Vision pipeline; the macOS desktop app prefers the MotionBERT 3D runtime bundled inside the app."
+        )
+#else
+        let locator = MotionBERTRuntimeLocator()
+        if locator.resolveBundledPythonPath() != nil {
+            return L10n.choose(
+                simplifiedChinese: "当前构建已内置 MotionBERT 运行时，无需额外配置 Python 环境。",
+                english: "This build already includes the MotionBERT runtime, so no extra Python setup is required."
+            )
+        }
+        return L10n.choose(
+            simplifiedChinese: "桌面发版会优先把 MotionBERT 运行时一起打进 app；只有开发构建尚未打包时，才会回退到本机 Python 环境。",
+            english: "Desktop releases bundle the MotionBERT runtime into the app whenever it is available; only unpackaged development builds fall back to a local Python environment."
+        )
+#endif
     }
 
     /// Resolves ffmpeg executable path for optional local transcode fallback.
@@ -3462,6 +3502,11 @@ struct VideoDownloaderPageView: View {
             let durationText = String(format: "%.1f", result.durationSeconds)
             let modelText: String = {
                 switch result.modelUsed {
+                case .mmposeMotionBERT:
+                    return L10n.choose(
+                        simplifiedChinese: "MotionBERT 3D（\(result.used3DAngleFrameCount) 帧）",
+                        english: "MotionBERT 3D (\(result.used3DAngleFrameCount) frames)"
+                    )
                 case .mediaPipeBlazePoseGHUM:
                     return L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
                 case .appleVision, .auto:
@@ -3868,6 +3913,11 @@ struct VideoDownloaderPageView: View {
         let durationText = String(format: "%.1f", result.durationSeconds)
         let modelText: String = {
             switch result.modelUsed {
+            case .mmposeMotionBERT:
+                return L10n.choose(
+                    simplifiedChinese: "MotionBERT 3D（\(result.used3DAngleFrameCount) 帧）",
+                    english: "MotionBERT 3D (\(result.used3DAngleFrameCount) frames)"
+                )
             case .mediaPipeBlazePoseGHUM:
                 return L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
             case .appleVision, .auto:
@@ -4893,7 +4943,7 @@ struct VideoFittingPageView: View {
     }
 }
 
-private extension DateFormatter {
+extension DateFormatter {
     static let fricuCompactTimestamp: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

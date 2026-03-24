@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WorkoutBuilderView: View {
     @EnvironmentObject private var store: AppStore
+    private let showsTitle: Bool
 
     @State private var workoutName = ""
     @State private var sport: SportType = .cycling
@@ -12,11 +13,17 @@ struct WorkoutBuilderView: View {
         WorkoutSegment(minutes: 5, intensityPercentFTP: 95, note: "Tempo")
     ]
 
+    init(showsTitle: Bool = true) {
+        self.showsTitle = showsTitle
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text("Workout Builder")
-                    .font(.largeTitle.bold())
+                if showsTitle {
+                    Text("Workout Builder")
+                        .font(.largeTitle.bold())
+                }
 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {

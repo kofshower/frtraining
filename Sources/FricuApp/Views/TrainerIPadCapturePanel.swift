@@ -268,7 +268,6 @@ private final class TrainerIPadCaptureController: NSObject, ObservableObject {
         defer { analyzingFrame = false }
 
         let humanRequest = VNDetectHumanRectanglesRequest()
-        humanRequest.maximumObservations = 1
         let poseRequest = VNDetectHumanBodyPoseRequest()
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .right, options: [:])
