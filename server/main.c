@@ -130,7 +130,7 @@ int main(void) {
     }
 
     log_info(
-        "fricu-server listening on %s (workers=%zu, async_io=auto, sqlite_durability=%s)",
+        "fr-training server listening on %s (workers=%zu, async_io=auto, sqlite_durability=%s)",
         bind_addr_str,
         worker_count,
         sqlite_durability_mode_name(durability_mode));

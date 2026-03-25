@@ -153,7 +153,7 @@ final class StravaOAuthLocalCallbackServer: @unchecked Sendable {
                         let successHTML = """
                         <html><body style="font-family:-apple-system,sans-serif;">
                         <h3>Strava OAuth received</h3>
-                        <p>You can return to Fricu now.</p>
+                        <p>You can return to fr-training now.</p>
                         </body></html>
                         """
                         sendResponse(on: connection, statusLine: "HTTP/1.1 200 OK", html: successHTML)

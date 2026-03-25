@@ -22,4 +22,7 @@ echo "[verify] core coverage gate"
 echo "[verify] app regression and chaos tests"
 swift test --filter 'RemoteHTTPRepositoryActivitiesFallbackTests|ActivityDetailDerivedCacheKeyTests|VideoFittingChaosTests'
 
+echo "[verify] bike keypoint self-train smoke test"
+bash "$ROOT_DIR/scripts/test-bike-keypoint-selftrain.sh"
+
 echo "[verify] release checks passed"

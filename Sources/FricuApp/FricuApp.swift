@@ -26,7 +26,7 @@ struct FricuApp: App {
 
     var body: some Scene {
         #if os(macOS)
-            WindowGroup("Fricu") {
+            WindowGroup("fr-training") {
                 AuthGateView()
                     .environmentObject(store)
                     .environmentObject(auth)
@@ -41,7 +41,7 @@ struct FricuApp: App {
                     .environment(\.locale, appLocale)
             }
         #else
-            WindowGroup("Fricu") {
+            WindowGroup("fr-training") {
                 AuthGateView()
                     .environmentObject(store)
                     .environmentObject(auth)
@@ -1508,8 +1508,8 @@ struct SettingsView: View {
 
                     Text(
                         L10n.choose(
-                            simplifiedChinese: "服务端日志会在 fricu-server 启动终端实时输出。",
-                            english: "Server logs are printed in real time in the fricu-server terminal."
+                            simplifiedChinese: "服务端日志会在服务端启动终端实时输出。",
+                            english: "Server logs are printed in real time in the server terminal."
                         )
                     )
                     .font(.caption)

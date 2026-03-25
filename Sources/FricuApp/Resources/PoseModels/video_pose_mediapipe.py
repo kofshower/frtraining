@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import contextlib
 import json
 import math
 import sys
@@ -32,6 +33,20 @@ def _angle_3d(a, b, c):
     dot = bax * bcx + bay * bcy + baz * bcz
     mag_ba = math.sqrt(bax * bax + bay * bay + baz * baz)
     mag_bc = math.sqrt(bcx * bcx + bcy * bcy + bcz * bcz)
+    if mag_ba < 1e-8 or mag_bc < 1e-8:
+        return None
+    cosine = max(-1.0, min(1.0, dot / (mag_ba * mag_bc)))
+    return math.degrees(math.acos(cosine))
+
+
+def _angle_2d(a, b, c):
+    bax = a["x"] - b["x"]
+    bay = a["y"] - b["y"]
+    bcx = c["x"] - b["x"]
+    bcy = c["y"] - b["y"]
+    dot = bax * bcx + bay * bcy
+    mag_ba = math.sqrt(bax * bax + bay * bay)
+    mag_bc = math.sqrt(bcx * bcx + bcy * bcy)
     if mag_ba < 1e-8 or mag_bc < 1e-8:
         return None
     cosine = max(-1.0, min(1.0, dot / (mag_ba * mag_bc)))
@@ -72,6 +87,10 @@ def run(video_path: str, max_samples: int):
     lm_idx = {
         "left_shoulder": mp_pose.PoseLandmark.LEFT_SHOULDER.value,
         "right_shoulder": mp_pose.PoseLandmark.RIGHT_SHOULDER.value,
+        "left_elbow": mp_pose.PoseLandmark.LEFT_ELBOW.value,
+        "right_elbow": mp_pose.PoseLandmark.RIGHT_ELBOW.value,
+        "left_wrist": mp_pose.PoseLandmark.LEFT_WRIST.value,
+        "right_wrist": mp_pose.PoseLandmark.RIGHT_WRIST.value,
         "left_hip": mp_pose.PoseLandmark.LEFT_HIP.value,
         "right_hip": mp_pose.PoseLandmark.RIGHT_HIP.value,
         "left_knee": mp_pose.PoseLandmark.LEFT_KNEE.value,
@@ -113,36 +132,48 @@ def run(video_path: str, max_samples: int):
 
         left_knee_angle_deg = None
         left_hip_angle_deg = None
+        left_ankle_angle_deg = None
         right_knee_angle_deg = None
         right_hip_angle_deg = None
-        if result.pose_world_landmarks:
-            world = result.pose_world_landmarks.landmark
-            try:
-                left_knee_angle_deg = _angle_3d(
-                    world[lm_idx["left_hip"]],
-                    world[lm_idx["left_knee"]],
-                    world[lm_idx["left_ankle"]],
-                )
-                left_hip_angle_deg = _angle_3d(
-                    world[lm_idx["left_shoulder"]],
-                    world[lm_idx["left_hip"]],
-                    world[lm_idx["left_knee"]],
-                )
-                right_knee_angle_deg = _angle_3d(
-                    world[lm_idx["right_hip"]],
-                    world[lm_idx["right_knee"]],
-                    world[lm_idx["right_ankle"]],
-                )
-                right_hip_angle_deg = _angle_3d(
-                    world[lm_idx["right_shoulder"]],
-                    world[lm_idx["right_hip"]],
-                    world[lm_idx["right_knee"]],
-                )
-            except Exception:
-                left_knee_angle_deg = None
-                left_hip_angle_deg = None
-                right_knee_angle_deg = None
-                right_hip_angle_deg = None
+        right_ankle_angle_deg = None
+
+        if {"left_hip", "left_knee", "left_ankle"}.issubset(joints):
+            left_knee_angle_deg = _angle_2d(
+                joints["left_hip"],
+                joints["left_knee"],
+                joints["left_ankle"],
+            )
+        if {"left_shoulder", "left_hip", "left_knee"}.issubset(joints):
+            left_hip_angle_deg = _angle_2d(
+                joints["left_shoulder"],
+                joints["left_hip"],
+                joints["left_knee"],
+            )
+        if {"right_hip", "right_knee", "right_ankle"}.issubset(joints):
+            right_knee_angle_deg = _angle_2d(
+                joints["right_hip"],
+                joints["right_knee"],
+                joints["right_ankle"],
+            )
+        if {"right_shoulder", "right_hip", "right_knee"}.issubset(joints):
+            right_hip_angle_deg = _angle_2d(
+                joints["right_shoulder"],
+                joints["right_hip"],
+                joints["right_knee"],
+            )
+
+        if left_ankle_angle_deg is None and {"left_knee", "left_ankle", "left_foot_index"}.issubset(joints):
+            left_ankle_angle_deg = _angle_2d(
+                joints["left_knee"],
+                joints["left_ankle"],
+                joints["left_foot_index"],
+            )
+        if right_ankle_angle_deg is None and {"right_knee", "right_ankle", "right_foot_index"}.issubset(joints):
+            right_ankle_angle_deg = _angle_2d(
+                joints["right_knee"],
+                joints["right_ankle"],
+                joints["right_foot_index"],
+            )
 
         samples.append(
             {
@@ -151,8 +182,10 @@ def run(video_path: str, max_samples: int):
                 "joints": joints,
                 "left_knee_angle_deg": left_knee_angle_deg,
                 "left_hip_angle_deg": left_hip_angle_deg,
+                "left_ankle_angle_deg": left_ankle_angle_deg,
                 "right_knee_angle_deg": right_knee_angle_deg,
                 "right_hip_angle_deg": right_hip_angle_deg,
+                "right_ankle_angle_deg": right_ankle_angle_deg,
             }
         )
 
@@ -192,7 +225,8 @@ def main():
     args = parser.parse_args()
 
     try:
-        payload = run(args.video, args.max_samples)
+        with contextlib.redirect_stdout(sys.stderr):
+            payload = run(args.video, args.max_samples)
         print(json.dumps(payload, ensure_ascii=False))
         return 0
     except Exception as exc:  # pragma: no cover - runtime dependency

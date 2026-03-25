@@ -496,7 +496,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
         )
 
         XCTAssertEqual(summary.tone, .ready)
-        XCTAssertEqual(summary.angleVisuals.map(\.kind), [.knee, .hip, .bdcKnee])
+        XCTAssertEqual(summary.angleVisuals.map(\.kind), [.knee, .hip, .ankle, .bdcKnee])
         XCTAssertTrue(summary.angleVisuals.allSatisfy { $0.angleDegrees > 0 })
         XCTAssertEqual(summary.checkpointVisuals.map(\.checkpoint), [.point0, .point3, .point6, .point9])
         let overlayCheckpoints = summary.playbackOverlay?.checkpoints.map { $0.checkpoint }
@@ -524,9 +524,25 @@ final class VideoFittingWorkflowTests: XCTestCase {
         XCTAssertTrue(summary.checkpointVisuals.allSatisfy { $0.crankCenter != nil && $0.crankRadius != nil })
         XCTAssertTrue(summary.checkpointVisuals.allSatisfy { $0.firstPoint != nil && $0.jointPoint != nil && $0.thirdPoint != nil })
         let overlaySamples = summary.playbackOverlay?.samples ?? []
-        XCTAssertTrue(overlaySamples.allSatisfy { $0.firstPoint != nil && $0.jointPoint != nil && $0.thirdPoint != nil })
+        XCTAssertTrue(overlaySamples.allSatisfy { !$0.renderableJointOverlays().isEmpty })
+        XCTAssertTrue(overlaySamples.allSatisfy { sample in
+            let kinds = Set(sample.renderableJointOverlays().map(\.kind))
+            return kinds.contains(.knee) && kinds.contains(.hip) && kinds.contains(.shoulder) && kinds.contains(.elbow)
+        })
         XCTAssertTrue(overlaySamples.allSatisfy { $0.bodyBounds != nil })
         XCTAssertTrue(overlaySamples.allSatisfy { $0.allowsOverlayRendering() })
+    }
+
+    func testCrankClockCheckpointTitlesExposeDeadCenterAndClockfaceLabels() {
+        let topTitle = CrankClockCheckpoint.point0.positionTitle
+        let bottomTitle = CrankClockCheckpoint.point6.positionTitle
+        let topClockface = CrankClockCheckpoint.point0.clockfaceTitle
+        let rightClockface = CrankClockCheckpoint.point3.clockfaceTitle
+
+        XCTAssertTrue(topTitle.contains("上死点") || topTitle.localizedCaseInsensitiveContains("top dead center"))
+        XCTAssertTrue(bottomTitle.contains("下死点") || bottomTitle.localizedCaseInsensitiveContains("bottom dead center"))
+        XCTAssertTrue(topClockface.contains("12") || topClockface.localizedCaseInsensitiveContains("12"))
+        XCTAssertTrue(rightClockface.contains("3") || rightClockface.localizedCaseInsensitiveContains("3"))
     }
 
     func testJointRecognitionQualitySummaryKeepsHipKeyframeWhenShoulderOverlayUnavailable() throws {
@@ -539,12 +555,19 @@ final class VideoFittingWorkflowTests: XCTestCase {
                 confidence: sample.confidence,
                 kneeAngleDeg: sample.kneeAngleDeg,
                 hipAngleDeg: sample.hipAngleDeg,
+                ankleAngleDeg: sample.ankleAngleDeg,
+                shoulderAngleDeg: sample.shoulderAngleDeg,
+                elbowAngleDeg: sample.elbowAngleDeg,
                 crankPhaseDeg: sample.crankPhaseDeg,
                 leftShoulder: nil,
+                leftElbow: sample.leftElbow,
+                leftWrist: sample.leftWrist,
                 leftHip: sample.leftHip,
                 leftKnee: sample.leftKnee,
                 leftAnkle: sample.leftAnkle,
                 rightShoulder: nil,
+                rightElbow: sample.rightElbow,
+                rightWrist: sample.rightWrist,
                 rightHip: sample.rightHip,
                 rightKnee: sample.rightKnee,
                 rightAnkle: sample.rightAnkle,
@@ -597,16 +620,167 @@ final class VideoFittingWorkflowTests: XCTestCase {
         XCTAssertNil(hipVisual.thirdPoint)
     }
 
+    func testJointRecognitionQualitySummarySurfacesMotionAGFormerAndAnkleOutputs() throws {
+        let result = makeSideRecognitionResult()
+        let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
+            selectedView: .side,
+            selectedModel: .mmposeMotionBERT,
+            sourceURL: URL(fileURLWithPath: "/tmp/side-motionagformer.mp4"),
+            guidance: nil,
+            result: VideoJointAngleAnalysisResult(
+                durationSeconds: result.durationSeconds,
+                targetFrameCount: result.targetFrameCount,
+                analyzedFrameCount: result.analyzedFrameCount,
+                requestedView: result.requestedView,
+                resolvedView: result.resolvedView,
+                modelUsed: .mmposeMotionBERT,
+                modelFallbackNote: nil,
+                dominantSide: result.dominantSide,
+                samples: result.samples,
+                crankCenter: result.crankCenter,
+                crankRadius: result.crankRadius,
+                used3DAngleFrameCount: 4,
+                kneeStats: result.kneeStats,
+                hipStats: result.hipStats,
+                ankleStats: result.ankleStats,
+                cadenceCycles: result.cadenceCycles,
+                cadenceSummary: result.cadenceSummary,
+                longDurationStability: result.longDurationStability,
+                sideCheckpoints: result.sideCheckpoints,
+                frontAlignment: result.frontAlignment,
+                frontTrajectory: result.frontTrajectory,
+                rearPelvic: result.rearPelvic,
+                rearStability: result.rearStability,
+                rearCoordination: result.rearCoordination,
+                frontAutoAssessment: result.frontAutoAssessment,
+                rearAutoAssessment: result.rearAutoAssessment,
+                adjustmentPlan: result.adjustmentPlan,
+                fittingHints: result.fittingHints,
+                bikeKeypointModelText: "Road-bike BB/Crank/Pedal"
+            )
+        )
+
+        XCTAssertTrue(summary.actualModelText.contains("MotionAGFormer"))
+        XCTAssertTrue(summary.actualModelText.contains("BB/Crank/Pedal"))
+        XCTAssertTrue(summary.computableIndicators.contains(where: { $0.contains("踝") || $0.localizedCaseInsensitiveContains("ankle") }))
+        XCTAssertTrue(summary.angleVisuals.contains(where: { $0.kind == .ankle }))
+        XCTAssertTrue((summary.playbackOverlay?.samples ?? []).contains(where: { $0.ankleAngleDegrees != nil }))
+    }
+
+    func testJointRecognitionQualitySummaryPlaybackUsesBikePedalPointWhenAvailable() throws {
+        let baseResult = makeSideRecognitionResult()
+        let bikePedal = PoseJointPoint(x: 0.61, y: 0.77, confidence: 0.95)
+        let bikeSamples = baseResult.samples.enumerated().map { index, sample in
+            VideoJointAngleSample(
+                id: sample.id,
+                timeSeconds: sample.timeSeconds,
+                side: sample.side,
+                confidence: sample.confidence,
+                kneeAngleDeg: sample.kneeAngleDeg,
+                hipAngleDeg: sample.hipAngleDeg,
+                ankleAngleDeg: sample.ankleAngleDeg,
+                shoulderAngleDeg: sample.shoulderAngleDeg,
+                elbowAngleDeg: sample.elbowAngleDeg,
+                crankPhaseDeg: sample.crankPhaseDeg,
+                leftShoulder: sample.leftShoulder,
+                leftElbow: sample.leftElbow,
+                leftWrist: sample.leftWrist,
+                leftHip: sample.leftHip,
+                leftKnee: sample.leftKnee,
+                leftAnkle: sample.leftAnkle,
+                rightShoulder: sample.rightShoulder,
+                rightElbow: sample.rightElbow,
+                rightWrist: sample.rightWrist,
+                rightHip: sample.rightHip,
+                rightKnee: sample.rightKnee,
+                rightAnkle: sample.rightAnkle,
+                leftToe: sample.leftToe,
+                rightToe: sample.rightToe,
+                bikeBottomBracket: index == 0 ? PoseJointPoint(x: 0.51, y: 0.76, confidence: 0.93) : nil,
+                bikeCrankEnd: index == 0 ? PoseJointPoint(x: 0.57, y: 0.73, confidence: 0.94) : nil,
+                bikePedalCenter: index == 0 ? bikePedal : nil
+            )
+        }
+
+        let result = VideoJointAngleAnalysisResult(
+            durationSeconds: baseResult.durationSeconds,
+            targetFrameCount: baseResult.targetFrameCount,
+            analyzedFrameCount: baseResult.analyzedFrameCount,
+            requestedView: baseResult.requestedView,
+            resolvedView: baseResult.resolvedView,
+            modelUsed: baseResult.modelUsed,
+            modelFallbackNote: baseResult.modelFallbackNote,
+            dominantSide: baseResult.dominantSide,
+            samples: bikeSamples,
+            crankCenter: baseResult.crankCenter,
+            crankRadius: baseResult.crankRadius,
+            used3DAngleFrameCount: baseResult.used3DAngleFrameCount,
+            kneeStats: baseResult.kneeStats,
+            hipStats: baseResult.hipStats,
+            ankleStats: baseResult.ankleStats,
+            cadenceCycles: baseResult.cadenceCycles,
+            cadenceSummary: baseResult.cadenceSummary,
+            longDurationStability: baseResult.longDurationStability,
+            sideCheckpoints: baseResult.sideCheckpoints,
+            frontAlignment: baseResult.frontAlignment,
+            frontTrajectory: baseResult.frontTrajectory,
+            rearPelvic: baseResult.rearPelvic,
+            rearStability: baseResult.rearStability,
+            rearCoordination: baseResult.rearCoordination,
+            frontAutoAssessment: baseResult.frontAutoAssessment,
+            rearAutoAssessment: baseResult.rearAutoAssessment,
+            adjustmentPlan: baseResult.adjustmentPlan,
+            fittingHints: baseResult.fittingHints,
+            bikeKeypointModelText: "Road-bike BB/Crank/Pedal"
+        )
+
+        let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
+            selectedView: .side,
+            selectedModel: .auto,
+            sourceURL: URL(fileURLWithPath: "/tmp/side-bike.mp4"),
+            guidance: nil,
+            result: result
+        )
+
+        let pedalPoint = try XCTUnwrap(summary.playbackOverlay?.samples.first?.pedalPoint)
+        XCTAssertEqual(pedalPoint.x, bikePedal.x, accuracy: 0.0001)
+        XCTAssertEqual(pedalPoint.y, bikePedal.y, accuracy: 0.0001)
+    }
+
+    func testPendingMotionAGFormerSummaryExplainsTwoStagePipeline() throws {
+        let summary = VideoFittingJointRecognitionQualitySummaryResolver.resolve(
+            selectedView: .side,
+            selectedModel: .mmposeMotionBERT,
+            sourceURL: URL(fileURLWithPath: "/tmp/side-pending-motionagformer.mp4"),
+            guidance: nil,
+            result: nil
+        )
+
+        XCTAssertTrue(summary.requestedModelText.contains("MotionAGFormer"))
+        XCTAssertTrue(summary.actualModelText == "等待识别" || summary.actualModelText == "Pending")
+        let decisionText = try XCTUnwrap(summary.modelDecisionText)
+        XCTAssertTrue(
+            decisionText.contains("2D 骨架底稿") ||
+            decisionText.localizedCaseInsensitiveContains("2D skeleton draft")
+        )
+    }
+
     func testPlaybackOverlaySampleBlocksRenderingWhenJointFallsOutsideBodyBounds() {
+        let kneeOverlay = VideoFittingPlaybackJointOverlay(
+            kind: .knee,
+            angleDegrees: 112,
+            firstPoint: VideoFittingNormalizedPoint(x: 0.42, y: 0.72),
+            jointPoint: VideoFittingNormalizedPoint(x: 0.48, y: 0.48),
+            thirdPoint: VideoFittingNormalizedPoint(x: 0.12, y: 0.05)
+        )
         let sample = VideoFittingPlaybackOverlaySample(
             id: 1,
             timeSeconds: 1.2,
             kneeAngleDegrees: 112,
             hipAngleDegrees: 91,
             crankPhaseDegrees: 90,
-            firstPoint: VideoFittingNormalizedPoint(x: 0.42, y: 0.72),
-            jointPoint: VideoFittingNormalizedPoint(x: 0.48, y: 0.48),
-            thirdPoint: VideoFittingNormalizedPoint(x: 0.12, y: 0.05),
+            pedalPoint: kneeOverlay.thirdPoint,
+            jointOverlays: [kneeOverlay],
             bodyBounds: VideoFittingNormalizedRect(minX: 0.36, minY: 0.28, maxX: 0.61, maxY: 0.86)
         )
 
@@ -614,15 +788,21 @@ final class VideoFittingWorkflowTests: XCTestCase {
     }
 
     func testPlaybackOverlaySampleAllowsRenderingWithinExpandedBodyBounds() {
+        let kneeOverlay = VideoFittingPlaybackJointOverlay(
+            kind: .knee,
+            angleDegrees: 118,
+            firstPoint: VideoFittingNormalizedPoint(x: 0.40, y: 0.75),
+            jointPoint: VideoFittingNormalizedPoint(x: 0.46, y: 0.50),
+            thirdPoint: VideoFittingNormalizedPoint(x: 0.52, y: 0.88)
+        )
         let sample = VideoFittingPlaybackOverlaySample(
             id: 2,
             timeSeconds: 2.4,
             kneeAngleDegrees: 118,
             hipAngleDegrees: 104,
             crankPhaseDegrees: 182,
-            firstPoint: VideoFittingNormalizedPoint(x: 0.40, y: 0.75),
-            jointPoint: VideoFittingNormalizedPoint(x: 0.46, y: 0.50),
-            thirdPoint: VideoFittingNormalizedPoint(x: 0.52, y: 0.88),
+            pedalPoint: kneeOverlay.thirdPoint,
+            jointOverlays: [kneeOverlay],
             bodyBounds: VideoFittingNormalizedRect(minX: 0.36, minY: 0.28, maxX: 0.50, maxY: 0.80)
         )
 
@@ -959,7 +1139,13 @@ final class VideoFittingWorkflowTests: XCTestCase {
     }
 
     private func makeSideRecognitionResult() -> VideoJointAngleAnalysisResult {
-        let validPoint = PoseJointPoint(x: 0.5, y: 0.5, confidence: 0.93)
+        let leftShoulder = PoseJointPoint(x: 0.42, y: 0.76, confidence: 0.93)
+        let leftElbow = PoseJointPoint(x: 0.56, y: 0.70, confidence: 0.92)
+        let leftWrist = PoseJointPoint(x: 0.66, y: 0.63, confidence: 0.91)
+        let leftHip = PoseJointPoint(x: 0.44, y: 0.56, confidence: 0.94)
+        let leftKnee = PoseJointPoint(x: 0.53, y: 0.37, confidence: 0.93)
+        let leftAnkle = PoseJointPoint(x: 0.60, y: 0.18, confidence: 0.92)
+        let leftToe = PoseJointPoint(x: 0.68, y: 0.13, confidence: 0.88)
         let sample0 = VideoJointAngleSample(
             id: 0,
             timeSeconds: 0.4,
@@ -967,16 +1153,21 @@ final class VideoFittingWorkflowTests: XCTestCase {
             confidence: 0.91,
             kneeAngleDeg: 115,
             hipAngleDeg: 46,
+            ankleAngleDeg: 95,
+            shoulderAngleDeg: 83,
+            elbowAngleDeg: 148,
             crankPhaseDeg: 2,
-            leftShoulder: validPoint,
-            leftHip: validPoint,
-            leftKnee: validPoint,
-            leftAnkle: validPoint,
+            leftShoulder: leftShoulder,
+            leftElbow: leftElbow,
+            leftWrist: leftWrist,
+            leftHip: leftHip,
+            leftKnee: leftKnee,
+            leftAnkle: leftAnkle,
             rightShoulder: nil,
             rightHip: nil,
             rightKnee: nil,
             rightAnkle: nil,
-            leftToe: validPoint,
+            leftToe: leftToe,
             rightToe: nil
         )
         let sample3 = VideoJointAngleSample(
@@ -986,16 +1177,21 @@ final class VideoFittingWorkflowTests: XCTestCase {
             confidence: 0.92,
             kneeAngleDeg: 92,
             hipAngleDeg: 58,
+            ankleAngleDeg: 103,
+            shoulderAngleDeg: 87,
+            elbowAngleDeg: 145,
             crankPhaseDeg: 90,
-            leftShoulder: validPoint,
-            leftHip: validPoint,
-            leftKnee: validPoint,
-            leftAnkle: validPoint,
+            leftShoulder: leftShoulder,
+            leftElbow: leftElbow,
+            leftWrist: leftWrist,
+            leftHip: leftHip,
+            leftKnee: leftKnee,
+            leftAnkle: leftAnkle,
             rightShoulder: nil,
             rightHip: nil,
             rightKnee: nil,
             rightAnkle: nil,
-            leftToe: validPoint,
+            leftToe: leftToe,
             rightToe: nil
         )
         let sample9 = VideoJointAngleSample(
@@ -1005,16 +1201,21 @@ final class VideoFittingWorkflowTests: XCTestCase {
             confidence: 0.90,
             kneeAngleDeg: 76,
             hipAngleDeg: 43,
+            ankleAngleDeg: 88,
+            shoulderAngleDeg: 81,
+            elbowAngleDeg: 151,
             crankPhaseDeg: 270,
-            leftShoulder: validPoint,
-            leftHip: validPoint,
-            leftKnee: validPoint,
-            leftAnkle: validPoint,
+            leftShoulder: leftShoulder,
+            leftElbow: leftElbow,
+            leftWrist: leftWrist,
+            leftHip: leftHip,
+            leftKnee: leftKnee,
+            leftAnkle: leftAnkle,
             rightShoulder: nil,
             rightHip: nil,
             rightKnee: nil,
             rightAnkle: nil,
-            leftToe: validPoint,
+            leftToe: leftToe,
             rightToe: nil
         )
         let sample6 = VideoJointAngleSample(
@@ -1024,16 +1225,21 @@ final class VideoFittingWorkflowTests: XCTestCase {
             confidence: 0.94,
             kneeAngleDeg: 119,
             hipAngleDeg: 45,
+            ankleAngleDeg: 108,
+            shoulderAngleDeg: 84,
+            elbowAngleDeg: 147,
             crankPhaseDeg: 180,
-            leftShoulder: validPoint,
-            leftHip: validPoint,
-            leftKnee: validPoint,
-            leftAnkle: validPoint,
+            leftShoulder: leftShoulder,
+            leftElbow: leftElbow,
+            leftWrist: leftWrist,
+            leftHip: leftHip,
+            leftKnee: leftKnee,
+            leftAnkle: leftAnkle,
             rightShoulder: nil,
             rightHip: nil,
             rightKnee: nil,
             rightAnkle: nil,
-            leftToe: validPoint,
+            leftToe: leftToe,
             rightToe: nil
         )
 
@@ -1052,6 +1258,7 @@ final class VideoFittingWorkflowTests: XCTestCase {
             used3DAngleFrameCount: 4,
             kneeStats: JointAngleStats(min: 76, max: 119, mean: 101, sampleCount: 4),
             hipStats: JointAngleStats(min: 43, max: 58, mean: 48, sampleCount: 4),
+            ankleStats: JointAngleStats(min: 88, max: 108, mean: 99, sampleCount: 4),
             cadenceCycles: [],
             cadenceSummary: CadenceCycleSummary(
                 cycleCount: 1,
@@ -1063,10 +1270,10 @@ final class VideoFittingWorkflowTests: XCTestCase {
             ),
             longDurationStability: nil,
             sideCheckpoints: [
-                SideCheckpointSnapshot(checkpoint: .point0, timeSeconds: 0.4, phaseDeg: 2, phaseErrorDeg: 2, kneeAngleDeg: 115, hipAngleDeg: 46),
-                SideCheckpointSnapshot(checkpoint: .point3, timeSeconds: 1.1, phaseDeg: 90, phaseErrorDeg: 0, kneeAngleDeg: 92, hipAngleDeg: 58),
-                SideCheckpointSnapshot(checkpoint: .point6, timeSeconds: 2.6, phaseDeg: 180, phaseErrorDeg: 0, kneeAngleDeg: 119, hipAngleDeg: 45),
-                SideCheckpointSnapshot(checkpoint: .point9, timeSeconds: 1.9, phaseDeg: 270, phaseErrorDeg: 0, kneeAngleDeg: 76, hipAngleDeg: 43)
+                SideCheckpointSnapshot(checkpoint: .point0, timeSeconds: 0.4, phaseDeg: 2, phaseErrorDeg: 2, kneeAngleDeg: 115, hipAngleDeg: 46, ankleAngleDeg: 95),
+                SideCheckpointSnapshot(checkpoint: .point3, timeSeconds: 1.1, phaseDeg: 90, phaseErrorDeg: 0, kneeAngleDeg: 92, hipAngleDeg: 58, ankleAngleDeg: 103),
+                SideCheckpointSnapshot(checkpoint: .point6, timeSeconds: 2.6, phaseDeg: 180, phaseErrorDeg: 0, kneeAngleDeg: 119, hipAngleDeg: 45, ankleAngleDeg: 108),
+                SideCheckpointSnapshot(checkpoint: .point9, timeSeconds: 1.9, phaseDeg: 270, phaseErrorDeg: 0, kneeAngleDeg: 76, hipAngleDeg: 43, ankleAngleDeg: 88)
             ],
             frontAlignment: nil,
             frontTrajectory: nil,

@@ -99,10 +99,13 @@ final class VideoFittingChaosTests: XCTestCase {
             }
 
             for sample in summary.playbackOverlay?.samples ?? [] {
-                assertConsistentGeometry(
-                    frameTime: sample.timeSeconds,
-                    points: [sample.firstPoint, sample.jointPoint, sample.thirdPoint]
-                )
+                for overlay in sample.jointOverlays {
+                    assertConsistentGeometry(
+                        frameTime: sample.timeSeconds,
+                        points: [overlay.firstPoint, overlay.jointPoint, overlay.thirdPoint]
+                    )
+                    XCTAssertTrue(overlay.angleDegrees.isFinite)
+                }
                 if let bodyBounds = sample.bodyBounds {
                     XCTAssertTrue(bodyBounds.minX.isFinite)
                     XCTAssertTrue(bodyBounds.minY.isFinite)
@@ -120,6 +123,9 @@ final class VideoFittingChaosTests: XCTestCase {
                 }
                 if let hipAngle = sample.hipAngleDegrees {
                     XCTAssertTrue(hipAngle.isFinite)
+                }
+                if let ankleAngle = sample.ankleAngleDegrees {
+                    XCTAssertTrue(ankleAngle.isFinite)
                 }
             }
         }

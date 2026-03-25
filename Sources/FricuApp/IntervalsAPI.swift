@@ -103,8 +103,8 @@ final class IntervalsAPIClient {
 
         var components = URLComponents(url: baseURL.appending(path: "/api/v1/athlete/0/activities"), resolvingAgainstBaseURL: false)
         components?.queryItems = [
-            URLQueryItem(name: "name", value: activity.notes.isEmpty ? "Fricu Activity" : activity.notes),
-            URLQueryItem(name: "description", value: "Uploaded from Fricu"),
+            URLQueryItem(name: "name", value: activity.notes.isEmpty ? "fr-training Activity" : activity.notes),
+            URLQueryItem(name: "description", value: "Uploaded from fr-training"),
             URLQueryItem(name: "external_id", value: externalID)
         ]
 

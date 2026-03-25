@@ -161,7 +161,7 @@
 		8C8A5DA50EFD8F3F52D9E9EC /* StravaOAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StravaOAuth.swift; sourceTree = "<group>"; };
 		916CD604737085519679E310 /* FitnessMachineParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitnessMachineParsers.swift; sourceTree = "<group>"; };
 		920AF504CF40ED9F6381DDF3 /* Bunny.usdz */ = {isa = PBXFileReference; lastKnownFileType = file.usdz; path = Bunny.usdz; sourceTree = "<group>"; };
-		958F562B7DC47419E0AF8605 /* Fricu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Fricu.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		958F562B7DC47419E0AF8605 /* fr-training.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "fr-training.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		96742FB381F8381920469B04 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		A02522CEED1A884DD1D7F82C /* HeartRateParsers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeartRateParsers.swift; sourceTree = "<group>"; };
 		A169931D9429BE63A3E12561 /* FricuApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FricuApp.swift; sourceTree = "<group>"; };
@@ -329,7 +329,7 @@
 			isa = PBXGroup;
 			children = (
 				BCB5462616EDCD7835D9E3A4 /* FricuCore.framework */,
-				958F562B7DC47419E0AF8605 /* Fricu.app */,
+				958F562B7DC47419E0AF8605 /* fr-training.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -372,7 +372,7 @@
 			packageProductDependencies = (
 			);
 			productName = FricuIOS;
-			productReference = 958F562B7DC47419E0AF8605 /* Fricu.app */;
+			productReference = 958F562B7DC47419E0AF8605 /* fr-training.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -590,7 +590,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fricu.app.ios;
-				PRODUCT_NAME = Fricu;
+				PRODUCT_NAME = "fr-training";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -748,7 +748,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.fricu.app.ios;
-				PRODUCT_NAME = Fricu;
+				PRODUCT_NAME = "fr-training";
 				SDKROOT = iphoneos;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;

@@ -558,7 +558,7 @@ async def run_server(host: str, port: int, db_file: Path, state_dir: Path, backl
         backlog=backlog,
         limit=max(MAX_HEADER_BYTES * 2, 128 * 1024),
     )
-    log_info(f"fricu-python-server listening on http://{host}:{port}")
+    log_info(f"fr-training Python server listening on http://{host}:{port}")
     log_info(f"SQLite DB: {db_file}")
     log_info(f"State dir: {state_dir}")
     async with server:
@@ -568,7 +568,7 @@ async def run_server(host: str, port: int, db_file: Path, state_dir: Path, backl
 
 def main() -> None:
     root_dir = Path(__file__).resolve().parents[1]
-    parser = argparse.ArgumentParser(description="Fricu Python backend server")
+    parser = argparse.ArgumentParser(description="fr-training Python backend server")
     parser.add_argument("--host", default=os.environ.get("FRICU_SERVER_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.environ.get("FRICU_SERVER_PORT", "8080")))
     parser.add_argument(
@@ -602,7 +602,7 @@ def main() -> None:
             )
         )
     except KeyboardInterrupt:
-        print("\nShutting down Fricu Python server...", file=sys.stderr)
+        print("\nShutting down fr-training Python server...", file=sys.stderr)
 
 
 if __name__ == "__main__":

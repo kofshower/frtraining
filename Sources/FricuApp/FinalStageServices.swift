@@ -599,7 +599,7 @@ final class GarminConnectAPIClient {
 
         var body = Data()
         body.append(textField("dataType", "fit"))
-        body.append(textField("uploadSource", "Fricu"))
+        body.append(textField("uploadSource", "fr-training"))
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)

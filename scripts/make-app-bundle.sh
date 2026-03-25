@@ -11,19 +11,39 @@ fi
 
 BUILD_DIR="$ROOT_DIR/.build/arm64-apple-macosx/$BUILD_CONFIG"
 APP_BIN="$BUILD_DIR/FricuApp"
-APP_BUNDLE="$BUILD_DIR/FricuApp.app"
+APP_BUNDLE="$BUILD_DIR/fr-training.app"
 APP_EXEC="$APP_BUNDLE/Contents/MacOS/FricuApp"
 INFO_PLIST_SRC="$ROOT_DIR/Sources/FricuApp/Info.plist"
-RESOURCE_BUNDLE="$BUILD_DIR/Fricu_FricuApp.bundle"
 ICON_MASTER_PPM="$ROOT_DIR/Sources/FricuApp/Resources/AppIcon-master.ppm"
 ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
 ICON_ICNS="$BUILD_DIR/AppIcon.icns"
 DIST_DIR="$ROOT_DIR/dist/$BUILD_CONFIG"
-DIST_BIN="$DIST_DIR/FricuApp"
-DIST_BUNDLE="$DIST_DIR/FricuApp.app"
-DIST_ROOT_BIN="$ROOT_DIR/dist/FricuApp"
-DIST_ROOT_BUNDLE="$ROOT_DIR/dist/FricuApp.app"
+DIST_BIN="$DIST_DIR/fr-training"
+DIST_BUNDLE="$DIST_DIR/fr-training.app"
+DIST_ROOT_BIN="$ROOT_DIR/dist/fr-training"
+DIST_ROOT_BUNDLE="$ROOT_DIR/dist/fr-training.app"
+LEGACY_DIST_BIN="$DIST_DIR/FricuApp"
+LEGACY_DIST_BUNDLE="$DIST_DIR/FricuApp.app"
+LEGACY_DIST_ROOT_BIN="$ROOT_DIR/dist/FricuApp"
+LEGACY_DIST_ROOT_BUNDLE="$ROOT_DIR/dist/FricuApp.app"
 MOTIONBERT_RUNTIME_DIR_NAME="MotionBERTRuntime"
+BIKE_KEYPOINT_MODEL_DIR_NAME="BikeKeypointModel"
+BIKE_KEYPOINT_TRAINING_DIR_NAME="BikeKeypointTraining"
+
+resolve_resource_bundle() {
+  local candidate=""
+  for candidate in \
+    "$BUILD_DIR/FricuApp_FricuApp.bundle" \
+    "$BUILD_DIR/Fricu_FricuApp.bundle"
+  do
+    if [[ -d "$candidate" ]]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
 
 runtime_supports_motionbert() {
   local python_exec="$1"
@@ -133,6 +153,85 @@ package_motionbert_runtime_if_available() {
   fi
 }
 
+checkpoint_mod_time() {
+  local checkpoint_path="$1"
+  if stat -f %m "$checkpoint_path" >/dev/null 2>&1; then
+    stat -f %m "$checkpoint_path"
+  else
+    stat -c %Y "$checkpoint_path"
+  fi
+}
+
+resolve_bike_keypoint_checkpoint() {
+  local -a explicit_candidates=()
+  local checkpoint_path=""
+
+  if [[ -n "${FRICU_BIKE_KEYPOINT_CHECKPOINT:-}" ]]; then
+    explicit_candidates+=("${FRICU_BIKE_KEYPOINT_CHECKPOINT}")
+  fi
+
+  if [[ -n "${FRICU_BIKE_KEYPOINT_MODEL_DIR:-}" ]]; then
+    explicit_candidates+=("${FRICU_BIKE_KEYPOINT_MODEL_DIR}/best.pt")
+  fi
+
+  if [[ "${#explicit_candidates[@]}" -gt 0 ]]; then
+    for checkpoint_path in "${explicit_candidates[@]}"; do
+      [[ -n "$checkpoint_path" && -f "$checkpoint_path" ]] || continue
+      echo "$checkpoint_path"
+      return 0
+    done
+  fi
+
+  local latest_checkpoint=""
+  local latest_mtime=0
+  if [[ -d "$ROOT_DIR/.runtime/BikeKeypointSelfTrain" ]]; then
+    while IFS= read -r -d '' checkpoint_path; do
+      [[ -f "$checkpoint_path" ]] || continue
+      local checkpoint_mtime
+      checkpoint_mtime="$(checkpoint_mod_time "$checkpoint_path")"
+      if [[ -z "$latest_checkpoint" || "$checkpoint_mtime" -gt "$latest_mtime" ]]; then
+        latest_checkpoint="$checkpoint_path"
+        latest_mtime="$checkpoint_mtime"
+      fi
+    done < <(find "$ROOT_DIR/.runtime/BikeKeypointSelfTrain" -type f -name 'best.pt' -print0)
+  fi
+
+  [[ -n "$latest_checkpoint" ]] || return 1
+  echo "$latest_checkpoint"
+}
+
+package_bike_keypoint_model_if_available() {
+  local checkpoint_path=""
+  if ! checkpoint_path="$(resolve_bike_keypoint_checkpoint)"; then
+    echo "warning: Bike keypoint checkpoint not bundled (set FRICU_BIKE_KEYPOINT_CHECKPOINT or train a checkpoint under .runtime/BikeKeypointSelfTrain)" >&2
+    return 0
+  fi
+
+  local model_bundle_dir="$APP_BUNDLE/Contents/Resources/${BIKE_KEYPOINT_MODEL_DIR_NAME}"
+  mkdir -p "$model_bundle_dir"
+  cp "$checkpoint_path" "$model_bundle_dir/best.pt"
+
+  local metadata_path="${checkpoint_path%.pt}.json"
+  if [[ -f "$metadata_path" ]]; then
+    cp "$metadata_path" "$model_bundle_dir/best.json"
+  fi
+
+  echo "Packaged bike keypoint checkpoint from: $checkpoint_path" >&2
+}
+
+package_bike_keypoint_training_script() {
+  local script_path="$ROOT_DIR/scripts/bike_keypoint_selftrain.py"
+  if [[ ! -f "$script_path" ]]; then
+    echo "warning: Bike keypoint training script not found at $script_path" >&2
+    return 0
+  fi
+
+  local training_bundle_dir="$APP_BUNDLE/Contents/Resources/${BIKE_KEYPOINT_TRAINING_DIR_NAME}"
+  mkdir -p "$training_bundle_dir"
+  cp "$script_path" "$training_bundle_dir/bike_keypoint_selftrain.py"
+  echo "Packaged bike keypoint training script from: $script_path" >&2
+}
+
 if [[ ! -x "$APP_BIN" ]]; then
   echo "Missing app binary: $APP_BIN" >&2
   exit 1
@@ -150,26 +249,38 @@ cp "$APP_BIN" "$APP_EXEC"
 chmod +x "$APP_EXEC"
 cp "$INFO_PLIST_SRC" "$APP_BUNDLE/Contents/Info.plist"
 
-if [[ -d "$RESOURCE_BUNDLE" ]]; then
-  cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Fricu_FricuApp.bundle"
-  cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/Fricu_FricuApp.bundle"
+RESOURCE_BUNDLE=""
+if RESOURCE_BUNDLE="$(resolve_resource_bundle)"; then
+  RESOURCE_BUNDLE_NAME="$(basename "$RESOURCE_BUNDLE")"
+  cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/$RESOURCE_BUNDLE_NAME"
+  cp -R "$RESOURCE_BUNDLE" "$APP_BUNDLE/Contents/Resources/$RESOURCE_BUNDLE_NAME"
 fi
 
 package_motionbert_runtime_if_available
+package_bike_keypoint_model_if_available
+package_bike_keypoint_training_script
 
 mkdir -p "$DIST_DIR"
 rm -rf "$DIST_BUNDLE"
 cp "$APP_BIN" "$DIST_BIN"
 chmod +x "$DIST_BIN"
 cp -R "$APP_BUNDLE" "$DIST_BUNDLE"
+rm -f "$LEGACY_DIST_BIN"
+ln -sfn "$(basename "$DIST_BIN")" "$LEGACY_DIST_BIN"
+rm -rf "$LEGACY_DIST_BUNDLE"
+ln -sfn "$(basename "$DIST_BUNDLE")" "$LEGACY_DIST_BUNDLE"
 
 cp "$DIST_BIN" "$DIST_ROOT_BIN"
 chmod +x "$DIST_ROOT_BIN"
 rm -rf "$DIST_ROOT_BUNDLE"
 cp -R "$DIST_BUNDLE" "$DIST_ROOT_BUNDLE"
+rm -f "$LEGACY_DIST_ROOT_BIN"
+ln -sfn "$(basename "$DIST_ROOT_BIN")" "$LEGACY_DIST_ROOT_BIN"
+rm -rf "$LEGACY_DIST_ROOT_BUNDLE"
+ln -sfn "$(basename "$DIST_ROOT_BUNDLE")" "$LEGACY_DIST_ROOT_BUNDLE"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  "$ROOT_DIR/scripts/generate-app-icon.py"
+  "$ROOT_DIR/scripts/generate-app-icon.py" >/dev/null
   rm -rf "$ICONSET_DIR"
   mkdir -p "$ICONSET_DIR"
 

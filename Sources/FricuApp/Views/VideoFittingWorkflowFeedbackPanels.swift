@@ -272,6 +272,13 @@ struct VideoFittingJointRecognitionQualityPanel: View {
                 )
             }
 
+            if !summary.checkpointVisuals.isEmpty {
+                VideoFittingCrankClockModelPanel(
+                    checkpoints: summary.checkpointVisuals,
+                    tint: toneColor
+                )
+            }
+
             if !summary.angleVisuals.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L10n.choose(simplifiedChinese: "关节角度示意", english: "Joint Angle Preview"))
@@ -302,7 +309,7 @@ struct VideoFittingJointRecognitionQualityPanel: View {
                         Text(L10n.choose(simplifiedChinese: "关键点位帧", english: "Checkpoint Frames"))
                             .font(.caption.weight(.semibold))
                         Spacer()
-                        Text(L10n.choose(simplifiedChinese: "0 / 3 / 6 / 9 点", english: "0 / 3 / 6 / 9 checkpoints"))
+                        Text(L10n.choose(simplifiedChinese: "0 / 3 / 6 / 9 曲柄位", english: "0 / 3 / 6 / 9 crank positions"))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -411,12 +418,244 @@ struct VideoFittingJointRecognitionQualityPanel: View {
     }
 }
 
+private struct VideoFittingCrankClockModelPanel: View {
+    let checkpoints: [VideoFittingCheckpointVisualSummary]
+    let tint: Color
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 180), spacing: 10, alignment: .top)
+    ]
+
+    private var orderedCheckpoints: [VideoFittingCheckpointVisualSummary] {
+        CrankClockCheckpoint.allCases.compactMap { checkpoint in
+            checkpoints.first(where: { $0.checkpoint == checkpoint })
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.choose(simplifiedChinese: "BB / Crank / Pedal 模型", english: "BB / Crank / Pedal Model"))
+                        .font(.caption.weight(.semibold))
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "把公路车曲柄圆抽出来，直接定位上死点、下死点和水平曲柄位，再看对应关节夹角。",
+                            english: "Project the road-bike crank circle so top/bottom dead center and horizontal crank positions are easy to inspect with the matching joint angles."
+                        )
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            ViewThatFits {
+                HStack(alignment: .top, spacing: 14) {
+                    crankSchematic
+                        .frame(width: 240, height: 240)
+                    checkpointGrid
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    crankSchematic
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 240)
+                    checkpointGrid
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(tint.opacity(0.16), lineWidth: 1)
+        )
+    }
+
+    private var crankSchematic: some View {
+        GeometryReader { proxy in
+            let size = min(proxy.size.width, proxy.size.height)
+            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            let radius = size * 0.31
+            ZStack {
+                Circle()
+                    .stroke(tint.opacity(0.18), style: StrokeStyle(lineWidth: 2, dash: [7, 6]))
+                    .frame(width: radius * 2, height: radius * 2)
+                    .position(center)
+
+                ForEach(CrankClockCheckpoint.allCases) { checkpoint in
+                    let anchor = crankPoint(for: checkpoint.targetPhaseDeg, center: center, radius: radius)
+                    Path { path in
+                        path.move(to: center)
+                        path.addLine(to: anchor)
+                    }
+                    .stroke(clockMarkerColor(for: checkpoint).opacity(0.22), style: StrokeStyle(lineWidth: 2, dash: [5, 5]))
+
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(clockMarkerColor(for: checkpoint), lineWidth: 2))
+                        .position(anchor)
+
+                    Text(checkpoint.clockfaceTitle)
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.94), in: Capsule())
+                        .overlay(Capsule().strokeBorder(clockMarkerColor(for: checkpoint).opacity(0.18), lineWidth: 1))
+                        .foregroundStyle(clockMarkerColor(for: checkpoint))
+                        .position(labelPoint(for: checkpoint.targetPhaseDeg, center: center, radius: radius + 28))
+                }
+
+                ForEach(orderedCheckpoints) { checkpoint in
+                    let pedalPoint = crankPoint(for: checkpoint.phaseDegrees, center: center, radius: radius)
+                    let stroke = clockMarkerColor(for: checkpoint.checkpoint)
+                    Path { path in
+                        path.move(to: center)
+                        path.addLine(to: pedalPoint)
+                    }
+                    .stroke(stroke.opacity(0.88), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+
+                    Circle()
+                        .fill(stroke)
+                        .frame(width: 14, height: 14)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .position(pedalPoint)
+                }
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 24, height: 24)
+                    .overlay(Circle().stroke(tint, lineWidth: 3))
+                    .position(center)
+
+                Text("BB")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tint)
+                    .position(x: center.x, y: center.y - 24)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    private var checkpointGrid: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+            ForEach(orderedCheckpoints) { checkpoint in
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(checkpoint.checkpoint.positionTitle)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(clockMarkerColor(for: checkpoint.checkpoint))
+                            Text(checkpoint.checkpoint.clockfaceTitle)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(String(format: "P %.0f°", checkpoint.phaseDegrees))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text(
+                        L10n.choose(
+                            simplifiedChinese: "相位误差 \(String(format: "%.0f°", phaseError(for: checkpoint)))",
+                            english: "Phase error \(String(format: "%.0f°", phaseError(for: checkpoint)))"
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                    HStack(spacing: 8) {
+                        checkpointAngleChip(
+                            title: L10n.choose(simplifiedChinese: "膝", english: "K"),
+                            value: checkpoint.kneeAngleText,
+                            tint: .teal
+                        )
+                        checkpointAngleChip(
+                            title: L10n.choose(simplifiedChinese: "髋", english: "H"),
+                            value: checkpoint.hipAngleText,
+                            tint: tint
+                        )
+                        checkpointAngleChip(
+                            title: L10n.choose(simplifiedChinese: "踝", english: "A"),
+                            value: checkpoint.ankleAngleText,
+                            tint: .orange
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.white.opacity(0.66), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(clockMarkerColor(for: checkpoint.checkpoint).opacity(0.16), lineWidth: 1)
+                )
+            }
+        }
+    }
+
+    private func checkpointAngleChip(title: String, value: String, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.08), in: Capsule())
+    }
+
+    private func phaseError(for checkpoint: VideoFittingCheckpointVisualSummary) -> Double {
+        var delta = abs(checkpoint.phaseDegrees - checkpoint.checkpoint.targetPhaseDeg).truncatingRemainder(dividingBy: 360)
+        if delta > 180 {
+            delta = 360 - delta
+        }
+        return delta
+    }
+
+    private func crankPoint(for phaseDegrees: Double, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let radians = phaseDegrees * .pi / 180
+        return CGPoint(
+            x: center.x + sin(radians) * radius,
+            y: center.y - cos(radians) * radius
+        )
+    }
+
+    private func labelPoint(for phaseDegrees: Double, center: CGPoint, radius: CGFloat) -> CGPoint {
+        let radians = phaseDegrees * .pi / 180
+        return CGPoint(
+            x: center.x + sin(radians) * radius,
+            y: center.y - cos(radians) * radius
+        )
+    }
+
+    private func clockMarkerColor(for checkpoint: CrankClockCheckpoint) -> Color {
+        switch checkpoint {
+        case .point0:
+            return .green
+        case .point3:
+            return .cyan
+        case .point6:
+            return .orange
+        case .point9:
+            return .purple
+        }
+    }
+}
+
 private struct VideoFittingOverlayPlaybackPanel: View {
     let overlay: VideoFittingPlaybackOverlaySummary
     let videoURL: URL
     let tint: Color
 
     @StateObject private var playback: VideoFittingOverlayPlaybackController
+    @State private var isExpandedPlaybackPresented = false
 
     init(overlay: VideoFittingPlaybackOverlaySummary, videoURL: URL, tint: Color) {
         self.overlay = overlay
@@ -439,41 +678,45 @@ private struct VideoFittingOverlayPlaybackPanel: View {
                     .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    isExpandedPlaybackPresented = true
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption.weight(.semibold))
+                        .padding(8)
+                        .background(Color.secondary.opacity(0.10), in: Capsule())
+                }
+                .buttonStyle(.plain)
                 if let current = currentSample {
-                    HStack(spacing: 8) {
-                        metricBadge(
-                            title: L10n.choose(simplifiedChinese: "膝角", english: "Knee"),
-                            value: angleText(current.kneeAngleDegrees)
-                        )
-                        metricBadge(
-                            title: L10n.choose(simplifiedChinese: "髋角", english: "Hip"),
-                            value: angleText(current.hipAngleDegrees)
-                        )
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            metricBadge(
+                                title: L10n.choose(simplifiedChinese: "肩角", english: "Shoulder"),
+                                value: angleText(current.shoulderAngleDegrees)
+                            )
+                            metricBadge(
+                                title: L10n.choose(simplifiedChinese: "肘角", english: "Elbow"),
+                                value: angleText(current.elbowAngleDegrees)
+                            )
+                            metricBadge(
+                                title: L10n.choose(simplifiedChinese: "髋角", english: "Hip"),
+                                value: angleText(current.hipAngleDegrees)
+                            )
+                            metricBadge(
+                                title: L10n.choose(simplifiedChinese: "膝角", english: "Knee"),
+                                value: angleText(current.kneeAngleDegrees)
+                            )
+                            metricBadge(
+                                title: L10n.choose(simplifiedChinese: "踝角", english: "Ankle"),
+                                value: angleText(current.ankleAngleDegrees)
+                            )
+                        }
                     }
+                    .frame(maxWidth: 520, alignment: .trailing)
                 }
             }
 
-            ZStack(alignment: .topLeading) {
-                VideoFittingEmbeddedAVPlayerView(player: playback.player)
-                    .frame(height: 300)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(tint.opacity(0.16), lineWidth: 1)
-                    )
-
-                VideoFittingPlaybackFrameOverlay(
-                    sample: currentSample,
-                    checkpoints: overlay.checkpoints,
-                    crankCenter: overlay.crankCenter,
-                    crankRadius: overlay.crankRadius,
-                    videoSize: playback.videoDisplaySize,
-                    currentTimeSeconds: playback.currentTimeSeconds,
-                    tint: tint
-                )
-                .allowsHitTesting(false)
-                .frame(height: 300)
-            }
+            playbackSurface(height: 300, cornerRadius: 12)
 
             if !overlay.checkpoints.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -483,12 +726,14 @@ private struct VideoFittingOverlayPlaybackPanel: View {
                                 playback.seek(to: checkpoint.timeSeconds)
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(checkpoint.checkpoint.displayName) 点")
+                                    Text(checkpoint.checkpoint.positionTitle)
                                         .font(.caption.weight(.semibold))
+                                    Text(checkpoint.checkpoint.clockfaceTitle)
+                                        .font(.caption2)
                                     Text(
                                         L10n.choose(
-                                            simplifiedChinese: "膝 \(checkpoint.kneeAngleText) · 髋 \(checkpoint.hipAngleText)",
-                                            english: "Knee \(checkpoint.kneeAngleText) · Hip \(checkpoint.hipAngleText)"
+                                            simplifiedChinese: "膝 \(checkpoint.kneeAngleText) · 髋 \(checkpoint.hipAngleText) · 踝 \(checkpoint.ankleAngleText)",
+                                            english: "Knee \(checkpoint.kneeAngleText) · Hip \(checkpoint.hipAngleText) · Ankle \(checkpoint.ankleAngleText)"
                                         )
                                     )
                                     .font(.caption2)
@@ -510,6 +755,38 @@ private struct VideoFittingOverlayPlaybackPanel: View {
                 tint: tint
             )
             .frame(height: 160)
+        }
+        .sheet(isPresented: $isExpandedPlaybackPresented) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.choose(simplifiedChinese: "叠加回放（放大）", english: "Overlay Playback (Expanded)"))
+                            .font(.headline.weight(.semibold))
+                        Text(L10n.choose(
+                            simplifiedChinese: "放大回放仍保留关节角、曲柄点位和关键时钟位叠加，不再依赖系统播放器单独全屏。",
+                            english: "Expanded playback keeps the joint-angle, crank, and clock-position overlays in the same SwiftUI layer."
+                        ))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button(L10n.choose(simplifiedChinese: "关闭", english: "Close")) {
+                        isExpandedPlaybackPresented = false
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                playbackSurface(height: 560, cornerRadius: 18)
+
+                VideoFittingAngleTrendChart(
+                    overlay: overlay,
+                    currentTimeSeconds: playback.currentTimeSeconds,
+                    tint: tint
+                )
+                .frame(height: 180)
+            }
+            .padding(20)
+            .frame(minWidth: 920, minHeight: 780, alignment: .topLeading)
         }
     }
 
@@ -547,6 +824,34 @@ private struct VideoFittingOverlayPlaybackPanel: View {
     private func checkpointForeground(_ checkpoint: VideoFittingPlaybackCheckpointMarker) -> Color {
         abs(checkpoint.timeSeconds - playback.currentTimeSeconds) <= 0.18 ? tint : .primary
     }
+
+    @ViewBuilder
+    private func playbackSurface(height: CGFloat, cornerRadius: CGFloat) -> some View {
+        ZStack(alignment: .topLeading) {
+            VideoFittingEmbeddedAVPlayerView(
+                player: playback.player,
+                showsSystemFullScreenToggle: false
+            )
+            .frame(height: height)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(tint.opacity(0.16), lineWidth: 1)
+            )
+
+            VideoFittingPlaybackFrameOverlay(
+                sample: currentSample,
+                checkpoints: overlay.checkpoints,
+                crankCenter: overlay.crankCenter,
+                crankRadius: overlay.crankRadius,
+                videoSize: playback.videoDisplaySize,
+                currentTimeSeconds: playback.currentTimeSeconds,
+                tint: tint
+            )
+            .allowsHitTesting(false)
+            .frame(height: height)
+        }
+    }
 }
 
 private struct VideoFittingPlaybackFrameOverlay: View {
@@ -563,76 +868,83 @@ private struct VideoFittingPlaybackFrameOverlay: View {
             let frame = CGRect(origin: .zero, size: proxy.size)
             let imageRect = overlayImageRect(in: frame)
             ZStack(alignment: .topLeading) {
-                if let sample, let frameOverlay = frameOverlay(for: sample) {
-                    let firstPoint = point(for: frameOverlay.firstPoint, in: imageRect)
-                    let jointPoint = point(for: frameOverlay.jointPoint, in: imageRect)
-                    let thirdPoint = point(for: frameOverlay.thirdPoint, in: imageRect)
-                    let startAngle = angleDegrees(from: jointPoint, to: firstPoint)
-                    let endAngle = angleDegrees(from: jointPoint, to: thirdPoint)
-                    let sweep = normalizedSweep(start: startAngle, end: endAngle)
-                    let arcRadius = min(imageRect.width, imageRect.height) * 0.12
-
-                    Path { path in
-                        path.move(to: firstPoint)
-                        path.addLine(to: jointPoint)
-                        path.addLine(to: thirdPoint)
-                    }
-                    .stroke(tint, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-
-                    if let crankPhase = sample.crankPhaseDegrees {
-                        crankPhaseOverlay(
-                            phaseDegrees: crankPhase,
-                            crankCenter: crankCenter,
-                            crankRadius: crankRadius,
-                            pedalPoint: sample.thirdPoint,
-                            in: imageRect
-                        )
-                    }
-
-                    Path { path in
-                        path.addArc(
-                            center: jointPoint,
-                            radius: arcRadius,
-                            startAngle: .degrees(startAngle),
-                            endAngle: .degrees(startAngle + sweep),
-                            clockwise: false
-                        )
-                    }
-                    .stroke(tint.opacity(0.88), style: StrokeStyle(lineWidth: 3, lineCap: .round))
-
-                    let points = [frameOverlay.firstPoint, frameOverlay.jointPoint, frameOverlay.thirdPoint]
-                    ForEach(points.indices, id: \.self) { index in
-                        Circle()
-                            .fill(index == 1 ? tint : Color.white)
-                            .frame(width: index == 1 ? 14 : 12, height: index == 1 ? 14 : 12)
-                            .overlay(Circle().stroke(tint, lineWidth: 2))
-                            .position(point(for: points[index], in: imageRect))
-                    }
-
-                    if let kneeAngle = sample.kneeAngleDegrees {
-                        Text(String(format: "%.0f°", kneeAngle))
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.white.opacity(0.94), in: Capsule())
-                            .overlay(Capsule().strokeBorder(tint.opacity(0.18), lineWidth: 1))
-                            .position(
-                                arcLabelPoint(
-                                    center: jointPoint,
-                                    startAngle: startAngle,
-                                    sweep: sweep,
-                                    radius: arcRadius
-                                )
+                if let sample {
+                    let jointOverlays = sample.renderableJointOverlays()
+                    if !jointOverlays.isEmpty {
+                        if let crankPhase = sample.crankPhaseDegrees {
+                            crankPhaseOverlay(
+                                phaseDegrees: crankPhase,
+                                crankCenter: crankCenter,
+                                crankRadius: crankRadius,
+                                pedalPoint: sample.pedalPoint,
+                                in: imageRect
                             )
+                        }
+
+                        ForEach(jointOverlays) { overlay in
+                            let strokeColor = jointOverlayColor(for: overlay.kind)
+                            let firstPoint = point(for: overlay.firstPoint, in: imageRect)
+                            let jointPoint = point(for: overlay.jointPoint, in: imageRect)
+                            let thirdPoint = point(for: overlay.thirdPoint, in: imageRect)
+                            let startAngle = angleDegrees(from: jointPoint, to: firstPoint)
+                            let endAngle = angleDegrees(from: jointPoint, to: thirdPoint)
+                            let sweep = normalizedSweep(start: startAngle, end: endAngle)
+                            let arcRadius = jointOverlayArcRadius(for: overlay.kind, in: imageRect)
+
+                            Path { path in
+                                path.move(to: firstPoint)
+                                path.addLine(to: jointPoint)
+                                path.addLine(to: thirdPoint)
+                            }
+                            .stroke(strokeColor, style: StrokeStyle(lineWidth: overlay.kind == .hip ? 4.5 : 3.5, lineCap: .round, lineJoin: .round))
+
+                            Path { path in
+                                path.addArc(
+                                    center: jointPoint,
+                                    radius: arcRadius,
+                                    startAngle: .degrees(startAngle),
+                                    endAngle: .degrees(startAngle + sweep),
+                                    clockwise: false
+                                )
+                            }
+                            .stroke(strokeColor.opacity(0.90), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+
+                            let points = [overlay.firstPoint, overlay.jointPoint, overlay.thirdPoint]
+                            ForEach(points.indices, id: \.self) { index in
+                                Circle()
+                                    .fill(index == 1 ? strokeColor : Color.white)
+                                    .frame(width: index == 1 ? 14 : 12, height: index == 1 ? 14 : 12)
+                                    .overlay(Circle().stroke(strokeColor, lineWidth: 2))
+                                    .position(point(for: points[index], in: imageRect))
+                            }
+
+                            Text(overlayLabelText(for: overlay))
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.white.opacity(0.94), in: Capsule())
+                                .overlay(Capsule().strokeBorder(strokeColor.opacity(0.22), lineWidth: 1))
+                                .position(
+                                    arcLabelPoint(
+                                        center: jointPoint,
+                                        startAngle: startAngle,
+                                        sweep: sweep,
+                                        radius: arcRadius
+                                    )
+                                )
+                                .foregroundStyle(strokeColor)
+                        }
                     }
                 }
 
                 HStack(spacing: 6) {
                     ForEach(checkpoints) { checkpoint in
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("\(checkpoint.checkpoint.displayName) 点")
+                            Text(checkpoint.checkpoint.positionTitle)
                                 .font(.caption2.weight(.semibold))
-                            Text(checkpoint.kneeAngleText)
+                            Text(checkpoint.checkpoint.clockfaceTitle)
+                                .font(.caption2)
+                            Text("K \(checkpoint.kneeAngleText) · H \(checkpoint.hipAngleText) · A \(checkpoint.ankleAngleText)")
                                 .font(.caption2.monospacedDigit())
                         }
                         .padding(.horizontal, 8)
@@ -644,23 +956,6 @@ private struct VideoFittingPlaybackFrameOverlay: View {
                 .padding(10)
             }
         }
-    }
-
-    private func frameOverlay(for sample: VideoFittingPlaybackOverlaySample) -> VideoFittingJointAngleFrameOverlaySummary? {
-        guard
-            sample.allowsOverlayRendering(),
-            let firstPoint = sample.firstPoint,
-            let jointPoint = sample.jointPoint,
-            let thirdPoint = sample.thirdPoint
-        else {
-            return nil
-        }
-        return VideoFittingJointAngleFrameOverlaySummary(
-            frameTimeSeconds: sample.timeSeconds,
-            firstPoint: firstPoint,
-            jointPoint: jointPoint,
-            thirdPoint: thirdPoint
-        )
     }
 
     private func checkpointChipBackground(_ checkpoint: VideoFittingPlaybackCheckpointMarker) -> Color {
@@ -696,6 +991,48 @@ private struct VideoFittingPlaybackFrameOverlay: View {
         return sweep
     }
 
+    private func jointOverlayColor(for kind: VideoFittingPlaybackJointKind) -> Color {
+        switch kind {
+        case .hip:
+            return tint
+        case .knee:
+            return Color.teal
+        case .shoulder:
+            return Color.orange
+        case .elbow:
+            return Color.blue
+        }
+    }
+
+    private func jointOverlayArcRadius(for kind: VideoFittingPlaybackJointKind, in imageRect: CGRect) -> CGFloat {
+        let base = min(imageRect.width, imageRect.height) * 0.12
+        switch kind {
+        case .hip:
+            return base * 0.95
+        case .knee:
+            return base * 1.05
+        case .shoulder:
+            return base * 0.82
+        case .elbow:
+            return base * 0.72
+        }
+    }
+
+    private func overlayLabelText(for overlay: VideoFittingPlaybackJointOverlay) -> String {
+        let title: String
+        switch overlay.kind {
+        case .hip:
+            title = L10n.choose(simplifiedChinese: "髋", english: "Hip")
+        case .knee:
+            title = L10n.choose(simplifiedChinese: "膝", english: "Knee")
+        case .shoulder:
+            title = L10n.choose(simplifiedChinese: "肩", english: "Shoulder")
+        case .elbow:
+            title = L10n.choose(simplifiedChinese: "肘", english: "Elbow")
+        }
+        return "\(title) \(Int(overlay.angleDegrees.rounded()))°"
+    }
+
     private func arcLabelPoint(center: CGPoint, startAngle: Double, sweep: Double, radius: Double) -> CGPoint {
         let labelAngle = (startAngle + sweep / 2) * .pi / 180
         let offsetRadius = radius + 20
@@ -721,6 +1058,31 @@ private struct VideoFittingPlaybackFrameOverlay: View {
             in: frame
         ) {
             Path { path in
+                guard let first = geometry.orbitPoints.first else { return }
+                path.move(to: first)
+                for point in geometry.orbitPoints.dropFirst() {
+                    path.addLine(to: point)
+                }
+            }
+            .stroke(Color.red.opacity(0.28), style: StrokeStyle(lineWidth: 2, dash: [7, 6]))
+
+            ForEach(geometry.referenceMarkers, id: \.0.id) { checkpoint, point in
+                Circle()
+                    .fill(Color.white.opacity(0.95))
+                    .frame(width: 10, height: 10)
+                    .overlay(Circle().stroke(Color.red.opacity(0.55), lineWidth: 1.5))
+                    .position(point)
+
+                Text(checkpoint.displayName)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(Color.white.opacity(0.94), in: Capsule())
+                    .foregroundStyle(Color.red.opacity(0.86))
+                    .position(crankLabelPoint(center: geometry.center, marker: point))
+            }
+
+            Path { path in
                 path.move(to: geometry.center)
                 path.addLine(to: geometry.pedal)
             }
@@ -730,6 +1092,12 @@ private struct VideoFittingPlaybackFrameOverlay: View {
                 .fill(Color.red.opacity(0.92))
                 .frame(width: 8, height: 8)
                 .position(geometry.center)
+
+            Circle()
+                .fill(Color.red.opacity(0.96))
+                .frame(width: 12, height: 12)
+                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                .position(geometry.pedal)
         }
     }
 
@@ -739,26 +1107,84 @@ private struct VideoFittingPlaybackFrameOverlay: View {
         crankRadius: Double?,
         pedalPoint: VideoFittingNormalizedPoint?,
         in frame: CGRect
-    ) -> (center: CGPoint, pedal: CGPoint)? {
+    ) -> (center: CGPoint, pedal: CGPoint, orbitPoints: [CGPoint], referenceMarkers: [(CrankClockCheckpoint, CGPoint)])? {
         guard let crankCenter else { return nil }
 
         let center = point(for: crankCenter, in: frame)
         let pedal: CGPoint
+        let normalizedPedal: VideoFittingNormalizedPoint
 
         if let crankRadius, crankRadius.isFinite, crankRadius > 0.001 {
             let radians = phaseDegrees * .pi / 180
-            let normalizedPedal = VideoFittingNormalizedPoint(
+            normalizedPedal = VideoFittingNormalizedPoint(
                 x: crankCenter.x + sin(radians) * crankRadius,
                 y: crankCenter.y - cos(radians) * crankRadius
             )
             pedal = point(for: normalizedPedal, in: frame)
         } else if let pedalPoint {
+            normalizedPedal = pedalPoint
             pedal = point(for: pedalPoint, in: frame)
         } else {
             return nil
         }
 
-        return (center, pedal)
+        let orbitPoints: [CGPoint]
+        let referenceMarkers: [(CrankClockCheckpoint, CGPoint)]
+        if let crankRadius, crankRadius.isFinite, crankRadius > 0.001 {
+            orbitPoints = stride(from: 0.0, through: 360.0, by: 12.0).map { samplePhase in
+                point(
+                    for: VideoFittingNormalizedPoint(
+                        x: crankCenter.x + sin(samplePhase * .pi / 180) * crankRadius,
+                        y: crankCenter.y - cos(samplePhase * .pi / 180) * crankRadius
+                    ),
+                    in: frame
+                )
+            }
+            referenceMarkers = CrankClockCheckpoint.allCases.map { checkpoint in
+                (
+                    checkpoint,
+                    point(
+                        for: VideoFittingNormalizedPoint(
+                            x: crankCenter.x + sin(checkpoint.targetPhaseDeg * .pi / 180) * crankRadius,
+                            y: crankCenter.y - cos(checkpoint.targetPhaseDeg * .pi / 180) * crankRadius
+                        ),
+                        in: frame
+                    )
+                )
+            }
+        } else {
+            let fallbackRadius = max(18.0, hypot(normalizedPedal.x - crankCenter.x, normalizedPedal.y - crankCenter.y) * min(frame.width, frame.height))
+            orbitPoints = stride(from: 0.0, through: 360.0, by: 12.0).map { samplePhase in
+                let radians = samplePhase * .pi / 180
+                return CGPoint(
+                    x: center.x + sin(radians) * fallbackRadius,
+                    y: center.y - cos(radians) * fallbackRadius
+                )
+            }
+            referenceMarkers = CrankClockCheckpoint.allCases.map { checkpoint in
+                let radians = checkpoint.targetPhaseDeg * .pi / 180
+                return (
+                    checkpoint,
+                    CGPoint(
+                        x: center.x + sin(radians) * fallbackRadius,
+                        y: center.y - cos(radians) * fallbackRadius
+                    )
+                )
+            }
+        }
+
+        return (center, pedal, orbitPoints, referenceMarkers)
+    }
+
+    private func crankLabelPoint(center: CGPoint, marker: CGPoint) -> CGPoint {
+        let vectorX = marker.x - center.x
+        let vectorY = marker.y - center.y
+        let length = max(1, hypot(vectorX, vectorY))
+        let offset = CGFloat(16)
+        return CGPoint(
+            x: marker.x + vectorX / length * offset,
+            y: marker.y + vectorY / length * offset
+        )
     }
 }
 
@@ -776,6 +1202,7 @@ private struct VideoFittingAngleTrendChart: View {
                 HStack(spacing: 10) {
                     legend(tint: tint, text: L10n.choose(simplifiedChinese: "膝角", english: "Knee"))
                     legend(tint: .cyan, text: L10n.choose(simplifiedChinese: "髋角", english: "Hip"))
+                    legend(tint: .green, text: L10n.choose(simplifiedChinese: "踝角", english: "Ankle"))
                 }
             }
 
@@ -806,6 +1233,15 @@ private struct VideoFittingAngleTrendChart: View {
                         domain: domain
                     )
                     .stroke(Color.cyan, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+
+                    linePath(
+                        values: overlay.samples.compactMap { sample in
+                            sample.ankleAngleDegrees.map { (sample.timeSeconds, $0) }
+                        },
+                        in: frame,
+                        domain: domain
+                    )
+                    .stroke(Color.green, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
 
                     Path { path in
                         let x = xPosition(for: currentTimeSeconds, in: frame)
@@ -845,7 +1281,7 @@ private struct VideoFittingAngleTrendChart: View {
 
     private var yDomain: ClosedRange<Double> {
         let values = overlay.samples.flatMap { sample in
-            [sample.kneeAngleDegrees, sample.hipAngleDegrees].compactMap { $0 }
+            [sample.kneeAngleDegrees, sample.hipAngleDegrees, sample.ankleAngleDegrees].compactMap { $0 }
         }
         let minimum = values.min() ?? 0
         let maximum = values.max() ?? 180
@@ -892,11 +1328,16 @@ private final class VideoFittingOverlayPlaybackController: ObservableObject {
     @Published var videoDisplaySize: CGSize?
 
     private var timeObserver: Any?
+    private var videoDisplaySizeTask: Task<Void, Never>?
 
     init(videoURL: URL) {
         player = AVPlayer(url: videoURL)
         player.actionAtItemEnd = .pause
-        videoDisplaySize = Self.loadVideoDisplaySize(from: videoURL)
+        videoDisplaySizeTask = Task { [weak self] in
+            let size = await Self.loadVideoDisplaySize(from: videoURL)
+            guard !Task.isCancelled else { return }
+            await self?.applyVideoDisplaySize(size)
+        }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
             queue: .main
@@ -906,6 +1347,7 @@ private final class VideoFittingOverlayPlaybackController: ObservableObject {
     }
 
     deinit {
+        videoDisplaySizeTask?.cancel()
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
         }
@@ -917,10 +1359,21 @@ private final class VideoFittingOverlayPlaybackController: ObservableObject {
         player.play()
     }
 
-    private static func loadVideoDisplaySize(from url: URL) -> CGSize? {
+    @MainActor
+    private func applyVideoDisplaySize(_ size: CGSize?) {
+        videoDisplaySize = size
+    }
+
+    private static func loadVideoDisplaySize(from url: URL) async -> CGSize? {
         let asset = AVURLAsset(url: url)
-        guard let track = asset.tracks(withMediaType: .video).first else { return nil }
-        let transformed = track.naturalSize.applying(track.preferredTransform)
+        guard
+            let track = try? await asset.loadTracks(withMediaType: .video).first,
+            let naturalSize = try? await track.load(.naturalSize),
+            let preferredTransform = try? await track.load(.preferredTransform)
+        else {
+            return nil
+        }
+        let transformed = naturalSize.applying(preferredTransform)
         return CGSize(width: abs(transformed.width), height: abs(transformed.height))
     }
 }
@@ -928,11 +1381,12 @@ private final class VideoFittingOverlayPlaybackController: ObservableObject {
 #if os(macOS)
 private struct VideoFittingEmbeddedAVPlayerView: NSViewRepresentable {
     let player: AVPlayer
+    let showsSystemFullScreenToggle: Bool
 
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
         view.controlsStyle = .floating
-        view.showsFullScreenToggleButton = true
+        view.showsFullScreenToggleButton = showsSystemFullScreenToggle
         view.videoGravity = .resizeAspect
         view.player = player
         return view
@@ -941,11 +1395,13 @@ private struct VideoFittingEmbeddedAVPlayerView: NSViewRepresentable {
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
         nsView.player = player
         nsView.videoGravity = .resizeAspect
+        nsView.showsFullScreenToggleButton = showsSystemFullScreenToggle
     }
 }
 #else
 private struct VideoFittingEmbeddedAVPlayerView: UIViewControllerRepresentable {
     let player: AVPlayer
+    let showsSystemFullScreenToggle: Bool
 
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
@@ -957,6 +1413,7 @@ private struct VideoFittingEmbeddedAVPlayerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
         uiViewController.player = player
         uiViewController.videoGravity = .resizeAspect
+        let _ = showsSystemFullScreenToggle
     }
 }
 #endif
@@ -1336,6 +1793,19 @@ private struct VideoFittingJointAngleVisualCard: View {
                 arcRadius: size.width * 0.11,
                 labelPoint: CGPoint(x: joint.x + size.width * 0.12, y: joint.y - size.height * 0.20)
             )
+        case .ankle:
+            let joint = CGPoint(x: size.width * 0.50, y: size.height * 0.72)
+            let first = point(from: joint, length: size.width * 0.20, degrees: 230)
+            let third = point(from: joint, length: size.width * 0.22, degrees: 230 + angle)
+            return JointAngleIllustrationLayout(
+                firstPoint: first,
+                jointPoint: joint,
+                thirdPoint: third,
+                startAngle: 230,
+                endAngle: 230 + angle,
+                arcRadius: size.width * 0.10,
+                labelPoint: CGPoint(x: joint.x + size.width * 0.11, y: joint.y - size.height * 0.18)
+            )
         }
     }
 
@@ -1508,9 +1978,9 @@ private struct VideoFittingCheckpointVisualCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(summary.checkpoint.displayName) 点")
+                    Text(summary.checkpoint.positionTitle)
                         .font(.caption.weight(.semibold))
-                    Text(String(format: "T %.1fs · P %.0f°", summary.frameTimeSeconds, summary.phaseDegrees))
+                    Text("\(summary.checkpoint.clockfaceTitle) · \(String(format: "T %.1fs · P %.0f°", summary.frameTimeSeconds, summary.phaseDegrees))")
                         .font(.caption2.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -1538,6 +2008,7 @@ private struct VideoFittingCheckpointVisualCard: View {
             HStack(spacing: 10) {
                 labelChip(title: L10n.choose(simplifiedChinese: "膝角", english: "Knee"), value: summary.kneeAngleText)
                 labelChip(title: L10n.choose(simplifiedChinese: "髋角", english: "Hip"), value: summary.hipAngleText)
+                labelChip(title: L10n.choose(simplifiedChinese: "踝角", english: "Ankle"), value: summary.ankleAngleText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

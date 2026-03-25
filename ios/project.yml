@@ -8,7 +8,7 @@ configs:
   Release: release
 settings:
   base:
-    PRODUCT_NAME: Fricu
+    PRODUCT_NAME: "fr-training"
     PRODUCT_BUNDLE_IDENTIFIER: com.fricu.app.ios
     SWIFT_VERSION: 5.10
     CURRENT_PROJECT_VERSION: 1

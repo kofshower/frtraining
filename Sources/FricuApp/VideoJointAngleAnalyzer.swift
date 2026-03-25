@@ -35,9 +35,9 @@ enum VideoPoseEstimationModel: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .auto:
-            return L10n.choose(simplifiedChinese: "自动（优先 MotionBERT 3D）", english: "Auto (prefer MotionBERT 3D)")
+            return L10n.choose(simplifiedChinese: "自动（优先 MotionAGFormer-L 3D）", english: "Auto (prefer MotionAGFormer-L 3D)")
         case .mmposeMotionBERT:
-            return L10n.choose(simplifiedChinese: "MotionBERT 3D（MMPose）", english: "MotionBERT 3D (MMPose)")
+            return L10n.choose(simplifiedChinese: "MotionAGFormer-L 3D", english: "MotionAGFormer-L 3D")
         case .mediaPipeBlazePoseGHUM:
             return L10n.choose(simplifiedChinese: "BlazePose GHUM（GitHub/MediaPipe）", english: "BlazePose GHUM (GitHub/MediaPipe)")
         case .appleVision:
@@ -46,11 +46,11 @@ enum VideoPoseEstimationModel: String, CaseIterable, Identifiable {
     }
 }
 
-/// Locates a bundled Python runtime packaged inside the desktop app for MotionBERT inference.
+/// Locates a bundled Python runtime packaged inside the desktop app for external 3D pose inference.
 struct MotionBERTRuntimeLocator {
     static let runtimeDirectoryName = "MotionBERTRuntime"
 
-    /// Resolves the packaged runtime root when the build includes a bundled MotionBERT environment.
+    /// Resolves the packaged runtime root when the build includes a bundled external 3D environment.
     func resolveBundledRuntimeRootURL(
         bundle: Bundle = .main,
         fallbackSearchRoots: [URL] = []
@@ -78,7 +78,7 @@ struct MotionBERTRuntimeLocator {
         return nil
     }
 
-    /// Resolves the bundled python executable path inside the packaged MotionBERT runtime.
+    /// Resolves the bundled python executable path inside the packaged external 3D runtime.
     func resolveBundledPythonPath(
         bundle: Bundle = .main,
         fallbackSearchRoots: [URL] = []
@@ -120,6 +120,123 @@ struct MotionBERTRuntimeLocator {
             return nil
         }
         return cacheRoot
+    }
+}
+
+struct BikeKeypointModelLocator {
+    static let modelDirectoryName = "BikeKeypointModel"
+    static let preferredCheckpointDefaultsKey = "fricu.bike.keypoint.checkpoint.override.v1"
+
+    func resolveBundledModelRootURL(
+        bundle: Bundle = .main,
+        fallbackSearchRoots: [URL] = []
+    ) -> URL? {
+        let fm = FileManager.default
+        let bundledCandidates: [URL] = [
+            bundle.resourceURL?.appendingPathComponent(Self.modelDirectoryName, isDirectory: true),
+            bundle.bundleURL.appendingPathComponent("Contents/Resources/\(Self.modelDirectoryName)", isDirectory: true)
+        ].compactMap { $0 }
+
+        for root in fallbackSearchRoots {
+            let rootCandidates = [
+                root.appendingPathComponent(Self.modelDirectoryName, isDirectory: true),
+                root
+            ]
+            for candidate in rootCandidates where fm.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        for candidate in bundledCandidates where fm.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+
+        return nil
+    }
+
+    func resolveBundledCheckpointURL(
+        bundle: Bundle = .main,
+        fallbackSearchRoots: [URL] = []
+    ) -> URL? {
+        let fm = FileManager.default
+        guard let modelRoot = resolveBundledModelRootURL(bundle: bundle, fallbackSearchRoots: fallbackSearchRoots) else {
+            return nil
+        }
+
+        let candidates = [
+            modelRoot.appendingPathComponent("best.pt", isDirectory: false),
+            modelRoot.appendingPathComponent("checkpoint.pt", isDirectory: false)
+        ]
+
+        for candidate in candidates where fm.fileExists(atPath: candidate.path) {
+            return candidate
+        }
+        return nil
+    }
+
+    func resolveCheckpointURL(
+        bundle: Bundle = .main,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        currentDirectoryPath: String = FileManager.default.currentDirectoryPath,
+        fallbackSearchRoots: [URL] = []
+    ) -> URL? {
+        let fm = FileManager.default
+
+        if let explicitCheckpoint = environment["FRICU_BIKE_KEYPOINT_CHECKPOINT"] {
+            let url = URL(fileURLWithPath: explicitCheckpoint)
+            if fm.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+
+        if let preferredCheckpoint = UserDefaults.standard.string(forKey: Self.preferredCheckpointDefaultsKey) {
+            let url = URL(fileURLWithPath: preferredCheckpoint)
+            if fm.fileExists(atPath: url.path) {
+                return url
+            }
+        }
+
+        if let bundled = resolveBundledCheckpointURL(bundle: bundle, fallbackSearchRoots: fallbackSearchRoots) {
+            return bundled
+        }
+
+        if let explicitModelDirectory = environment["FRICU_BIKE_KEYPOINT_MODEL_DIR"] {
+            let candidate = URL(fileURLWithPath: explicitModelDirectory).appendingPathComponent("best.pt", isDirectory: false)
+            if fm.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+
+        let searchRoots = fallbackSearchRoots + [
+            URL(fileURLWithPath: currentDirectoryPath, isDirectory: true)
+                .appendingPathComponent(".runtime/BikeKeypointSelfTrain", isDirectory: true),
+            URL(fileURLWithPath: currentDirectoryPath, isDirectory: true)
+                .appendingPathComponent("runtime/BikeKeypointSelfTrain", isDirectory: true)
+        ]
+
+        var newestMatch: (url: URL, modificationDate: Date)?
+        for root in searchRoots where fm.fileExists(atPath: root.path) {
+            let enumerator = fm.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+            while let fileURL = enumerator?.nextObject() as? URL {
+                guard fileURL.lastPathComponent == "best.pt" else { continue }
+                guard
+                    let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey]),
+                    values.isRegularFile == true
+                else {
+                    continue
+                }
+                let modificationDate = values.contentModificationDate ?? .distantPast
+                if newestMatch == nil || modificationDate > newestMatch?.modificationDate ?? .distantPast {
+                    newestMatch = (fileURL, modificationDate)
+                }
+            }
+        }
+
+        return newestMatch?.url
     }
 }
 
@@ -179,6 +296,32 @@ enum CrankClockCheckpoint: String, CaseIterable, Identifiable {
         }
     }
 
+    var positionTitle: String {
+        switch self {
+        case .point0:
+            return L10n.choose(simplifiedChinese: "上死点", english: "Top Dead Center")
+        case .point3:
+            return L10n.choose(simplifiedChinese: "右水平", english: "Right Horizontal")
+        case .point6:
+            return L10n.choose(simplifiedChinese: "下死点", english: "Bottom Dead Center")
+        case .point9:
+            return L10n.choose(simplifiedChinese: "左水平", english: "Left Horizontal")
+        }
+    }
+
+    var clockfaceTitle: String {
+        switch self {
+        case .point0:
+            return L10n.choose(simplifiedChinese: "12 点位", english: "12 o'clock")
+        case .point3:
+            return L10n.choose(simplifiedChinese: "3 点位", english: "3 o'clock")
+        case .point6:
+            return L10n.choose(simplifiedChinese: "6 点位", english: "6 o'clock")
+        case .point9:
+            return L10n.choose(simplifiedChinese: "9 点位", english: "9 o'clock")
+        }
+    }
+
     // 0 点=0°（上止点），3 点=90°（前水平），6 点=180°（下止点），9 点=270°（后水平）。
     var targetPhaseDeg: Double {
         switch self {
@@ -214,6 +357,7 @@ struct SideCheckpointSnapshot: Identifiable {
     let phaseErrorDeg: Double
     let kneeAngleDeg: Double?
     let hipAngleDeg: Double?
+    var ankleAngleDeg: Double? = nil
 
     var id: String { checkpoint.rawValue }
 }
@@ -394,18 +538,86 @@ struct VideoJointAngleSample: Identifiable {
     let confidence: Double
     let kneeAngleDeg: Double?
     let hipAngleDeg: Double?
+    var ankleAngleDeg: Double? = nil
+    var shoulderAngleDeg: Double? = nil
+    var elbowAngleDeg: Double? = nil
     let crankPhaseDeg: Double?
 
     let leftShoulder: PoseJointPoint?
+    let leftElbow: PoseJointPoint?
+    let leftWrist: PoseJointPoint?
     let leftHip: PoseJointPoint?
     let leftKnee: PoseJointPoint?
     let leftAnkle: PoseJointPoint?
     let rightShoulder: PoseJointPoint?
+    let rightElbow: PoseJointPoint?
+    let rightWrist: PoseJointPoint?
     let rightHip: PoseJointPoint?
     let rightKnee: PoseJointPoint?
     let rightAnkle: PoseJointPoint?
     let leftToe: PoseJointPoint?
     let rightToe: PoseJointPoint?
+    let bikeBottomBracket: PoseJointPoint?
+    let bikeCrankEnd: PoseJointPoint?
+    let bikePedalCenter: PoseJointPoint?
+
+    init(
+        id: Int,
+        timeSeconds: Double,
+        side: VideoPoseBodySide,
+        confidence: Double,
+        kneeAngleDeg: Double?,
+        hipAngleDeg: Double?,
+        ankleAngleDeg: Double? = nil,
+        shoulderAngleDeg: Double? = nil,
+        elbowAngleDeg: Double? = nil,
+        crankPhaseDeg: Double?,
+        leftShoulder: PoseJointPoint?,
+        leftElbow: PoseJointPoint? = nil,
+        leftWrist: PoseJointPoint? = nil,
+        leftHip: PoseJointPoint?,
+        leftKnee: PoseJointPoint?,
+        leftAnkle: PoseJointPoint?,
+        rightShoulder: PoseJointPoint?,
+        rightElbow: PoseJointPoint? = nil,
+        rightWrist: PoseJointPoint? = nil,
+        rightHip: PoseJointPoint?,
+        rightKnee: PoseJointPoint?,
+        rightAnkle: PoseJointPoint?,
+        leftToe: PoseJointPoint?,
+        rightToe: PoseJointPoint?,
+        bikeBottomBracket: PoseJointPoint? = nil,
+        bikeCrankEnd: PoseJointPoint? = nil,
+        bikePedalCenter: PoseJointPoint? = nil
+    ) {
+        self.id = id
+        self.timeSeconds = timeSeconds
+        self.side = side
+        self.confidence = confidence
+        self.kneeAngleDeg = kneeAngleDeg
+        self.hipAngleDeg = hipAngleDeg
+        self.ankleAngleDeg = ankleAngleDeg
+        self.shoulderAngleDeg = shoulderAngleDeg
+        self.elbowAngleDeg = elbowAngleDeg
+        self.crankPhaseDeg = crankPhaseDeg
+        self.leftShoulder = leftShoulder
+        self.leftElbow = leftElbow
+        self.leftWrist = leftWrist
+        self.leftHip = leftHip
+        self.leftKnee = leftKnee
+        self.leftAnkle = leftAnkle
+        self.rightShoulder = rightShoulder
+        self.rightElbow = rightElbow
+        self.rightWrist = rightWrist
+        self.rightHip = rightHip
+        self.rightKnee = rightKnee
+        self.rightAnkle = rightAnkle
+        self.leftToe = leftToe
+        self.rightToe = rightToe
+        self.bikeBottomBracket = bikeBottomBracket
+        self.bikeCrankEnd = bikeCrankEnd
+        self.bikePedalCenter = bikePedalCenter
+    }
 }
 
 struct VideoJointAngleAnalysisResult {
@@ -423,6 +635,7 @@ struct VideoJointAngleAnalysisResult {
     let used3DAngleFrameCount: Int
     let kneeStats: JointAngleStats?
     let hipStats: JointAngleStats?
+    var ankleStats: JointAngleStats? = nil
     let cadenceCycles: [CadenceCycleSegment]
     let cadenceSummary: CadenceCycleSummary?
     let longDurationStability: LongDurationStabilityStats?
@@ -436,15 +649,52 @@ struct VideoJointAngleAnalysisResult {
     let rearAutoAssessment: RearStabilityAssessment?
     let adjustmentPlan: [BikeFitAdjustmentStep]
     let fittingHints: [String]
+    var bikeKeypointModelText: String? = nil
+    var bikeKeypointFallbackNote: String? = nil
 }
 
 struct External3DAngleSample {
     let timeSeconds: Double
     let leftKneeAngleDeg: Double?
     let leftHipAngleDeg: Double?
+    var leftAnkleAngleDeg: Double? = nil
     let rightKneeAngleDeg: Double?
     let rightHipAngleDeg: Double?
+    var rightAnkleAngleDeg: Double? = nil
     let confidence: Double
+}
+
+struct BikeKeypointSample {
+    let id: Int
+    let timeSeconds: Double
+    let confidence: Double
+    let bbCenter: PoseJointPoint?
+    let crankEnd: PoseJointPoint?
+    let pedalCenter: PoseJointPoint?
+}
+
+struct BikeKeypointSummary {
+    let bbCenter: PoseJointPoint?
+    let radius: Double?
+    let fitRMS: Double?
+}
+
+struct VideoJointAngleAnalysisProgressUpdate: Sendable {
+    let message: String
+}
+
+actor VideoJointAngleAnalysisProgressReporter {
+    typealias Handler = @MainActor @Sendable (VideoJointAngleAnalysisProgressUpdate) -> Void
+
+    private let handler: Handler
+
+    init(handler: @escaping Handler) {
+        self.handler = handler
+    }
+
+    func publish(_ update: VideoJointAngleAnalysisProgressUpdate) async {
+        await handler(update)
+    }
 }
 
 struct VideoJointAngleAnalyzer {
@@ -454,9 +704,17 @@ struct VideoJointAngleAnalyzer {
         videoURL: URL,
         maxSamples: Int = 180,
         requestedView: CyclingCameraView = .side,
-        preferredModel: VideoPoseEstimationModel = .auto
+        preferredModel: VideoPoseEstimationModel = .auto,
+        progressReporter: VideoJointAngleAnalysisProgressReporter? = nil
     ) async throws -> VideoJointAngleAnalysisResult {
         try await Task.detached(priority: .utility) {
+            await Self.publishProgress(
+                progressReporter,
+                message: L10n.choose(
+                    simplifiedChinese: "正在读取视频元数据并规划识别流程...",
+                    english: "Reading video metadata and planning the recognition workflow..."
+                )
+            )
             let asset = AVURLAsset(url: videoURL)
             let durationTime = try await asset.load(.duration)
             let durationSeconds = CMTimeGetSeconds(durationTime)
@@ -474,6 +732,13 @@ struct VideoJointAngleAnalyzer {
             let estimatedFrameCount = max(1, Int((durationSeconds * nominalFPS).rounded()))
             let targetFrameCount = max(1, min(preferredSampleCount, estimatedFrameCount))
             let interval = durationSeconds / Double(targetFrameCount)
+            await Self.publishProgress(
+                progressReporter,
+                message: L10n.choose(
+                    simplifiedChinese: "视频已就绪：源视频约 \(Self.formattedProgressNumber(nominalFPS)) fps，计划抽样 \(targetFrameCount) 帧。",
+                    english: "Video ready: source is about \(Self.formattedProgressNumber(nominalFPS)) fps and \(targetFrameCount) frames will be sampled."
+                )
+            )
 
             var samples: [VideoJointAngleSample] = []
             samples.reserveCapacity(targetFrameCount)
@@ -481,16 +746,31 @@ struct VideoJointAngleAnalyzer {
             var modelFallbackNote: String?
             var modelRuntimeHints: [String] = []
             var used3DAngleFrameCount = 0
+            var bikeKeypointModelText: String?
+            var bikeKeypointFallbackNote: String?
             let allowsExternalPythonBackends = Self.allowsExternalPythonPoseBackends
             let attemptOrder = Self.poseModelAttemptOrder(
                 preferredModel: preferredModel,
                 allowsExternalPythonBackends: allowsExternalPythonBackends
             )
+            let usesExternal3DLift = attemptOrder.contains(.mmposeMotionBERT)
             let basePoseOrder = attemptOrder.filter { $0 != .mmposeMotionBERT }
 
             for candidate in basePoseOrder {
                 switch candidate {
                 case .mediaPipeBlazePoseGHUM:
+                    await Self.publishProgress(
+                        progressReporter,
+                        message: usesExternal3DLift
+                            ? L10n.choose(
+                                simplifiedChinese: "正在为 MotionAGFormer-L 准备 2D 骨架底稿：运行 BlazePose GHUM...",
+                                english: "Preparing the 2D skeleton for MotionAGFormer-L by running BlazePose GHUM..."
+                            )
+                            : L10n.choose(
+                                simplifiedChinese: "正在运行 BlazePose GHUM 2D 骨点识别...",
+                                english: "Running BlazePose GHUM 2D pose recognition..."
+                            )
+                    )
                     if let mediaPipeResult = try? MediaPipePoseEstimator.sampleVideo(
                         videoURL: videoURL,
                         maxSamples: targetFrameCount
@@ -498,22 +778,71 @@ struct VideoJointAngleAnalyzer {
                         samples = mediaPipeResult.samples
                         modelRuntimeHints = mediaPipeResult.warnings
                         modelUsed = .mediaPipeBlazePoseGHUM
+                        await Self.publishProgress(
+                            progressReporter,
+                            message: usesExternal3DLift
+                                ? L10n.choose(
+                                    simplifiedChinese: "MotionAGFormer-L 的 2D 骨架底稿已准备完成，保留 \(samples.count) 帧有效骨点。",
+                                    english: "The 2D skeleton draft for MotionAGFormer-L is ready with \(samples.count) valid frames."
+                                )
+                                : L10n.choose(
+                                    simplifiedChinese: "BlazePose GHUM 已完成，保留 \(samples.count) 帧有效骨点。",
+                                    english: "BlazePose GHUM finished with \(samples.count) valid frames."
+                                )
+                        )
                     } else if preferredModel == .mediaPipeBlazePoseGHUM {
                         modelFallbackNote = L10n.choose(
                             simplifiedChinese: "BlazePose GHUM 不可用，已回退到 Apple Vision。",
                             english: "BlazePose GHUM is unavailable. Fell back to Apple Vision."
                         )
+                        await Self.publishProgress(
+                            progressReporter,
+                            message: modelFallbackNote ?? ""
+                        )
+                    } else if usesExternal3DLift {
+                        await Self.publishProgress(
+                            progressReporter,
+                            message: L10n.choose(
+                                simplifiedChinese: "BlazePose GHUM 当前不可用，改用 Apple Vision 生成 2D 骨架底稿，随后仍会继续尝试 MotionAGFormer-L 3D。",
+                                english: "BlazePose GHUM is currently unavailable. Apple Vision will generate the 2D skeleton draft first, and MotionAGFormer-L 3D will still be attempted afterwards."
+                            )
+                        )
                     }
                 case .appleVision:
-                    let visionResult = try Self.sampleVideoWithAppleVision(
+                    await Self.publishProgress(
+                        progressReporter,
+                        message: usesExternal3DLift
+                            ? L10n.choose(
+                                simplifiedChinese: "正在为 MotionAGFormer-L 生成本地 2D 骨架底稿：逐帧运行 Apple Vision...",
+                                english: "Generating the local 2D skeleton draft for MotionAGFormer-L with Apple Vision frame by frame..."
+                            )
+                            : L10n.choose(
+                                simplifiedChinese: "正在逐帧运行 Apple Vision 骨点识别...",
+                                english: "Running Apple Vision pose recognition frame by frame..."
+                            )
+                    )
+                    let visionResult = try await Self.sampleVideoWithAppleVision(
                         asset: asset,
                         durationSeconds: durationSeconds,
                         interval: interval,
-                        targetFrameCount: targetFrameCount
+                        targetFrameCount: targetFrameCount,
+                        progressReporter: progressReporter
                     )
                     samples = visionResult.samples
                     used3DAngleFrameCount = visionResult.used3DAngleFrameCount
                     modelUsed = .appleVision
+                    await Self.publishProgress(
+                        progressReporter,
+                        message: usesExternal3DLift
+                            ? L10n.choose(
+                                simplifiedChinese: "MotionAGFormer-L 的本地 2D 骨架底稿已完成，保留 \(samples.count) 帧有效骨点。",
+                                english: "The local 2D skeleton draft for MotionAGFormer-L is ready with \(samples.count) valid frames."
+                            )
+                            : L10n.choose(
+                                simplifiedChinese: "Apple Vision 已完成，保留 \(samples.count) 帧有效骨点。",
+                                english: "Apple Vision finished with \(samples.count) valid frames."
+                            )
+                    )
                 case .auto, .mmposeMotionBERT:
                     break
                 }
@@ -529,9 +858,24 @@ struct VideoJointAngleAnalyzer {
 
             if attemptOrder.contains(.mmposeMotionBERT) {
                 do {
-                    let motionBERTResult = try MMPoseMotionBERTEstimator.sampleVideo(
+                    await Self.publishProgress(
+                        progressReporter,
+                        message: L10n.choose(
+                            simplifiedChinese: "正在启动 MotionAGFormer-L 3D 推理...",
+                            english: "Starting MotionAGFormer-L 3D inference..."
+                        )
+                    )
+                    let motionBERTResult = try await MMPoseMotionBERTEstimator.sampleVideo(
                         videoURL: videoURL,
-                        maxSamples: targetFrameCount
+                        maxSamples: targetFrameCount,
+                        progressReporter: progressReporter
+                    )
+                    await Self.publishProgress(
+                        progressReporter,
+                        message: L10n.choose(
+                            simplifiedChinese: "MotionAGFormer-L 已返回结果，正在融合 3D 关节角...",
+                            english: "MotionAGFormer-L returned results. Merging 3D joint angles..."
+                        )
                     )
                     let merged = Self.mergeExternal3DAngles(
                         into: samples,
@@ -545,40 +889,120 @@ struct VideoJointAngleAnalyzer {
                         modelRuntimeHints.append(contentsOf: motionBERTResult.warnings)
                         modelRuntimeHints.append(
                             L10n.choose(
-                                simplifiedChinese: "3D 角度由 MotionBERT 提供，叠加可视化与踏频相位仍依赖 2D 关键点。",
-                                english: "3D angles come from MotionBERT; overlay rendering and crank-phase detection still rely on 2D keypoints."
+                                simplifiedChinese: "MotionAGFormer-L 继续负责外部 3D 提升，但侧视 fitting 页面中的膝/髋/踝角会统一回视频平面的投影定义，确保曲柄点位与同一条腿的几何角度保持一致。",
+                                english: "MotionAGFormer-L still provides the external 3D lift, but the side-view fitting knee/hip/ankle angles are normalized back to the video-plane projected definitions so crank checkpoints stay aligned with the same leg's geometry."
+                            )
+                        )
+                        await Self.publishProgress(
+                            progressReporter,
+                            message: L10n.choose(
+                                simplifiedChinese: "MotionAGFormer-L 3D 融合完成，匹配 \(merged.matchedFrameCount) 帧。",
+                                english: "MotionAGFormer-L 3D merge completed with \(merged.matchedFrameCount) matched frames."
                             )
                         )
                     } else if preferredModel == .mmposeMotionBERT {
                         modelFallbackNote = L10n.choose(
-                            simplifiedChinese: "MotionBERT 返回的可匹配角度帧太少，已回退到当前 2D/本地角度链路。",
-                            english: "MotionBERT returned too few matched 3D-angle frames. Fell back to the current 2D/local angle pipeline."
+                            simplifiedChinese: "MotionAGFormer-L 返回的可匹配角度帧太少，已回退到当前 2D/本地角度链路。",
+                            english: "MotionAGFormer-L returned too few matched 3D-angle frames. Fell back to the current 2D/local angle pipeline."
+                        )
+                        await Self.publishProgress(
+                            progressReporter,
+                            message: modelFallbackNote ?? ""
                         )
                     }
                 } catch {
                     if preferredModel == .mmposeMotionBERT {
                         modelFallbackNote = L10n.choose(
-                            simplifiedChinese: "MotionBERT（MMPose）当前不可用，已回退到本地后端。桌面发版会优先使用 app 内置运行时；开发环境未打包时才回退到本机 Python。",
-                            english: "MotionBERT (MMPose) is currently unavailable. Fell back to the local backend. Desktop releases prefer the app-bundled runtime; development builds fall back to a local Python runtime only when it is not packaged."
+                            simplifiedChinese: "MotionAGFormer-L 当前不可用，已回退到本地后端。桌面发版会优先使用 app 内置运行时；开发环境未打包时才回退到本机 Python。",
+                            english: "MotionAGFormer-L is currently unavailable. Fell back to the local backend. Desktop releases prefer the app-bundled runtime; development builds fall back to a local Python runtime only when it is not packaged."
+                        )
+                        await Self.publishProgress(
+                            progressReporter,
+                            message: modelFallbackNote ?? ""
                         )
                     }
                 }
             } else if preferredModel == .mmposeMotionBERT {
                 modelFallbackNote = L10n.choose(
-                    simplifiedChinese: "当前平台不支持直接执行 MotionBERT Python 后端，已回退到 Apple Vision。",
-                    english: "The current platform cannot run the MotionBERT Python backend directly. Fell back to Apple Vision."
+                    simplifiedChinese: "当前平台不支持直接执行 MotionAGFormer-L Python 后端，已回退到 Apple Vision。",
+                    english: "The current platform cannot run the MotionAGFormer-L Python backend directly. Fell back to Apple Vision."
+                )
+                await Self.publishProgress(
+                    progressReporter,
+                    message: modelFallbackNote ?? ""
                 )
             }
 
+            await Self.publishProgress(
+                progressReporter,
+                message: L10n.choose(
+                    simplifiedChinese: "正在计算关节指标、踏频周期与 fitting 建议...",
+                    english: "Computing joint metrics, cadence cycles, and fitting suggestions..."
+                )
+            )
             let dominantSide = Self.dominantSide(from: samples)
             let resolvedView = Self.resolveView(requested: requestedView, from: samples)
-            let crankEstimate = resolvedView == .side
-                ? Self.estimateCrankCenter(samples: samples, side: dominantSide)
-                : nil
+            if resolvedView == .side {
+                samples = Self.normalizeSideViewPlanarAngles(
+                    in: samples,
+                    preferredSide: dominantSide
+                )
+            }
+
+            var crankEstimate: (center: PoseJointPoint, radius: Double)?
+            if resolvedView == .side, allowsExternalPythonBackends {
+                do {
+                    await Self.publishProgress(
+                        progressReporter,
+                        message: L10n.choose(
+                            simplifiedChinese: "正在使用公路车 BB/Crank/Pedal 模型细化曲柄几何...",
+                            english: "Refining crank geometry with the road-bike BB/Crank/Pedal model..."
+                        )
+                    )
+                    let bikeKeypointResult = try await BikeKeypointEstimator.sampleVideo(
+                        videoURL: videoURL,
+                        maxSamples: targetFrameCount,
+                        progressReporter: progressReporter
+                    )
+                    let merged = Self.mergeBikeKeypoints(
+                        into: samples,
+                        from: bikeKeypointResult.samples,
+                        toleranceSeconds: max(interval * 0.9, 0.1)
+                    )
+                    if merged.matchedFrameCount >= max(8, samples.count / 4) {
+                        samples = merged.samples
+                        if let summaryEstimate = Self.crankEstimate(from: bikeKeypointResult.summary) {
+                            crankEstimate = summaryEstimate
+                        }
+                        bikeKeypointModelText = bikeKeypointResult.modelText
+                        modelRuntimeHints.append(contentsOf: bikeKeypointResult.warnings)
+                        modelRuntimeHints.append(
+                            L10n.choose(
+                                simplifiedChinese: "\(bikeKeypointResult.modelText) 已细化 \(merged.matchedFrameCount) 帧 BB / 曲柄 / 脚踏位置。",
+                                english: "\(bikeKeypointResult.modelText) refined the BB / crank / pedal geometry for \(merged.matchedFrameCount) frames."
+                            )
+                        )
+                    } else {
+                        bikeKeypointFallbackNote = L10n.choose(
+                            simplifiedChinese: "公路车 BB/Crank/Pedal 模型返回的可匹配帧过少，当前仍按人体脚尖/踝部几何估计曲柄位置。",
+                            english: "The road-bike BB/Crank/Pedal model returned too few matching frames, so crank geometry still falls back to the rider toe/ankle estimate."
+                        )
+                    }
+                } catch {
+                    bikeKeypointFallbackNote = L10n.choose(
+                        simplifiedChinese: "本次未启用公路车 BB/Crank/Pedal 专用模型，曲柄位置仍按人体脚尖/踝部几何估计。",
+                        english: "The dedicated road-bike BB/Crank/Pedal model was not used for this run, so crank geometry still relies on the rider toe/ankle estimate."
+                    )
+                }
+            }
+
+            if crankEstimate == nil, resolvedView == .side {
+                crankEstimate = Self.estimateCrankCenter(samples: samples, side: dominantSide)
+            }
 
             if let crankEstimate {
                 samples = samples.map { sample in
-                    let pedalPoint = Self.dominantPedalPoint(for: sample, side: dominantSide)
+                    let pedalPoint = Self.dominantCrankReferencePoint(for: sample, side: dominantSide)
                     return Self.updatingCrankPhase(
                         sample: sample,
                         phaseDegrees: Self.phaseAngleDegrees(center: crankEstimate.center, pedal: pedalPoint) ?? sample.crankPhaseDeg
@@ -588,6 +1012,7 @@ struct VideoJointAngleAnalyzer {
 
             let kneeStats = Self.stats(for: samples.compactMap(\.kneeAngleDeg))
             let hipStats = Self.stats(for: samples.compactMap(\.hipAngleDeg))
+            let ankleStats = Self.stats(for: samples.compactMap(\.ankleAngleDeg))
             let cadenceCycles = Self.extractCadenceCycles(samples: samples)
             let cadenceSummary = Self.summarizeCadenceCycles(cadenceCycles)
             let longDurationStability = Self.extractLongDurationStability(
@@ -646,6 +1071,13 @@ struct VideoJointAngleAnalyzer {
                 longDurationStability: longDurationStability,
                 durationSeconds: durationSeconds
             )
+            await Self.publishProgress(
+                progressReporter,
+                message: L10n.choose(
+                    simplifiedChinese: "识别完成，共生成 \(samples.count) 帧关节结果。",
+                    english: "Recognition completed with \(samples.count) analyzed frames."
+                )
+            )
 
             return VideoJointAngleAnalysisResult(
                 durationSeconds: durationSeconds,
@@ -662,6 +1094,7 @@ struct VideoJointAngleAnalyzer {
                 used3DAngleFrameCount: used3DAngleFrameCount,
                 kneeStats: kneeStats,
                 hipStats: hipStats,
+                ankleStats: ankleStats,
                 cadenceCycles: cadenceCycles,
                 cadenceSummary: cadenceSummary,
                 longDurationStability: longDurationStability,
@@ -674,7 +1107,9 @@ struct VideoJointAngleAnalyzer {
                 frontAutoAssessment: frontAutoAssessment,
                 rearAutoAssessment: rearAutoAssessment,
                 adjustmentPlan: adjustmentPlan,
-                fittingHints: fittingHints
+                fittingHints: fittingHints,
+                bikeKeypointModelText: bikeKeypointModelText,
+                bikeKeypointFallbackNote: bikeKeypointFallbackNote
             )
         }.value
     }
@@ -724,24 +1159,33 @@ struct VideoJointAngleAnalyzer {
 
             let fusedKnee: Double?
             let fusedHip: Double?
+            let fusedAnkle: Double?
             switch sample.side {
             case .left:
                 fusedKnee = nearest.leftKneeAngleDeg ?? sample.kneeAngleDeg
                 fusedHip = nearest.leftHipAngleDeg ?? sample.hipAngleDeg
+                fusedAnkle = nearest.leftAnkleAngleDeg ?? sample.ankleAngleDeg
             case .right:
                 fusedKnee = nearest.rightKneeAngleDeg ?? sample.kneeAngleDeg
                 fusedHip = nearest.rightHipAngleDeg ?? sample.hipAngleDeg
+                fusedAnkle = nearest.rightAnkleAngleDeg ?? sample.ankleAngleDeg
             case .unknown:
                 if nearest.leftKneeAngleDeg != nil || nearest.leftHipAngleDeg != nil {
                     fusedKnee = nearest.leftKneeAngleDeg ?? sample.kneeAngleDeg
                     fusedHip = nearest.leftHipAngleDeg ?? sample.hipAngleDeg
+                    fusedAnkle = nearest.leftAnkleAngleDeg ?? sample.ankleAngleDeg
                 } else {
                     fusedKnee = nearest.rightKneeAngleDeg ?? sample.kneeAngleDeg
                     fusedHip = nearest.rightHipAngleDeg ?? sample.hipAngleDeg
+                    fusedAnkle = nearest.rightAnkleAngleDeg ?? sample.ankleAngleDeg
                 }
             }
 
-            guard fusedKnee != sample.kneeAngleDeg || fusedHip != sample.hipAngleDeg else {
+            guard
+                fusedKnee != sample.kneeAngleDeg ||
+                fusedHip != sample.hipAngleDeg ||
+                fusedAnkle != sample.ankleAngleDeg
+            else {
                 return sample
             }
 
@@ -753,21 +1197,221 @@ struct VideoJointAngleAnalyzer {
                 confidence: max(sample.confidence, nearest.confidence),
                 kneeAngleDeg: fusedKnee,
                 hipAngleDeg: fusedHip,
+                ankleAngleDeg: fusedAnkle,
+                shoulderAngleDeg: sample.shoulderAngleDeg,
+                elbowAngleDeg: sample.elbowAngleDeg,
                 crankPhaseDeg: sample.crankPhaseDeg,
                 leftShoulder: sample.leftShoulder,
+                leftElbow: sample.leftElbow,
+                leftWrist: sample.leftWrist,
                 leftHip: sample.leftHip,
                 leftKnee: sample.leftKnee,
                 leftAnkle: sample.leftAnkle,
                 rightShoulder: sample.rightShoulder,
+                rightElbow: sample.rightElbow,
+                rightWrist: sample.rightWrist,
                 rightHip: sample.rightHip,
                 rightKnee: sample.rightKnee,
                 rightAnkle: sample.rightAnkle,
                 leftToe: sample.leftToe,
-                rightToe: sample.rightToe
+                rightToe: sample.rightToe,
+                bikeBottomBracket: sample.bikeBottomBracket,
+                bikeCrankEnd: sample.bikeCrankEnd,
+                bikePedalCenter: sample.bikePedalCenter
             )
         }
 
         return (merged, matchedFrameCount)
+    }
+
+    static func mergeBikeKeypoints(
+        into samples: [VideoJointAngleSample],
+        from bikeSamples: [BikeKeypointSample],
+        toleranceSeconds: Double
+    ) -> (samples: [VideoJointAngleSample], matchedFrameCount: Int) {
+        guard !samples.isEmpty, !bikeSamples.isEmpty else {
+            return (samples, 0)
+        }
+
+        let sortedExternal = bikeSamples.sorted { $0.timeSeconds < $1.timeSeconds }
+        var matchedFrameCount = 0
+        let merged = samples.map { sample -> VideoJointAngleSample in
+            guard let nearest = sortedExternal.min(by: {
+                abs($0.timeSeconds - sample.timeSeconds) < abs($1.timeSeconds - sample.timeSeconds)
+            }) else {
+                return sample
+            }
+            guard abs(nearest.timeSeconds - sample.timeSeconds) <= toleranceSeconds else {
+                return sample
+            }
+
+            let mergedBottomBracket = nearest.bbCenter ?? sample.bikeBottomBracket
+            let mergedCrankEnd = nearest.crankEnd ?? sample.bikeCrankEnd
+            let mergedPedalCenter = nearest.pedalCenter ?? sample.bikePedalCenter
+            guard
+                mergedBottomBracket != nil ||
+                mergedCrankEnd != nil ||
+                mergedPedalCenter != nil
+            else {
+                return sample
+            }
+
+            matchedFrameCount += 1
+            return VideoJointAngleSample(
+                id: sample.id,
+                timeSeconds: sample.timeSeconds,
+                side: sample.side,
+                confidence: max(sample.confidence, nearest.confidence),
+                kneeAngleDeg: sample.kneeAngleDeg,
+                hipAngleDeg: sample.hipAngleDeg,
+                ankleAngleDeg: sample.ankleAngleDeg,
+                shoulderAngleDeg: sample.shoulderAngleDeg,
+                elbowAngleDeg: sample.elbowAngleDeg,
+                crankPhaseDeg: sample.crankPhaseDeg,
+                leftShoulder: sample.leftShoulder,
+                leftElbow: sample.leftElbow,
+                leftWrist: sample.leftWrist,
+                leftHip: sample.leftHip,
+                leftKnee: sample.leftKnee,
+                leftAnkle: sample.leftAnkle,
+                rightShoulder: sample.rightShoulder,
+                rightElbow: sample.rightElbow,
+                rightWrist: sample.rightWrist,
+                rightHip: sample.rightHip,
+                rightKnee: sample.rightKnee,
+                rightAnkle: sample.rightAnkle,
+                leftToe: sample.leftToe,
+                rightToe: sample.rightToe,
+                bikeBottomBracket: mergedBottomBracket,
+                bikeCrankEnd: mergedCrankEnd,
+                bikePedalCenter: mergedPedalCenter
+            )
+        }
+
+        return (merged, matchedFrameCount)
+    }
+
+    private struct SideViewPlanarAngleCandidate {
+        let side: VideoPoseBodySide
+        let confidence: Double
+        let knee: Double?
+        let hip: Double?
+        let ankle: Double?
+        let shoulder: Double?
+        let elbow: Double?
+    }
+
+    static func normalizeSideViewPlanarAngles(
+        in samples: [VideoJointAngleSample],
+        preferredSide: VideoPoseBodySide
+    ) -> [VideoJointAngleSample] {
+        samples.map { sample in
+            guard let normalized = normalizedSideViewPlanarAngles(for: sample, preferredSide: preferredSide) else {
+                return sample
+            }
+            guard
+                normalized.side != sample.side ||
+                normalized.knee != sample.kneeAngleDeg ||
+                normalized.hip != sample.hipAngleDeg ||
+                normalized.ankle != sample.ankleAngleDeg ||
+                normalized.shoulder != sample.shoulderAngleDeg ||
+                normalized.elbow != sample.elbowAngleDeg ||
+                normalized.confidence != sample.confidence
+            else {
+                return sample
+            }
+            return VideoJointAngleSample(
+                id: sample.id,
+                timeSeconds: sample.timeSeconds,
+                side: normalized.side,
+                confidence: normalized.confidence,
+                kneeAngleDeg: normalized.knee,
+                hipAngleDeg: normalized.hip,
+                ankleAngleDeg: normalized.ankle,
+                shoulderAngleDeg: normalized.shoulder,
+                elbowAngleDeg: normalized.elbow,
+                crankPhaseDeg: sample.crankPhaseDeg,
+                leftShoulder: sample.leftShoulder,
+                leftElbow: sample.leftElbow,
+                leftWrist: sample.leftWrist,
+                leftHip: sample.leftHip,
+                leftKnee: sample.leftKnee,
+                leftAnkle: sample.leftAnkle,
+                rightShoulder: sample.rightShoulder,
+                rightElbow: sample.rightElbow,
+                rightWrist: sample.rightWrist,
+                rightHip: sample.rightHip,
+                rightKnee: sample.rightKnee,
+                rightAnkle: sample.rightAnkle,
+                leftToe: sample.leftToe,
+                rightToe: sample.rightToe,
+                bikeBottomBracket: sample.bikeBottomBracket,
+                bikeCrankEnd: sample.bikeCrankEnd,
+                bikePedalCenter: sample.bikePedalCenter
+            )
+        }
+    }
+
+    private static func normalizedSideViewPlanarAngles(
+        for sample: VideoJointAngleSample,
+        preferredSide: VideoPoseBodySide
+    ) -> SideViewPlanarAngleCandidate? {
+        let left = planarAngleCandidate(for: .left, in: sample)
+        let right = planarAngleCandidate(for: .right, in: sample)
+
+        switch preferredSide {
+        case .left:
+            return left ?? right
+        case .right:
+            return right ?? left
+        case .unknown:
+            if let left, let right {
+                return left.confidence >= right.confidence ? left : right
+            }
+            return left ?? right
+        }
+    }
+
+    private static func planarAngleCandidate(
+        for side: VideoPoseBodySide,
+        in sample: VideoJointAngleSample
+    ) -> SideViewPlanarAngleCandidate? {
+        guard side == .left || side == .right else { return nil }
+
+        let shoulder = side == .left ? sample.leftShoulder : sample.rightShoulder
+        let elbow = side == .left ? sample.leftElbow : sample.rightElbow
+        let wrist = side == .left ? sample.leftWrist : sample.rightWrist
+        let hip = side == .left ? sample.leftHip : sample.rightHip
+        let knee = side == .left ? sample.leftKnee : sample.rightKnee
+        let ankle = side == .left ? sample.leftAnkle : sample.rightAnkle
+        let toe = (side == .left ? sample.leftToe : sample.rightToe) ?? ankle.map {
+            approximateToePoint(knee: knee, ankle: $0)
+        }
+
+        let kneeAngle = angle(hip, knee, ankle)
+        let hipAngle = angle(shoulder, hip, knee)
+        let ankleAngle = angle(knee, ankle, toe)
+        let shoulderAngle = angle(hip, shoulder, elbow)
+        let elbowAngle = angle(shoulder, elbow, wrist)
+
+        let confidenceValues = [shoulder, hip, knee, ankle, toe]
+            .compactMap { $0?.confidence }
+        guard !confidenceValues.isEmpty else { return nil }
+
+        return SideViewPlanarAngleCandidate(
+            side: side,
+            confidence: confidenceValues.reduce(0, +) / Double(confidenceValues.count),
+            knee: kneeAngle ?? (sample.side == side ? sample.kneeAngleDeg : nil),
+            hip: hipAngle ?? (sample.side == side ? sample.hipAngleDeg : nil),
+            ankle: ankleAngle ?? (sample.side == side ? sample.ankleAngleDeg : nil),
+            shoulder: shoulderAngle ?? (sample.side == side ? sample.shoulderAngleDeg : nil),
+            elbow: elbowAngle ?? (sample.side == side ? sample.elbowAngleDeg : nil)
+        )
+    }
+
+    private static func angle(_ a: PoseJointPoint?, _ b: PoseJointPoint?, _ c: PoseJointPoint?) -> Double? {
+        guard let a, let b, let c else { return nil }
+        return angleDegrees(a: a.cgPoint, b: b.cgPoint, c: c.cgPoint)
     }
 
     private static var allowsExternalPythonPoseBackends: Bool {
@@ -778,12 +1422,27 @@ struct VideoJointAngleAnalyzer {
 #endif
     }
 
+    private static func publishProgress(
+        _ reporter: VideoJointAngleAnalysisProgressReporter?,
+        message: String
+    ) async {
+        guard let reporter else { return }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        await reporter.publish(VideoJointAngleAnalysisProgressUpdate(message: trimmed))
+    }
+
+    private static func formattedProgressNumber(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
+
     private static func sampleVideoWithAppleVision(
         asset: AVURLAsset,
         durationSeconds: Double,
         interval: Double,
-        targetFrameCount: Int
-    ) throws -> (samples: [VideoJointAngleSample], used3DAngleFrameCount: Int) {
+        targetFrameCount: Int,
+        progressReporter: VideoJointAngleAnalysisProgressReporter?
+    ) async throws -> (samples: [VideoJointAngleSample], used3DAngleFrameCount: Int) {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceAfter = .zero
@@ -798,6 +1457,7 @@ struct VideoJointAngleAnalyzer {
         var samples: [VideoJointAngleSample] = []
         samples.reserveCapacity(targetFrameCount)
         var used3DAngleFrameCount = 0
+        let progressStep = max(1, targetFrameCount / 10)
 
         for index in 0..<targetFrameCount {
             let rawSecond = min(durationSeconds, Double(index) * interval)
@@ -839,6 +1499,17 @@ struct VideoJointAngleAnalyzer {
             samples.append(extracted.sample)
             if extracted.used3D {
                 used3DAngleFrameCount += 1
+            }
+
+            let completedCount = index + 1
+            if completedCount == 1 || completedCount == targetFrameCount || completedCount % progressStep == 0 {
+                await Self.publishProgress(
+                    progressReporter,
+                    message: L10n.choose(
+                        simplifiedChinese: "Apple Vision 已处理 \(completedCount)/\(targetFrameCount) 帧...",
+                        english: "Apple Vision processed \(completedCount)/\(targetFrameCount) frames..."
+                    )
+                )
             }
         }
 
@@ -885,17 +1556,27 @@ struct VideoJointAngleAnalyzer {
             confidence: baseSample.confidence,
             kneeAngleDeg: override.knee,
             hipAngleDeg: override.hip,
+            ankleAngleDeg: baseSample.ankleAngleDeg,
+            shoulderAngleDeg: baseSample.shoulderAngleDeg,
+            elbowAngleDeg: baseSample.elbowAngleDeg,
             crankPhaseDeg: phaseDeg,
             leftShoulder: baseSample.leftShoulder,
+            leftElbow: baseSample.leftElbow,
+            leftWrist: baseSample.leftWrist,
             leftHip: baseSample.leftHip,
             leftKnee: baseSample.leftKnee,
             leftAnkle: baseSample.leftAnkle,
             rightShoulder: baseSample.rightShoulder,
+            rightElbow: baseSample.rightElbow,
+            rightWrist: baseSample.rightWrist,
             rightHip: baseSample.rightHip,
             rightKnee: baseSample.rightKnee,
             rightAnkle: baseSample.rightAnkle,
             leftToe: baseSample.leftToe,
-            rightToe: baseSample.rightToe
+            rightToe: baseSample.rightToe,
+            bikeBottomBracket: baseSample.bikeBottomBracket,
+            bikeCrankEnd: baseSample.bikeCrankEnd,
+            bikePedalCenter: baseSample.bikePedalCenter
         )
         return (sample, true)
     }
@@ -928,12 +1609,24 @@ struct VideoJointAngleAnalyzer {
         let leftKnee = jointPoint(.leftKnee, in: points)
         let leftAnkle = jointPoint(.leftAnkle, in: points)
         let leftShoulder = jointPoint(.leftShoulder, in: points)
+        let leftElbow = jointPoint(.leftElbow, in: points)
+        let leftWrist = jointPoint(.leftWrist, in: points)
         let rightHip = jointPoint(.rightHip, in: points)
         let rightKnee = jointPoint(.rightKnee, in: points)
         let rightAnkle = jointPoint(.rightAnkle, in: points)
         let rightShoulder = jointPoint(.rightShoulder, in: points)
+        let rightElbow = jointPoint(.rightElbow, in: points)
+        let rightWrist = jointPoint(.rightWrist, in: points)
         let leftToe = leftAnkle.map { approximateToePoint(knee: leftKnee, ankle: $0) }
         let rightToe = rightAnkle.map { approximateToePoint(knee: rightKnee, ankle: $0) }
+        func angle(_ a: PoseJointPoint?, _ b: PoseJointPoint?, _ c: PoseJointPoint?) -> Double? {
+            guard let a, let b, let c else { return nil }
+            return angleDegrees(a: a.cgPoint, b: b.cgPoint, c: c.cgPoint)
+        }
+        let leftShoulderAngle = angle(leftHip, leftShoulder, leftElbow)
+        let rightShoulderAngle = angle(rightHip, rightShoulder, rightElbow)
+        let leftElbowAngle = angle(leftShoulder, leftElbow, leftWrist)
+        let rightElbowAngle = angle(rightShoulder, rightElbow, rightWrist)
 
         let crankPhaseDeg = phaseAngleDegrees(
             hip: picked.side == .right ? rightHip : leftHip,
@@ -942,6 +1635,9 @@ struct VideoJointAngleAnalyzer {
                 : (leftToe ?? leftAnkle)
         )
 
+        let shoulderAngle = picked.side == .right ? rightShoulderAngle : leftShoulderAngle
+        let elbowAngle = picked.side == .right ? rightElbowAngle : leftElbowAngle
+
         return VideoJointAngleSample(
             id: sampleIndex,
             timeSeconds: timeSeconds,
@@ -949,12 +1645,20 @@ struct VideoJointAngleAnalyzer {
             confidence: picked.confidence,
             kneeAngleDeg: picked.knee,
             hipAngleDeg: picked.hip,
+            // Vision lacks a reliable toe/foot landmark here, so avoid fabricating ankle angles.
+            ankleAngleDeg: nil,
+            shoulderAngleDeg: shoulderAngle,
+            elbowAngleDeg: elbowAngle,
             crankPhaseDeg: crankPhaseDeg,
             leftShoulder: leftShoulder,
+            leftElbow: leftElbow,
+            leftWrist: leftWrist,
             leftHip: leftHip,
             leftKnee: leftKnee,
             leftAnkle: leftAnkle,
             rightShoulder: rightShoulder,
+            rightElbow: rightElbow,
+            rightWrist: rightWrist,
             rightHip: rightHip,
             rightKnee: rightKnee,
             rightAnkle: rightAnkle,
@@ -1071,7 +1775,8 @@ struct VideoJointAngleAnalyzer {
                 phaseDeg: best.1,
                 phaseErrorDeg: error,
                 kneeAngleDeg: best.0.kneeAngleDeg,
-                hipAngleDeg: best.0.hipAngleDeg
+                hipAngleDeg: best.0.hipAngleDeg,
+                ankleAngleDeg: best.0.ankleAngleDeg
             )
         }
     }
@@ -1527,15 +2232,15 @@ struct VideoJointAngleAnalyzer {
         if modelUsed == .mmposeMotionBERT {
             hints.append(
                 L10n.choose(
-                    simplifiedChinese: "当前 3D 关节角来自 MotionBERT；若鞋尖或踝部被遮挡，BDC 与踏频相位仍会受 2D 关键点质量影响。",
-                    english: "3D joint angles now come from MotionBERT; if toe or ankle visibility is poor, BDC and cadence phase still depend on 2D keypoint quality."
+                    simplifiedChinese: "当前 3D 关节角来自 MotionAGFormer-L；若鞋尖或踝部被遮挡，BDC 与踏频相位仍会受 2D 关键点质量影响。",
+                    english: "3D joint angles now come from MotionAGFormer-L; if toe or ankle visibility is poor, BDC and cadence phase still depend on 2D keypoint quality."
                 )
             )
         } else if modelUsed == .appleVision {
             hints.append(
                 L10n.choose(
-                    simplifiedChinese: "若需更高精度的 3D 关节角，桌面版会优先使用随 app 打包的 MotionBERT 运行时；开发构建未打包时才回退到本机 Python 环境。",
-                    english: "For higher-accuracy 3D joint angles, desktop builds prefer the MotionBERT runtime packaged inside the app; development builds fall back to a local Python runtime only when that bundle is unavailable."
+                    simplifiedChinese: "若需更高精度的 3D 关节角，桌面版会优先使用随 app 打包的 MotionAGFormer-L 运行时；开发构建未打包时才回退到本机 Python 环境。",
+                    english: "For higher-accuracy 3D joint angles, desktop builds prefer the MotionAGFormer-L runtime packaged inside the app; development builds fall back to a local Python runtime only when that bundle is unavailable."
                 )
             )
         }
@@ -2084,25 +2789,28 @@ struct VideoJointAngleAnalyzer {
         )
     }
 
-    private static func phaseAngleDegrees(hip: PoseJointPoint?, pedal: PoseJointPoint?) -> Double? {
+    static func phaseAngleDegrees(hip: PoseJointPoint?, pedal: PoseJointPoint?) -> Double? {
         guard let hip, let pedal else { return nil }
         let dx = pedal.x - hip.x
-        let dy = pedal.y - hip.y
+        let dy = hip.y - pedal.y
         guard abs(dx) + abs(dy) > 0.000001 else { return nil }
         let raw = atan2(dx, dy) * 180.0 / Double.pi
         return normalizeDegrees(raw)
     }
 
-    private static func phaseAngleDegrees(center: PoseJointPoint?, pedal: PoseJointPoint?) -> Double? {
+    static func phaseAngleDegrees(center: PoseJointPoint?, pedal: PoseJointPoint?) -> Double? {
         guard let center, let pedal else { return nil }
         let dx = pedal.x - center.x
-        let dy = pedal.y - center.y
+        let dy = center.y - pedal.y
         guard abs(dx) + abs(dy) > 0.000001 else { return nil }
         let raw = atan2(dx, dy) * 180.0 / Double.pi
         return normalizeDegrees(raw)
     }
 
     private static func dominantPedalPoint(for sample: VideoJointAngleSample, side: VideoPoseBodySide) -> PoseJointPoint? {
+        if let bikePedalCenter = sample.bikePedalCenter {
+            return bikePedalCenter
+        }
         switch side {
         case .left:
             return sample.leftToe ?? sample.leftAnkle
@@ -2113,6 +2821,13 @@ struct VideoJointAngleAnalyzer {
         }
     }
 
+    private static func dominantCrankReferencePoint(for sample: VideoJointAngleSample, side: VideoPoseBodySide) -> PoseJointPoint? {
+        if let bikeCrankEnd = sample.bikeCrankEnd {
+            return bikeCrankEnd
+        }
+        return dominantPedalPoint(for: sample, side: side)
+    }
+
     private static func updatingCrankPhase(sample: VideoJointAngleSample, phaseDegrees: Double?) -> VideoJointAngleSample {
         VideoJointAngleSample(
             id: sample.id,
@@ -2121,17 +2836,27 @@ struct VideoJointAngleAnalyzer {
             confidence: sample.confidence,
             kneeAngleDeg: sample.kneeAngleDeg,
             hipAngleDeg: sample.hipAngleDeg,
+            ankleAngleDeg: sample.ankleAngleDeg,
+            shoulderAngleDeg: sample.shoulderAngleDeg,
+            elbowAngleDeg: sample.elbowAngleDeg,
             crankPhaseDeg: phaseDegrees,
             leftShoulder: sample.leftShoulder,
+            leftElbow: sample.leftElbow,
+            leftWrist: sample.leftWrist,
             leftHip: sample.leftHip,
             leftKnee: sample.leftKnee,
             leftAnkle: sample.leftAnkle,
             rightShoulder: sample.rightShoulder,
+            rightElbow: sample.rightElbow,
+            rightWrist: sample.rightWrist,
             rightHip: sample.rightHip,
             rightKnee: sample.rightKnee,
             rightAnkle: sample.rightAnkle,
             leftToe: sample.leftToe,
-            rightToe: sample.rightToe
+            rightToe: sample.rightToe,
+            bikeBottomBracket: sample.bikeBottomBracket,
+            bikeCrankEnd: sample.bikeCrankEnd,
+            bikePedalCenter: sample.bikePedalCenter
         )
     }
 
@@ -2139,7 +2864,7 @@ struct VideoJointAngleAnalyzer {
         samples: [VideoJointAngleSample],
         side: VideoPoseBodySide
     ) -> (center: PoseJointPoint, radius: Double)? {
-        let pedalPoints = samples.compactMap { dominantPedalPoint(for: $0, side: side) }
+        let pedalPoints = samples.compactMap { dominantCrankReferencePoint(for: $0, side: side) }
             .filter { $0.x.isFinite && $0.y.isFinite }
         guard pedalPoints.count >= 6 else { return nil }
 
@@ -2187,6 +2912,25 @@ struct VideoJointAngleAnalyzer {
             center: PoseJointPoint(x: centerX, y: centerY, confidence: confidence),
             radius: radius
         )
+    }
+
+    private static func crankEstimate(from summary: BikeKeypointSummary) -> (center: PoseJointPoint, radius: Double)? {
+        guard let center = summary.bbCenter else { return nil }
+        guard
+            let radius = summary.radius,
+            radius.isFinite,
+            radius >= 0.02,
+            radius <= 0.25,
+            center.x.isFinite,
+            center.y.isFinite,
+            center.x >= 0.15,
+            center.x <= 0.85,
+            center.y >= 0.25,
+            center.y <= 0.90
+        else {
+            return nil
+        }
+        return (center, radius)
     }
 
     private static func solveCircle(points: [PoseJointPoint]) -> (center: CGPoint, radius: Double)? {
@@ -2446,20 +3190,26 @@ struct VideoJointAngleAnalyzer {
             let warnings: [String]
         }
 
+        private static let progressPrefix = "FRICU_PROGRESS|"
+
         private struct RawFrame: Decodable {
             let timeSeconds: Double
             let leftKneeAngleDeg: Double?
             let leftHipAngleDeg: Double?
+            let leftAnkleAngleDeg: Double?
             let rightKneeAngleDeg: Double?
             let rightHipAngleDeg: Double?
+            let rightAnkleAngleDeg: Double?
             let confidence: Double?
 
             private enum CodingKeys: String, CodingKey {
                 case timeSeconds = "time_seconds"
                 case leftKneeAngleDeg = "left_knee_angle_deg"
                 case leftHipAngleDeg = "left_hip_angle_deg"
+                case leftAnkleAngleDeg = "left_ankle_angle_deg"
                 case rightKneeAngleDeg = "right_knee_angle_deg"
                 case rightHipAngleDeg = "right_hip_angle_deg"
+                case rightAnkleAngleDeg = "right_ankle_angle_deg"
                 case confidence
             }
         }
@@ -2470,12 +3220,69 @@ struct VideoJointAngleAnalyzer {
             let warnings: [String]?
         }
 
-        static func sampleVideo(videoURL: URL, maxSamples: Int) throws -> Result {
+        private final class StderrProgressBuffer {
+            private let lock = NSLock()
+            private var buffer = ""
+            private var nonProgressLines: [String] = []
+
+            func ingest(data: Data, progressReporter: VideoJointAngleAnalysisProgressReporter?) {
+                guard !data.isEmpty else { return }
+                let text = String(data: data, encoding: .utf8) ?? ""
+                lock.lock()
+                defer { lock.unlock() }
+                buffer.append(text)
+                drainBufferedProgressLines(progressReporter: progressReporter)
+            }
+
+            func finalize(with data: Data, progressReporter: VideoJointAngleAnalysisProgressReporter?) -> String {
+                lock.lock()
+                defer { lock.unlock() }
+                buffer.append(String(data: data, encoding: .utf8) ?? "")
+                drainBufferedProgressLines(progressReporter: progressReporter)
+                let remainder = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !remainder.isEmpty {
+                    handleProgressLine(remainder, progressReporter: progressReporter)
+                }
+                buffer.removeAll(keepingCapacity: false)
+                return nonProgressLines
+                    .joined(separator: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            private func drainBufferedProgressLines(progressReporter: VideoJointAngleAnalysisProgressReporter?) {
+                while let newlineRange = buffer.range(of: "\n") {
+                    let line = String(buffer[..<newlineRange.lowerBound])
+                    buffer.removeSubrange(buffer.startIndex...newlineRange.lowerBound)
+                    handleProgressLine(line, progressReporter: progressReporter)
+                }
+            }
+
+            private func handleProgressLine(
+                _ rawLine: String,
+                progressReporter: VideoJointAngleAnalysisProgressReporter?
+            ) {
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !line.isEmpty else { return }
+                if let update = MMPoseMotionBERTEstimator.progressUpdate(from: line) {
+                    Task {
+                        await progressReporter?.publish(update)
+                    }
+                } else {
+                    nonProgressLines.append(line)
+                }
+            }
+        }
+
+        static func sampleVideo(
+            videoURL: URL,
+            maxSamples: Int,
+            progressReporter: VideoJointAngleAnalysisProgressReporter?
+        ) async throws -> Result {
             guard let scriptPath = resolveScriptPath() else {
                 throw NSError(
-                    domain: "Fricu.VideoPose.MotionBERT",
+                    domain: "Fricu.VideoPose.MotionAGFormer",
                     code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "MotionBERT script not found"]
+                    userInfo: [NSLocalizedDescriptionKey: "MotionAGFormer-L script not found"]
                 )
             }
 
@@ -2484,9 +3291,9 @@ struct VideoJointAngleAnalyzer {
             let _ = maxSamples
             let _ = scriptPath
             throw NSError(
-                domain: "Fricu.VideoPose.MotionBERT",
+                domain: "Fricu.VideoPose.MotionAGFormer",
                 code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "MotionBERT script execution is unavailable on iOS. Use Apple Vision instead."]
+                userInfo: [NSLocalizedDescriptionKey: "MotionAGFormer-L script execution is unavailable on iOS. Use Apple Vision instead."]
             )
 #else
             let runtimeLocator = MotionBERTRuntimeLocator()
@@ -2521,18 +3328,33 @@ struct VideoJointAngleAnalyzer {
             }
             process.environment = processEnvironment
 
+            let stderrProgressBuffer = StderrProgressBuffer()
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                stderrProgressBuffer.ingest(
+                    data: data,
+                    progressReporter: progressReporter
+                )
+            }
+
             try process.run()
             process.waitUntilExit()
 
+            stderr.fileHandleForReading.readabilityHandler = nil
+
             let outData = stdout.fileHandleForReading.readDataToEndOfFile()
             let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+            let errorText = stderrProgressBuffer.finalize(
+                with: errData,
+                progressReporter: progressReporter
+            )
 
             guard process.terminationStatus == 0 else {
-                let errorText = String(data: errData, encoding: .utf8) ?? "unknown error"
                 throw NSError(
-                    domain: "Fricu.VideoPose.MotionBERT",
+                    domain: "Fricu.VideoPose.MotionAGFormer",
                     code: Int(process.terminationStatus),
-                    userInfo: [NSLocalizedDescriptionKey: errorText]
+                    userInfo: [NSLocalizedDescriptionKey: errorText.isEmpty ? "unknown error" : errorText]
                 )
             }
 
@@ -2543,13 +3365,76 @@ struct VideoJointAngleAnalyzer {
                     timeSeconds: $0.timeSeconds,
                     leftKneeAngleDeg: $0.leftKneeAngleDeg,
                     leftHipAngleDeg: $0.leftHipAngleDeg,
+                    leftAnkleAngleDeg: $0.leftAnkleAngleDeg,
                     rightKneeAngleDeg: $0.rightKneeAngleDeg,
                     rightHipAngleDeg: $0.rightHipAngleDeg,
+                    rightAnkleAngleDeg: $0.rightAnkleAngleDeg,
                     confidence: $0.confidence ?? 0.6
                 )
             }
             return Result(samples: mapped, warnings: payload.warnings ?? [])
 #endif
+        }
+
+        private static func progressUpdate(from line: String) -> VideoJointAngleAnalysisProgressUpdate? {
+            guard line.hasPrefix(progressPrefix) else { return nil }
+            let components = line.split(separator: "|").map(String.init)
+            guard components.count >= 2 else { return nil }
+            let stage = components[1]
+            var fields: [String: String] = [:]
+            for component in components.dropFirst(2) {
+                let pair = component.split(separator: "=", maxSplits: 1).map(String.init)
+                guard pair.count == 2 else { continue }
+                fields[pair[0]] = pair[1]
+            }
+
+            switch stage {
+            case "prepare":
+                let targetFrames = fields["target_frames"] ?? "?"
+                let device = fields["device"] ?? "cpu"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "MotionAGFormer-L 已接管，计划在 \(device) 上推理 \(targetFrames) 帧。",
+                        english: "MotionAGFormer-L took over and will infer \(targetFrames) frames on \(device)."
+                    )
+                )
+            case "loading_model":
+                let device = fields["device"] ?? "cpu"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "正在加载 MotionAGFormer-L 3D 模型（\(device)）...",
+                        english: "Loading the MotionAGFormer-L 3D model on \(device)..."
+                    )
+                )
+            case "model_ready":
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "MotionAGFormer-L 模型已就绪，开始逐帧推理...",
+                        english: "MotionAGFormer-L model is ready and frame inference is starting..."
+                    )
+                )
+            case "frame":
+                let completed = fields["completed"] ?? "?"
+                let total = fields["total"] ?? "?"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "MotionAGFormer-L 已处理 \(completed)/\(total) 帧...",
+                        english: "MotionAGFormer-L processed \(completed)/\(total) frames..."
+                    )
+                )
+            case "complete":
+                let usable = fields["usable"] ?? "?"
+                let total = fields["total"] ?? "?"
+                let dropped = fields["dropped"] ?? "0"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "MotionAGFormer-L 推理完成：输出 \(usable)/\(total) 帧，跳过 \(dropped) 帧。",
+                        english: "MotionAGFormer-L finished with \(usable)/\(total) usable frames and \(dropped) skipped frames."
+                    )
+                )
+            default:
+                return nil
+            }
         }
 
         private static func resolveScriptPath() -> String? {
@@ -2558,9 +3443,333 @@ struct VideoJointAngleAnalyzer {
             let bundle = Bundle.main
             let candidates: [String] = [
                 bundle.resourceURL?.appendingPathComponent("PoseModels/video_pose_mmpose_motionbert.py").path,
+                bundle.resourceURL?.appendingPathComponent("FricuApp_FricuApp.bundle/video_pose_mmpose_motionbert.py").path,
+                bundle.resourceURL?.appendingPathComponent("Fricu_FricuApp.bundle/video_pose_mmpose_motionbert.py").path,
                 bundle.bundleURL.appendingPathComponent("Contents/Resources/PoseModels/video_pose_mmpose_motionbert.py").path,
+                bundle.bundleURL.appendingPathComponent("Contents/Resources/FricuApp_FricuApp.bundle/video_pose_mmpose_motionbert.py").path,
+                bundle.bundleURL.appendingPathComponent("Contents/Resources/Fricu_FricuApp.bundle/video_pose_mmpose_motionbert.py").path,
                 cwd.appendingPathComponent("Sources/FricuApp/Resources/PoseModels/video_pose_mmpose_motionbert.py").path,
                 cwd.appendingPathComponent("scripts/video_pose_mmpose_motionbert.py").path
+            ].compactMap { $0 }
+
+            for path in candidates where fm.fileExists(atPath: path) {
+                return path
+            }
+            return nil
+        }
+    }
+
+    private enum BikeKeypointEstimator {
+        struct Result {
+            let samples: [BikeKeypointSample]
+            let summary: BikeKeypointSummary
+            let warnings: [String]
+            let modelText: String
+        }
+
+        private static let progressPrefix = "FRICU_PROGRESS|"
+
+        private struct RawPoint: Decodable {
+            let x: Double
+            let y: Double
+            let confidence: Double?
+        }
+
+        private struct RawFrame: Decodable {
+            let id: Int
+            let timeSeconds: Double
+            let keypoints: [String: RawPoint]
+            let confidence: Double?
+
+            private enum CodingKeys: String, CodingKey {
+                case id
+                case timeSeconds = "time_seconds"
+                case keypoints
+                case confidence
+            }
+        }
+
+        private struct RawSummary: Decodable {
+            let bbCenter: RawPoint?
+            let radius: Double?
+            let fitRMS: Double?
+
+            private enum CodingKeys: String, CodingKey {
+                case bbCenter = "bb_center"
+                case radius
+                case fitRMS = "fit_rms"
+            }
+        }
+
+        private struct RawOutput: Decodable {
+            let backend: String?
+            let samples: [RawFrame]
+            let summary: RawSummary?
+            let warnings: [String]?
+        }
+
+        private final class StderrProgressBuffer {
+            private let lock = NSLock()
+            private var buffer = ""
+            private var nonProgressLines: [String] = []
+
+            func ingest(data: Data, progressReporter: VideoJointAngleAnalysisProgressReporter?) {
+                guard !data.isEmpty else { return }
+                let text = String(data: data, encoding: .utf8) ?? ""
+                lock.lock()
+                defer { lock.unlock() }
+                buffer.append(text)
+                drainBufferedProgressLines(progressReporter: progressReporter)
+            }
+
+            func finalize(with data: Data, progressReporter: VideoJointAngleAnalysisProgressReporter?) -> String {
+                lock.lock()
+                defer { lock.unlock() }
+                buffer.append(String(data: data, encoding: .utf8) ?? "")
+                drainBufferedProgressLines(progressReporter: progressReporter)
+                let remainder = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !remainder.isEmpty {
+                    handleProgressLine(remainder, progressReporter: progressReporter)
+                }
+                buffer.removeAll(keepingCapacity: false)
+                return nonProgressLines
+                    .joined(separator: "\n")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+
+            private func drainBufferedProgressLines(progressReporter: VideoJointAngleAnalysisProgressReporter?) {
+                while let newlineRange = buffer.range(of: "\n") {
+                    let line = String(buffer[..<newlineRange.lowerBound])
+                    buffer.removeSubrange(buffer.startIndex...newlineRange.lowerBound)
+                    handleProgressLine(line, progressReporter: progressReporter)
+                }
+            }
+
+            private func handleProgressLine(
+                _ rawLine: String,
+                progressReporter: VideoJointAngleAnalysisProgressReporter?
+            ) {
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !line.isEmpty else { return }
+                if let update = BikeKeypointEstimator.progressUpdate(from: line) {
+                    Task {
+                        await progressReporter?.publish(update)
+                    }
+                } else {
+                    nonProgressLines.append(line)
+                }
+            }
+        }
+
+        static func sampleVideo(
+            videoURL: URL,
+            maxSamples: Int,
+            progressReporter: VideoJointAngleAnalysisProgressReporter?
+        ) async throws -> Result {
+            guard let scriptPath = resolveScriptPath() else {
+                throw NSError(
+                    domain: "Fricu.VideoPose.BikeKeypoint",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Bike keypoint script not found"]
+                )
+            }
+            let checkpointLocator = BikeKeypointModelLocator()
+            guard let checkpointPath = checkpointLocator.resolveCheckpointURL() else {
+                throw NSError(
+                    domain: "Fricu.VideoPose.BikeKeypoint",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: "Bike keypoint checkpoint not found"]
+                )
+            }
+
+#if os(iOS)
+            let _ = videoURL
+            let _ = maxSamples
+            let _ = scriptPath
+            let _ = checkpointPath
+            throw NSError(
+                domain: "Fricu.VideoPose.BikeKeypoint",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Bike keypoint script execution is unavailable on iOS."]
+            )
+#else
+            let runtimeLocator = MotionBERTRuntimeLocator()
+            let invocation = PythonPoseProcessRunner.resolveInvocation(
+                preferredEnvironmentVariables: [
+                    "FRICU_BIKE_KEYPOINT_PYTHON",
+                    "FRICU_MMPPOSE_PYTHON",
+                    "FRICU_VIDEO_POSE_PYTHON"
+                ],
+                preferredCondaEnvironment: "mmpose-mac",
+                bundledRuntimeLocator: runtimeLocator
+            )
+
+            let process = Process()
+            process.executableURL = invocation.executableURL
+            process.arguments = invocation.prefixArguments + [
+                scriptPath,
+                "--video", videoURL.path,
+                "--checkpoint", checkpointPath.path,
+                "--max-samples", String(maxSamples)
+            ]
+
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+
+            var processEnvironment = ProcessInfo.processInfo.environment
+            processEnvironment["PYTHONUNBUFFERED"] = "1"
+            if let bundledCacheRoot = runtimeLocator.resolveBundledCacheRootURL() {
+                processEnvironment["XDG_CACHE_HOME"] = bundledCacheRoot.path
+                let bundledTorchCache = bundledCacheRoot.appendingPathComponent("torch", isDirectory: true)
+                if FileManager.default.fileExists(atPath: bundledTorchCache.path) {
+                    processEnvironment["TORCH_HOME"] = bundledTorchCache.path
+                }
+            }
+            process.environment = processEnvironment
+
+            let stderrProgressBuffer = StderrProgressBuffer()
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                stderrProgressBuffer.ingest(data: data, progressReporter: progressReporter)
+            }
+
+            try process.run()
+            process.waitUntilExit()
+
+            stderr.fileHandleForReading.readabilityHandler = nil
+
+            let outData = stdout.fileHandleForReading.readDataToEndOfFile()
+            let errData = stderr.fileHandleForReading.readDataToEndOfFile()
+            let errorText = stderrProgressBuffer.finalize(with: errData, progressReporter: progressReporter)
+
+            guard process.terminationStatus == 0 else {
+                throw NSError(
+                    domain: "Fricu.VideoPose.BikeKeypoint",
+                    code: Int(process.terminationStatus),
+                    userInfo: [NSLocalizedDescriptionKey: errorText.isEmpty ? "unknown error" : errorText]
+                )
+            }
+
+            let decoder = JSONDecoder()
+            let payload = try decoder.decode(RawOutput.self, from: outData)
+            let mappedSamples = payload.samples.map { frame in
+                BikeKeypointSample(
+                    id: frame.id,
+                    timeSeconds: frame.timeSeconds,
+                    confidence: frame.confidence ?? 0.6,
+                    bbCenter: point(named: "bb_center", in: frame.keypoints),
+                    crankEnd: point(named: "crank_end", in: frame.keypoints),
+                    pedalCenter: point(named: "pedal_center", in: frame.keypoints)
+                )
+            }
+            let mappedSummary = BikeKeypointSummary(
+                bbCenter: payload.summary?.bbCenter.map {
+                    PoseJointPoint(
+                        x: $0.x,
+                        y: $0.y,
+                        confidence: $0.confidence ?? 0.6
+                    )
+                },
+                radius: payload.summary?.radius,
+                fitRMS: payload.summary?.fitRMS
+            )
+            return Result(
+                samples: mappedSamples,
+                summary: mappedSummary,
+                warnings: payload.warnings ?? [],
+                modelText: L10n.choose(
+                    simplifiedChinese: "公路车 BB/Crank/Pedal",
+                    english: "Road-bike BB/Crank/Pedal"
+                )
+            )
+#endif
+        }
+
+        private static func point(named key: String, in joints: [String: RawPoint]) -> PoseJointPoint? {
+            guard let raw = joints[key] else { return nil }
+            return PoseJointPoint(
+                x: raw.x,
+                y: raw.y,
+                confidence: raw.confidence ?? 0.0
+            )
+        }
+
+        private static func progressUpdate(from line: String) -> VideoJointAngleAnalysisProgressUpdate? {
+            guard line.hasPrefix(progressPrefix) else { return nil }
+            let components = line.split(separator: "|").map(String.init)
+            guard components.count >= 2 else { return nil }
+            let stage = components[1]
+            var fields: [String: String] = [:]
+            for component in components.dropFirst(2) {
+                let pair = component.split(separator: "=", maxSplits: 1).map(String.init)
+                guard pair.count == 2 else { continue }
+                fields[pair[0]] = pair[1]
+            }
+
+            switch stage {
+            case "prepare":
+                let targetFrames = fields["target_frames"] ?? "?"
+                let device = fields["device"] ?? "cpu"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "公路车关键点模型已接管，计划在 \(device) 上细化 \(targetFrames) 帧 BB / 曲柄 / 脚踏位置。",
+                        english: "The road-bike keypoint model took over and will refine the BB / crank / pedal geometry for \(targetFrames) frames on \(device)."
+                    )
+                )
+            case "loading_model":
+                let device = fields["device"] ?? "cpu"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "正在加载公路车 BB/Crank/Pedal 模型（\(device)）...",
+                        english: "Loading the road-bike BB/Crank/Pedal model on \(device)..."
+                    )
+                )
+            case "model_ready":
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "公路车关键点模型已就绪，开始逐帧细化...",
+                        english: "The road-bike keypoint model is ready and frame refinement is starting..."
+                    )
+                )
+            case "frame":
+                let completed = fields["completed"] ?? "?"
+                let total = fields["total"] ?? "?"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "公路车关键点模型已处理 \(completed)/\(total) 帧...",
+                        english: "The road-bike keypoint model processed \(completed)/\(total) frames..."
+                    )
+                )
+            case "complete":
+                let usable = fields["usable"] ?? "?"
+                let total = fields["total"] ?? "?"
+                let dropped = fields["dropped"] ?? "0"
+                return VideoJointAngleAnalysisProgressUpdate(
+                    message: L10n.choose(
+                        simplifiedChinese: "公路车关键点模型完成：输出 \(usable)/\(total) 帧，跳过 \(dropped) 帧。",
+                        english: "The road-bike keypoint model finished with \(usable)/\(total) usable frames and \(dropped) skipped frames."
+                    )
+                )
+            default:
+                return nil
+            }
+        }
+
+        private static func resolveScriptPath() -> String? {
+            let fm = FileManager.default
+            let cwd = URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)
+            let bundle = Bundle.main
+            let candidates: [String] = [
+                bundle.resourceURL?.appendingPathComponent("PoseModels/video_bike_keypoints.py").path,
+                bundle.resourceURL?.appendingPathComponent("FricuApp_FricuApp.bundle/video_bike_keypoints.py").path,
+                bundle.resourceURL?.appendingPathComponent("Fricu_FricuApp.bundle/video_bike_keypoints.py").path,
+                bundle.bundleURL.appendingPathComponent("Contents/Resources/PoseModels/video_bike_keypoints.py").path,
+                bundle.bundleURL.appendingPathComponent("Contents/Resources/FricuApp_FricuApp.bundle/video_bike_keypoints.py").path,
+                bundle.bundleURL.appendingPathComponent("Contents/Resources/Fricu_FricuApp.bundle/video_bike_keypoints.py").path,
+                cwd.appendingPathComponent("Sources/FricuApp/Resources/PoseModels/video_bike_keypoints.py").path
             ].compactMap { $0 }
 
             for path in candidates where fm.fileExists(atPath: path) {
@@ -2588,8 +3797,10 @@ struct VideoJointAngleAnalyzer {
             let joints: [String: RawJoint]
             let leftKneeAngleDeg: Double?
             let leftHipAngleDeg: Double?
+            let leftAnkleAngleDeg: Double?
             let rightKneeAngleDeg: Double?
             let rightHipAngleDeg: Double?
+            let rightAnkleAngleDeg: Double?
 
             private enum CodingKeys: String, CodingKey {
                 case id
@@ -2597,8 +3808,10 @@ struct VideoJointAngleAnalyzer {
                 case joints
                 case leftKneeAngleDeg = "left_knee_angle_deg"
                 case leftHipAngleDeg = "left_hip_angle_deg"
+                case leftAnkleAngleDeg = "left_ankle_angle_deg"
                 case rightKneeAngleDeg = "right_knee_angle_deg"
                 case rightHipAngleDeg = "right_hip_angle_deg"
+                case rightAnkleAngleDeg = "right_ankle_angle_deg"
             }
         }
 
@@ -2631,7 +3844,9 @@ struct VideoJointAngleAnalyzer {
                 preferredEnvironmentVariables: [
                     "FRICU_MEDIAPIPE_PYTHON",
                     "FRICU_VIDEO_POSE_PYTHON"
-                ]
+                ],
+                preferredCondaEnvironment: "mmpose-mac",
+                bundledRuntimeLocator: MotionBERTRuntimeLocator()
             )
             let process = Process()
             process.executableURL = invocation.executableURL
@@ -2670,21 +3885,34 @@ struct VideoJointAngleAnalyzer {
 
         private static func mapFrameToSample(_ frame: RawFrame) -> VideoJointAngleSample? {
             let leftShoulder = point("left_shoulder", in: frame.joints)
+            let leftElbow = point("left_elbow", in: frame.joints)
+            let leftWrist = point("left_wrist", in: frame.joints)
             let leftHip = point("left_hip", in: frame.joints)
             let leftKnee = point("left_knee", in: frame.joints)
             let leftAnkle = point("left_ankle", in: frame.joints)
             let leftToe = point("left_foot_index", in: frame.joints) ?? point("left_toe", in: frame.joints)
 
             let rightShoulder = point("right_shoulder", in: frame.joints)
+            let rightElbow = point("right_elbow", in: frame.joints)
+            let rightWrist = point("right_wrist", in: frame.joints)
             let rightHip = point("right_hip", in: frame.joints)
             let rightKnee = point("right_knee", in: frame.joints)
             let rightAnkle = point("right_ankle", in: frame.joints)
             let rightToe = point("right_foot_index", in: frame.joints) ?? point("right_toe", in: frame.joints)
 
+            let resolvedLeftToe = leftToe ?? leftAnkle.map { VideoJointAngleAnalyzer.approximateToePoint(knee: leftKnee, ankle: $0) }
+            let resolvedRightToe = rightToe ?? rightAnkle.map { VideoJointAngleAnalyzer.approximateToePoint(knee: rightKnee, ankle: $0) }
+
             let leftKneeAngle = frame.leftKneeAngleDeg ?? angle(leftHip, leftKnee, leftAnkle)
             let leftHipAngle = frame.leftHipAngleDeg ?? angle(leftShoulder, leftHip, leftKnee)
+            let leftAnkleAngle = frame.leftAnkleAngleDeg ?? angle(leftKnee, leftAnkle, resolvedLeftToe)
+            let leftShoulderAngle = angle(leftHip, leftShoulder, leftElbow)
+            let leftElbowAngle = angle(leftShoulder, leftElbow, leftWrist)
             let rightKneeAngle = frame.rightKneeAngleDeg ?? angle(rightHip, rightKnee, rightAnkle)
             let rightHipAngle = frame.rightHipAngleDeg ?? angle(rightShoulder, rightHip, rightKnee)
+            let rightAnkleAngle = frame.rightAnkleAngleDeg ?? angle(rightKnee, rightAnkle, resolvedRightToe)
+            let rightShoulderAngle = angle(rightHip, rightShoulder, rightElbow)
+            let rightElbowAngle = angle(rightShoulder, rightElbow, rightWrist)
 
             let leftConfidence = averageConfidence([leftShoulder, leftHip, leftKnee, leftAnkle])
             let rightConfidence = averageConfidence([rightShoulder, rightHip, rightKnee, rightAnkle])
@@ -2693,22 +3921,28 @@ struct VideoJointAngleAnalyzer {
             let confidence: Double
             let kneeAngle: Double?
             let hipAngle: Double?
+            let ankleAngle: Double?
+            let shoulderAngle: Double?
+            let elbowAngle: Double?
             if leftConfidence >= rightConfidence {
                 side = .left
                 confidence = leftConfidence
                 kneeAngle = leftKneeAngle
                 hipAngle = leftHipAngle
+                ankleAngle = leftAnkleAngle
+                shoulderAngle = leftShoulderAngle
+                elbowAngle = leftElbowAngle
             } else {
                 side = .right
                 confidence = rightConfidence
                 kneeAngle = rightKneeAngle
                 hipAngle = rightHipAngle
+                ankleAngle = rightAnkleAngle
+                shoulderAngle = rightShoulderAngle
+                elbowAngle = rightElbowAngle
             }
 
-            guard kneeAngle != nil || hipAngle != nil else { return nil }
-
-            let resolvedLeftToe = leftToe ?? leftAnkle.map { VideoJointAngleAnalyzer.approximateToePoint(knee: leftKnee, ankle: $0) }
-            let resolvedRightToe = rightToe ?? rightAnkle.map { VideoJointAngleAnalyzer.approximateToePoint(knee: rightKnee, ankle: $0) }
+            guard kneeAngle != nil || hipAngle != nil || ankleAngle != nil || shoulderAngle != nil || elbowAngle != nil else { return nil }
             let phase = VideoJointAngleAnalyzer.phaseAngleDegrees(
                 hip: side == .right ? rightHip : leftHip,
                 pedal: side == .right
@@ -2723,12 +3957,19 @@ struct VideoJointAngleAnalyzer {
                 confidence: confidence,
                 kneeAngleDeg: kneeAngle,
                 hipAngleDeg: hipAngle,
+                ankleAngleDeg: ankleAngle,
+                shoulderAngleDeg: shoulderAngle,
+                elbowAngleDeg: elbowAngle,
                 crankPhaseDeg: phase,
                 leftShoulder: leftShoulder,
+                leftElbow: leftElbow,
+                leftWrist: leftWrist,
                 leftHip: leftHip,
                 leftKnee: leftKnee,
                 leftAnkle: leftAnkle,
                 rightShoulder: rightShoulder,
+                rightElbow: rightElbow,
+                rightWrist: rightWrist,
                 rightHip: rightHip,
                 rightKnee: rightKnee,
                 rightAnkle: rightAnkle,

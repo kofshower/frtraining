@@ -69,7 +69,7 @@ private struct LoginView: View {
     var body: some View {
         VStack(spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Fricu")
+                Text("fr-training")
                     .font(.largeTitle.weight(.heavy))
                 Text(
                     L10n.choose(

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_CONFIG="${BUILD_CONFIG:-release}"
-APP_BUNDLE="$ROOT_DIR/dist/$BUILD_CONFIG/FricuApp.app"
+APP_BUNDLE="$ROOT_DIR/dist/$BUILD_CONFIG/fr-training.app"
 APP_EXEC="$APP_BUNDLE/Contents/MacOS/FricuApp"
 
 if [[ "$BUILD_CONFIG" != "release" && "$BUILD_CONFIG" != "debug" ]]; then
@@ -31,5 +31,5 @@ fi
 
 sleep 1
 
-echo "Starting FricuApp in foreground ($BUILD_CONFIG)..."
+echo "Starting fr-training in foreground ($BUILD_CONFIG)..."
 exec open -W -n "$APP_BUNDLE"

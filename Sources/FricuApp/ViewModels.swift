@@ -2373,7 +2373,7 @@ final class AppStore: ObservableObject {
             _ = try await pushActivityPayloadToStrava(
                 activity: activity,
                 payload: (fitData, "fit", fitFileName),
-                description: "Uploaded from Fricu smart trainer",
+                description: "Uploaded from fr-training smart trainer",
                 externalIDPrefix: "fricu-fit"
             )
             rows.append("Strava: OK")
@@ -2624,7 +2624,7 @@ final class AppStore: ObservableObject {
         applyStravaAuthUpdate(auth)
 
         let activityName = activity.notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = activityName.isEmpty ? "Fricu Activity" : activityName
+        let title = activityName.isEmpty ? "fr-training Activity" : activityName
         let externalID = "\(externalIDPrefix)-\(activity.id.uuidString)"
         let dataType = payload.extension.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
@@ -2668,7 +2668,7 @@ final class AppStore: ObservableObject {
                 screenshotData: screenshotData,
                 fileName: fileName,
                 mimeType: mimeType,
-                caption: "Fricu 实时码表截图"
+                caption: "fr-training 实时码表截图"
             )
         }
 
@@ -3179,7 +3179,7 @@ final class AppStore: ObservableObject {
             _ = try await self.pushActivityPayloadToStrava(
                 activity: activity,
                 payload: payload,
-                description: "Uploaded from Fricu"
+                description: "Uploaded from fr-training"
             )
             self.syncStatus = "Pushed selected activity to Strava."
         }
@@ -3231,7 +3231,7 @@ final class AppStore: ObservableObject {
                 _ = try await self.pushActivityPayloadToStrava(
                     activity: activity,
                     payload: payload,
-                    description: "Uploaded from Fricu"
+                    description: "Uploaded from fr-training"
                 )
                 rows.append("Strava: OK")
             } catch {
@@ -4878,7 +4878,7 @@ private struct TrainerBikeComputerSnapshotView: View {
     var body: some View {
         BikeComputerLightDashboardView(
             model: payload.lightDashboardModel(
-                title: "Fricu 实时码表截图",
+                title: "fr-training 实时码表截图",
                 subtitle: "\(payload.riderName) · \(IntervalsDateFormatter.dateTimeLocal.string(from: payload.startDate))",
                 alerts: []
             )

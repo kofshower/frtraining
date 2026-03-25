@@ -17,9 +17,9 @@ fi
 
 swift build -c "$BUILD_CONFIG" -Xswiftc -gnone
 
-APP_BUNDLE="$("$ROOT_DIR/scripts/make-app-bundle.sh" "$BUILD_CONFIG")"
+APP_BUNDLE="$("$ROOT_DIR/scripts/make-app-bundle.sh" "$BUILD_CONFIG" | tail -n 1)"
 DIST_DIR="$ROOT_DIR/dist/$BUILD_CONFIG"
-DIST_BIN="$DIST_DIR/FricuApp"
+DIST_BIN="$DIST_DIR/fr-training"
 SERVER_DIST_BIN="$DIST_DIR/fricu-server"
 
 SERVER_CFLAGS=""

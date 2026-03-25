@@ -22,7 +22,7 @@ final class PowerAssertionController {
         #if os(macOS)
             guard !isPreventingDisplaySleep else { return }
 
-            let reason = "Fricu keeps display awake while the app is running" as CFString
+            let reason = "fr-training keeps display awake while the app is running" as CFString
             let result = IOPMAssertionCreateWithName(
                 kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString,
                 IOPMAssertionLevel(kIOPMAssertionLevelOn),

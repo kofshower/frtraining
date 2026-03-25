@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_CONFIG="${BUILD_CONFIG:-release}"
-APP_BUNDLE="$ROOT_DIR/dist/$BUILD_CONFIG/FricuApp.app"
+APP_BUNDLE="$ROOT_DIR/dist/$BUILD_CONFIG/fr-training.app"
 APP_EXEC="$APP_BUNDLE/Contents/MacOS/FricuApp"
 
 if [[ "$BUILD_CONFIG" != "release" && "$BUILD_CONFIG" != "debug" ]]; then
@@ -36,7 +36,7 @@ sleep 1
 APP_PID="$(pgrep -f "$APP_EXEC" | head -n 1 || true)"
 
 if [[ -n "$APP_PID" ]]; then
-  echo "FricuApp started in background ($BUILD_CONFIG, pid: $APP_PID)"
+  echo "fr-training started in background ($BUILD_CONFIG, pid: $APP_PID)"
 else
-  echo "FricuApp launch requested in background ($BUILD_CONFIG)."
+  echo "fr-training launch requested in background ($BUILD_CONFIG)."
 fi

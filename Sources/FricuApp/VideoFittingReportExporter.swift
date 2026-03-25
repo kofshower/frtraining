@@ -89,7 +89,7 @@ struct VideoFittingReportExporter {
             currentY -= lineHeight
         }
 
-        writeLine("Fricu Video Fitting Report", size: 20, bold: true, extraSpacing: 10)
+        writeLine("fr-training Video Fitting Report", size: 20, bold: true, extraSpacing: 10)
         writeLine("Generated: \(ISO8601DateFormatter().string(from: Date()))", size: 10, color: CGColor(gray: 0.35, alpha: 1.0))
         writeLine("Pose model preference: \(preferredModel.displayName)", size: 10, color: CGColor(gray: 0.35, alpha: 1.0), extraSpacing: 12)
 
@@ -105,6 +105,9 @@ struct VideoFittingReportExporter {
             }
             if let hip = result.hipStats {
                 writeLine("Hip angle min/avg/max: \(String(format: "%.1f", hip.min)) / \(String(format: "%.1f", hip.mean)) / \(String(format: "%.1f", hip.max)) deg")
+            }
+            if let ankle = result.ankleStats {
+                writeLine("Ankle angle min/avg/max: \(String(format: "%.1f", ankle.min)) / \(String(format: "%.1f", ankle.mean)) / \(String(format: "%.1f", ankle.max)) deg")
             }
             if let cadence = result.cadenceSummary {
                 writeLine("Cadence avg/min/max: \(String(format: "%.1f", cadence.meanCadenceRPM)) / \(String(format: "%.1f", cadence.minCadenceRPM)) / \(String(format: "%.1f", cadence.maxCadenceRPM)) rpm")
@@ -429,6 +432,9 @@ struct VideoFittingReportExporter {
         }
         if let hip = sample.hipAngleDeg {
             lines.append("Hip \(String(format: "%.1f", hip))°")
+        }
+        if let ankle = sample.ankleAngleDeg {
+            lines.append("Ankle \(String(format: "%.1f", ankle))°")
         }
         if let phase = sample.crankPhaseDeg {
             lines.append("Phase \(String(format: "%.0f", phase))°")

@@ -121,6 +121,12 @@ enum VideoDownloadSpeedMode: String, CaseIterable, Identifiable {
     }
 }
 
+private struct JointAngleProgressEntry: Identifiable, Equatable {
+    let id = UUID()
+    let timestamp: String
+    let message: String
+}
+
 /// Display layout mode for embedded playback.
 enum VideoFittingMode: String, CaseIterable, Identifiable {
     case fit
@@ -356,6 +362,7 @@ struct VideoWorkspaceDirectoryResolver {
         case downloads
         case fittingReports
         case imports
+        case bikeKeypointWorkspace
     }
 
     func resolve(kind: Kind) throws -> URL {
@@ -368,6 +375,8 @@ struct VideoWorkspaceDirectoryResolver {
             folderName = "FricuFittingReports"
         case .imports:
             folderName = "FricuImportedVideos"
+        case .bikeKeypointWorkspace:
+            folderName = "FricuBikeKeypoints"
         }
 
         #if os(iOS)
@@ -876,6 +885,8 @@ struct VideoDownloaderPageView: View {
     @State private var jointAngleStatusText = "-"
     @State private var jointAngleResultsByView: [CyclingCameraView: VideoJointAngleAnalysisResult] = [:]
     @State private var jointAngleErrorText = "-"
+    @State private var jointAngleProgressEntries: [JointAngleProgressEntry] = []
+    @State private var jointAngleProgressScrollTarget: JointAngleProgressEntry.ID?
     @State private var jointAngleMaxSamples = 360
     @State private var autoCaptureDurationSeconds = 30.0
     @State private var autoCaptureStatusText = "-"
@@ -945,6 +956,56 @@ struct VideoDownloaderPageView: View {
         return result.samples.min(by: {
             abs($0.timeSeconds - playbackCurrentSeconds) < abs($1.timeSeconds - playbackCurrentSeconds)
         })
+    }
+
+    private static let jointAngleProgressTimestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.autoupdatingCurrent
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
+
+    private var latestJointAngleProgressMessage: String {
+        jointAngleProgressEntries.last?.message ?? L10n.choose(
+            simplifiedChinese: "正在准备识别任务...",
+            english: "Preparing the recognition job..."
+        )
+    }
+
+    @MainActor
+    private func resetJointAngleProgressLog(initialMessage: String? = nil) {
+        jointAngleProgressEntries = []
+        jointAngleProgressScrollTarget = nil
+        if let initialMessage {
+            appendJointAngleProgressLog(initialMessage)
+        }
+    }
+
+    @MainActor
+    private func appendJointAngleProgressLog(_ message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let entry = JointAngleProgressEntry(
+            timestamp: Self.jointAngleProgressTimestampFormatter.string(from: Date()),
+            message: trimmed
+        )
+        jointAngleProgressEntries.append(entry)
+        if jointAngleProgressEntries.count > 80 {
+            jointAngleProgressEntries.removeFirst(jointAngleProgressEntries.count - 80)
+        }
+        jointAngleProgressScrollTarget = entry.id
+    }
+
+    private func makeJointAngleProgressReporter(context: String? = nil) -> VideoJointAngleAnalysisProgressReporter {
+        VideoJointAngleAnalysisProgressReporter { update in
+            let line: String
+            if let context, !context.isEmpty {
+                line = "\(context): \(update.message)"
+            } else {
+                line = update.message
+            }
+            appendJointAngleProgressLog(line)
+        }
     }
 
     var body: some View {
@@ -1257,17 +1318,77 @@ struct VideoDownloaderPageView: View {
                                         .foregroundStyle(.orange)
                                     }
 
-                                    if isAnalyzingJointAngles {
-                                        HStack(spacing: 8) {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                            Text(L10n.choose(simplifiedChinese: "正在识别人体彩点并计算关节指标...", english: "Detecting body keypoints and computing fitting metrics..."))
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
+                                    if isAnalyzingJointAngles || !jointAngleProgressEntries.isEmpty {
+                                        VStack(alignment: .leading, spacing: 8) {
+                                            HStack(alignment: .top, spacing: 8) {
+                                                if isAnalyzingJointAngles {
+                                                    ProgressView()
+                                                        .controlSize(.small)
+                                                        .padding(.top, 2)
+                                                } else {
+                                                    Image(systemName: "checkmark.circle.fill")
+                                                        .foregroundStyle(.green)
+                                                        .font(.caption)
+                                                        .padding(.top, 2)
+                                                }
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    Text(latestJointAngleProgressMessage)
+                                                        .font(.caption.weight(.semibold))
+                                                        .foregroundStyle(.primary)
+                                                    Text(
+                                                        L10n.choose(
+                                                            simplifiedChinese: "最近 \(jointAngleProgressEntries.count) 条识别进度会在这里持续滚动。",
+                                                            english: "The latest \(jointAngleProgressEntries.count) recognition updates keep scrolling here."
+                                                        )
+                                                    )
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                }
+                                            }
+
+                                            ScrollViewReader { proxy in
+                                                ScrollView {
+                                                    LazyVStack(alignment: .leading, spacing: 6) {
+                                                        ForEach(jointAngleProgressEntries) { entry in
+                                                            HStack(alignment: .top, spacing: 8) {
+                                                                Text(entry.timestamp)
+                                                                    .font(.caption2.monospacedDigit())
+                                                                    .foregroundStyle(.secondary)
+                                                                Text(entry.message)
+                                                                    .font(.caption)
+                                                                    .foregroundStyle(.primary)
+                                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                            }
+                                                            .id(entry.id)
+                                                        }
+                                                    }
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                                }
+                                                .frame(maxHeight: 140)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 8)
+                                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                                .onAppear {
+                                                    if let target = jointAngleProgressScrollTarget {
+                                                        proxy.scrollTo(target, anchor: .bottom)
+                                                    }
+                                                }
+                                                .onChange(of: jointAngleProgressScrollTarget) { _, target in
+                                                    guard let target else { return }
+                                                    withAnimation(.easeOut(duration: 0.2)) {
+                                                        proxy.scrollTo(target, anchor: .bottom)
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
 
                                     VideoFittingJointRecognitionQualityPanel(summary: selectedJointRecognitionQualitySummary)
+
+                                    BikeKeypointWorkbenchPanel(
+                                        sideVideoURL: sourceVideoURL(for: .side),
+                                        recommendedMaxSamples: jointAngleMaxSamples
+                                    )
 
                                     if selectedJointAngleResult != nil {
                                         Text(
@@ -2596,6 +2717,18 @@ struct VideoDownloaderPageView: View {
         jointAngleErrorText = "-"
         jointAngleStatusText = L10n.choose(simplifiedChinese: "质量检测中", english: "Quality checking")
         jointAngleResultsByView[requestedView] = nil
+        resetJointAngleProgressLog(
+            initialMessage: L10n.choose(
+                simplifiedChinese: "开始识别 \(requestedView.displayName)：目标模型 \(selectedPoseModel.displayName)。",
+                english: "Started \(requestedView.displayName) recognition with \(selectedPoseModel.displayName)."
+            )
+        )
+        appendJointAngleProgressLog(
+            L10n.choose(
+                simplifiedChinese: "正在执行识别前质量门控...",
+                english: "Running the pre-recognition quality gate..."
+            )
+        )
 
         Task {
             let gate = await runPreflightQualityGate(plans: [(requestedView, localURL)])
@@ -2604,31 +2737,56 @@ struct VideoDownloaderPageView: View {
                     isAnalyzingJointAngles = false
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "需重拍", english: "Retake required")
                     jointAngleErrorText = gate.failures.joined(separator: "\n\n")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "质量门控未通过，已阻止识别并等待重拍。",
+                            english: "Quality gate failed. Recognition was blocked and a retake is required."
+                        )
+                    )
                 }
                 return
             }
 
             await MainActor.run {
                 jointAngleStatusText = L10n.choose(simplifiedChinese: "分析中", english: "Analyzing")
+                appendJointAngleProgressLog(
+                    L10n.choose(
+                        simplifiedChinese: "质量门控已通过，开始骨点识别与角度计算。",
+                        english: "Quality gate passed. Starting pose recognition and angle computation."
+                    )
+                )
             }
             do {
                 let result = try await jointAngleAnalyzer.analyze(
                     videoURL: localURL,
                     maxSamples: jointAngleMaxSamples,
                     requestedView: requestedView,
-                    preferredModel: selectedPoseModel
+                    preferredModel: selectedPoseModel,
+                    progressReporter: makeJointAngleProgressReporter(context: requestedView.displayName)
                 )
                 await MainActor.run {
                     isAnalyzingJointAngles = false
                     jointAngleResultsByView[requestedView] = result
                     jointAngleResultsByView[result.resolvedView] = result
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "已完成", english: "Completed")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "\(requestedView.displayName) 识别完成，实际使用 \(result.modelUsed.displayName)。",
+                            english: "\(requestedView.displayName) recognition finished with \(result.modelUsed.displayName)."
+                        )
+                    )
                 }
             } catch {
                 await MainActor.run {
                     isAnalyzingJointAngles = false
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "失败", english: "Failed")
                     jointAngleErrorText = error.localizedDescription
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "\(requestedView.displayName) 识别失败：\(error.localizedDescription)",
+                            english: "\(requestedView.displayName) recognition failed: \(error.localizedDescription)"
+                        )
+                    )
                 }
             }
         }
@@ -2665,6 +2823,18 @@ struct VideoDownloaderPageView: View {
         isAnalyzingJointAngles = true
         jointAngleErrorText = "-"
         jointAngleStatusText = L10n.choose(simplifiedChinese: "质量检测中", english: "Quality checking")
+        resetJointAngleProgressLog(
+            initialMessage: L10n.choose(
+                simplifiedChinese: "开始批量识别 \(plans.count) 个机位，目标模型 \(selectedPoseModel.displayName)。",
+                english: "Started batch recognition for \(plans.count) views with \(selectedPoseModel.displayName)."
+            )
+        )
+        appendJointAngleProgressLog(
+            L10n.choose(
+                simplifiedChinese: "正在执行全部机位的质量门控...",
+                english: "Running the quality gate for all assigned views..."
+            )
+        )
 
         Task {
             let gate = await runPreflightQualityGate(plans: plans)
@@ -2673,28 +2843,65 @@ struct VideoDownloaderPageView: View {
                     isAnalyzingJointAngles = false
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "需重拍", english: "Retake required")
                     jointAngleErrorText = gate.failures.joined(separator: "\n\n")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "全部机位都没有通过质量门控，请先按提示重拍。",
+                            english: "No assigned view passed the quality gate. Retake videos before continuing."
+                        )
+                    )
                 }
                 return
             }
 
             await MainActor.run {
                 jointAngleStatusText = L10n.choose(simplifiedChinese: "分析中", english: "Analyzing")
+                appendJointAngleProgressLog(
+                    L10n.choose(
+                        simplifiedChinese: "质量门控完成：\(gate.passed.count) 个机位可继续分析。",
+                        english: "Quality gate finished. \(gate.passed.count) view(s) can continue to analysis."
+                    )
+                )
             }
             var mergedResults: [CyclingCameraView: VideoJointAngleAnalysisResult] = [:]
             var failures: [String] = gate.failures
             for (view, url) in gate.passed {
                 do {
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "开始处理 \(view.displayName) 机位...",
+                                english: "Started processing the \(view.displayName) view..."
+                            )
+                        )
+                    }
                     let result = try await jointAngleAnalyzer.analyze(
                         videoURL: url,
                         maxSamples: jointAngleMaxSamples,
                         requestedView: view,
-                        preferredModel: selectedPoseModel
+                        preferredModel: selectedPoseModel,
+                        progressReporter: makeJointAngleProgressReporter(context: view.displayName)
                     )
                     mergedResults[view] = result
                     mergedResults[result.resolvedView] = result
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName) 完成，实际使用 \(result.modelUsed.displayName)。",
+                                english: "\(view.displayName) finished with \(result.modelUsed.displayName)."
+                            )
+                        )
+                    }
                 } catch {
                     let failLabel = view.displayName
                     failures.append("\(failLabel): \(error.localizedDescription)")
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(failLabel) 失败：\(error.localizedDescription)",
+                                english: "\(failLabel) failed: \(error.localizedDescription)"
+                            )
+                        )
+                    }
                 }
             }
 
@@ -2706,12 +2913,30 @@ struct VideoDownloaderPageView: View {
                 if failures.isEmpty {
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "已完成", english: "Completed")
                     jointAngleErrorText = "-"
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "全部机位识别已完成。",
+                            english: "Recognition finished for all requested views."
+                        )
+                    )
                 } else if mergedResults.isEmpty {
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "失败", english: "Failed")
                     jointAngleErrorText = failures.joined(separator: "\n")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "批量识别失败，没有机位成功完成。",
+                            english: "Batch recognition failed and no view completed successfully."
+                        )
+                    )
                 } else {
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "部分完成", english: "Partially completed")
                     jointAngleErrorText = failures.joined(separator: "\n")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "批量识别部分完成，请查看失败机位。",
+                            english: "Batch recognition partially completed. Review the failed views."
+                        )
+                    )
                 }
             }
         }
@@ -2747,6 +2972,18 @@ struct VideoDownloaderPageView: View {
         autoCaptureStatusText = L10n.choose(simplifiedChinese: "质量门控检测中...", english: "Running quality gate...")
         jointAngleErrorText = "-"
         jointAngleStatusText = L10n.choose(simplifiedChinese: "质量检测中", english: "Quality checking")
+        resetJointAngleProgressLog(
+            initialMessage: L10n.choose(
+                simplifiedChinese: "开始自动截取 + 识别流程，目标模型 \(selectedPoseModel.displayName)。",
+                english: "Started the auto-capture plus recognition flow with \(selectedPoseModel.displayName)."
+            )
+        )
+        appendJointAngleProgressLog(
+            L10n.choose(
+                simplifiedChinese: "正在执行自动截取前的质量门控...",
+                english: "Running the quality gate before auto capture..."
+            )
+        )
 
         Task {
             let gate = await runPreflightQualityGate(plans: plans)
@@ -2759,6 +2996,12 @@ struct VideoDownloaderPageView: View {
                     )
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "需重拍", english: "Retake required")
                     jointAngleErrorText = gate.failures.joined(separator: "\n\n")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "自动截取前质量门控未通过，流程已停止。",
+                            english: "The quality gate failed before auto capture, so the flow was stopped."
+                        )
+                    )
                 }
                 return
             }
@@ -2766,22 +3009,45 @@ struct VideoDownloaderPageView: View {
             await MainActor.run {
                 autoCaptureStatusText = L10n.choose(simplifiedChinese: "自动检测踩踏中...", english: "Detecting pedaling...")
                 jointAngleStatusText = L10n.choose(simplifiedChinese: "分析中", english: "Analyzing")
+                appendJointAngleProgressLog(
+                    L10n.choose(
+                        simplifiedChinese: "质量门控已通过，开始自动检测踩踏并选择截取窗口。",
+                        english: "Quality gate passed. Detecting pedaling and choosing capture windows."
+                    )
+                )
             }
             var results: [CyclingCameraView: VideoJointAngleAnalysisResult] = [:]
             var failures: [String] = gate.failures
 
             for (view, sourceURL) in gate.passed {
                 do {
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：先做快速踩踏侦察...",
+                                english: "\(view.displayName): running the scouting pass first..."
+                            )
+                        )
+                    }
                     let scoutingResult = try await jointAngleAnalyzer.analyze(
                         videoURL: sourceURL,
                         maxSamples: 120,
                         requestedView: view,
-                        preferredModel: selectedPoseModel
+                        preferredModel: selectedPoseModel,
+                        progressReporter: makeJointAngleProgressReporter(context: "\(view.displayName)·侦察")
                     )
                     let captureWindow = VideoFittingCaptureWindowPolicy.suggestedCaptureWindow(
                         from: scoutingResult,
                         preferredDuration: autoCaptureDurationSeconds
                     )
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：已定位截取窗口 \(Int(captureWindow.start.rounded()))s - \(Int((captureWindow.start + captureWindow.duration).rounded()))s，正在导出片段...",
+                                english: "\(view.displayName): capture window located, exporting the analysis clip now..."
+                            )
+                        )
+                    }
                     let clipURL = makeAutoCaptureClipURL(view: view)
                     let exportedURL = try await reportExporter.exportClip(
                         sourceURL: sourceURL,
@@ -2790,20 +3056,43 @@ struct VideoDownloaderPageView: View {
                         outputURL: clipURL
                     )
 
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：分析片段已导出，开始正式识别...",
+                                english: "\(view.displayName): analysis clip exported, starting the full recognition pass..."
+                            )
+                        )
+                    }
                     let result = try await jointAngleAnalyzer.analyze(
                         videoURL: exportedURL,
                         maxSamples: jointAngleMaxSamples,
                         requestedView: view,
-                        preferredModel: selectedPoseModel
+                        preferredModel: selectedPoseModel,
+                        progressReporter: makeJointAngleProgressReporter(context: "\(view.displayName)·正式")
                     )
                     results[view] = result
                     results[result.resolvedView] = result
 
                     await MainActor.run {
                         setCameraVideoURL(exportedURL, for: view)
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：正式识别完成，实际使用 \(result.modelUsed.displayName)。",
+                                english: "\(view.displayName): full recognition completed with \(result.modelUsed.displayName)."
+                            )
+                        )
                     }
                 } catch {
                     failures.append("\(view.displayName): \(error.localizedDescription)")
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：自动截取或识别失败，原因：\(error.localizedDescription)",
+                                english: "\(view.displayName): auto capture or recognition failed because \(error.localizedDescription)"
+                            )
+                        )
+                    }
                 }
             }
 
@@ -2822,18 +3111,36 @@ struct VideoDownloaderPageView: View {
                         english: "Auto capture completed: pedaling detected, analysis clips captured, and analysis finished."
                     )
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "已完成", english: "Completed")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "自动截取与正式识别全部完成。",
+                            english: "Auto capture and full recognition completed."
+                        )
+                    )
                 } else if results.isEmpty {
                     autoCaptureStatusText = L10n.choose(
                         simplifiedChinese: "自动采集失败。",
                         english: "Auto capture failed."
                     )
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "失败", english: "Failed")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "自动截取流程失败，没有可用结果。",
+                            english: "Auto capture failed and did not produce usable results."
+                        )
+                    )
                 } else {
                     autoCaptureStatusText = L10n.choose(
                         simplifiedChinese: "自动采集部分完成，请查看失败机位信息。",
                         english: "Auto capture partially completed. Check failed views."
                     )
                     jointAngleStatusText = L10n.choose(simplifiedChinese: "部分完成", english: "Partially completed")
+                    appendJointAngleProgressLog(
+                        L10n.choose(
+                            simplifiedChinese: "自动截取部分完成，请检查失败机位。",
+                            english: "Auto capture partially completed. Inspect the failed views."
+                        )
+                    )
                 }
 
                 jointAngleErrorText = failures.isEmpty ? "-" : failures.joined(separator: "\n")
@@ -2911,6 +3218,12 @@ struct VideoDownloaderPageView: View {
 
         isAnalyzingJointAngles = true
         reportExportStatusText = L10n.choose(simplifiedChinese: "导出视频中...", english: "Exporting videos...")
+        resetJointAngleProgressLog(
+            initialMessage: L10n.choose(
+                simplifiedChinese: "开始为导出视频准备骨点结果与叠加片段。",
+                english: "Preparing pose results and overlay clips for video export."
+            )
+        )
 
         Task {
             var failures: [String] = []
@@ -2918,6 +3231,14 @@ struct VideoDownloaderPageView: View {
 
             for (view, sourceURL) in plans {
                 do {
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：开始准备导出所需结果...",
+                                english: "\(view.displayName): preparing the export prerequisites..."
+                            )
+                        )
+                    }
                     let referenceResult: VideoJointAngleAnalysisResult
                     if let existing = jointAngleResultsByView[view] {
                         referenceResult = existing
@@ -2925,13 +3246,22 @@ struct VideoDownloaderPageView: View {
                         let gate = await runPreflightQualityGate(plans: [(view, sourceURL)])
                         guard gate.passed.first != nil else {
                             failures.append(contentsOf: gate.failures)
+                            await MainActor.run {
+                                appendJointAngleProgressLog(
+                                    L10n.choose(
+                                        simplifiedChinese: "\(view.displayName)：导出前质量门控未通过。",
+                                        english: "\(view.displayName): export preparation failed the quality gate."
+                                    )
+                                )
+                            }
                             continue
                         }
                         referenceResult = try await jointAngleAnalyzer.analyze(
                             videoURL: sourceURL,
                             maxSamples: 120,
                             requestedView: view,
-                            preferredModel: selectedPoseModel
+                            preferredModel: selectedPoseModel,
+                            progressReporter: makeJointAngleProgressReporter(context: "\(view.displayName)·导出侦察")
                         )
                     }
                     let captureWindow = VideoFittingCaptureWindowPolicy.suggestedCaptureWindow(
@@ -2950,7 +3280,8 @@ struct VideoDownloaderPageView: View {
                             videoURL: sourceURL,
                             maxSamples: jointAngleMaxSamples,
                             requestedView: view,
-                            preferredModel: selectedPoseModel
+                            preferredModel: selectedPoseModel,
+                            progressReporter: makeJointAngleProgressReporter(context: "\(view.displayName)·导出正式")
                         )
                     }
                     let outputURL = makeReportOutputURL(
@@ -2965,8 +3296,24 @@ struct VideoDownloaderPageView: View {
                         outputURL: outputURL
                     )
                     exportedNames.append(outputURL.lastPathComponent)
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：导出完成 \(outputURL.lastPathComponent)。",
+                                english: "\(view.displayName): exported \(outputURL.lastPathComponent)."
+                            )
+                        )
+                    }
                 } catch {
                     failures.append("\(view.displayName): \(error.localizedDescription)")
+                    await MainActor.run {
+                        appendJointAngleProgressLog(
+                            L10n.choose(
+                                simplifiedChinese: "\(view.displayName)：导出失败，原因：\(error.localizedDescription)",
+                                english: "\(view.displayName): export failed because \(error.localizedDescription)"
+                            )
+                        )
+                    }
                 }
             }
 
@@ -2996,7 +3343,7 @@ struct VideoDownloaderPageView: View {
     private func makeReportOutputURL(suffix: String, fileExtension: String) -> URL {
         let base = makeReportDirectoryURL()
         let stamp = DateFormatter.fricuCompactTimestamp.string(from: Date())
-        return base.appendingPathComponent("fricu-\(suffix)-\(stamp).\(fileExtension)")
+        return base.appendingPathComponent("fr-training-\(suffix)-\(stamp).\(fileExtension)")
     }
 
     private func makeReportDirectoryURL() -> URL {
@@ -3004,7 +3351,7 @@ struct VideoDownloaderPageView: View {
             return resolved
         }
         let fallback = FileManager.default.temporaryDirectory
-            .appendingPathComponent("fricu/FricuFittingReports", isDirectory: true)
+            .appendingPathComponent("fr-training/FittingReports", isDirectory: true)
         try? FileManager.default.createDirectory(at: fallback, withIntermediateDirectories: true)
         return fallback
     }
@@ -3152,20 +3499,20 @@ struct VideoDownloaderPageView: View {
     private var motionBERTRuntimeCaption: String {
 #if os(iOS)
         return L10n.choose(
-            simplifiedChinese: "iPhone/iPad 当前使用 Apple Vision 本地链路；macOS 桌面版会优先使用随 app 打包的 MotionBERT 3D 运行时。",
-            english: "iPhone and iPad currently use the local Apple Vision pipeline; the macOS desktop app prefers the MotionBERT 3D runtime bundled inside the app."
+            simplifiedChinese: "iPhone/iPad 当前使用 Apple Vision 本地链路；macOS 桌面版会优先使用随 app 打包的 MotionAGFormer-L 3D 运行时。",
+            english: "iPhone and iPad currently use the local Apple Vision pipeline; the macOS desktop app prefers the MotionAGFormer-L 3D runtime bundled inside the app."
         )
 #else
         let locator = MotionBERTRuntimeLocator()
         if locator.resolveBundledPythonPath() != nil {
             return L10n.choose(
-                simplifiedChinese: "当前构建已内置 MotionBERT 运行时，无需额外配置 Python 环境。",
-                english: "This build already includes the MotionBERT runtime, so no extra Python setup is required."
+                simplifiedChinese: "当前构建已内置 MotionAGFormer-L 运行时，无需额外配置 Python 环境。",
+                english: "This build already includes the MotionAGFormer-L runtime, so no extra Python setup is required."
             )
         }
         return L10n.choose(
-            simplifiedChinese: "桌面发版会优先把 MotionBERT 运行时一起打进 app；只有开发构建尚未打包时，才会回退到本机 Python 环境。",
-            english: "Desktop releases bundle the MotionBERT runtime into the app whenever it is available; only unpackaged development builds fall back to a local Python environment."
+            simplifiedChinese: "桌面发版会优先把 MotionAGFormer-L 运行时一起打进 app；只有开发构建尚未打包时，才会回退到本机 Python 环境。",
+            english: "Desktop releases bundle the MotionAGFormer-L runtime into the app whenever it is available; only unpackaged development builds fall back to a local Python environment."
         )
 #endif
     }
@@ -3504,8 +3851,8 @@ struct VideoDownloaderPageView: View {
                 switch result.modelUsed {
                 case .mmposeMotionBERT:
                     return L10n.choose(
-                        simplifiedChinese: "MotionBERT 3D（\(result.used3DAngleFrameCount) 帧）",
-                        english: "MotionBERT 3D (\(result.used3DAngleFrameCount) frames)"
+                        simplifiedChinese: "MotionAGFormer-L 3D（\(result.used3DAngleFrameCount) 帧）",
+                        english: "MotionAGFormer-L 3D (\(result.used3DAngleFrameCount) frames)"
                     )
                 case .mediaPipeBlazePoseGHUM:
                     return L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
@@ -3544,6 +3891,11 @@ struct VideoDownloaderPageView: View {
                     title: L10n.choose(simplifiedChinese: "髋关节角", english: "Hip Angle"),
                     stats: result.hipStats,
                     tint: .blue
+                )
+                jointAngleStatsCard(
+                    title: L10n.choose(simplifiedChinese: "踝关节角", english: "Ankle Angle"),
+                    stats: result.ankleStats,
+                    tint: .green
                 )
             }
 
@@ -3801,7 +4153,7 @@ struct VideoDownloaderPageView: View {
 
             VideoFittingResultSectionCard(
                 title: L10n.choose(simplifiedChinese: "角度证据曲线", english: "Angle Evidence Chart"),
-                subtitle: L10n.choose(simplifiedChinese: "展示本次识别生成的膝角 / 髋角时序曲线。", english: "Shows knee and hip time-series curves produced by this recognition run.")
+                subtitle: L10n.choose(simplifiedChinese: "展示本次识别生成的膝角 / 髋角 / 踝角时序曲线。", english: "Shows knee, hip, and ankle time-series curves produced by this recognition run.")
             ) {
                 fittingEvidenceChart(result: result)
             }
@@ -3869,6 +4221,13 @@ struct VideoDownloaderPageView: View {
                     )
                     .foregroundStyle(.blue)
                 }
+                if let ankle = sample.ankleAngleDeg {
+                    LineMark(
+                        x: .value("Time", sample.timeSeconds),
+                        y: .value("Ankle", ankle)
+                    )
+                    .foregroundStyle(.green)
+                }
             }
         }
         .frame(height: 210)
@@ -3915,8 +4274,8 @@ struct VideoDownloaderPageView: View {
             switch result.modelUsed {
             case .mmposeMotionBERT:
                 return L10n.choose(
-                    simplifiedChinese: "MotionBERT 3D（\(result.used3DAngleFrameCount) 帧）",
-                    english: "MotionBERT 3D (\(result.used3DAngleFrameCount) frames)"
+                    simplifiedChinese: "MotionAGFormer-L 3D（\(result.used3DAngleFrameCount) 帧）",
+                    english: "MotionAGFormer-L 3D (\(result.used3DAngleFrameCount) frames)"
                 )
             case .mediaPipeBlazePoseGHUM:
                 return L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
@@ -3949,6 +4308,11 @@ struct VideoDownloaderPageView: View {
                 title: L10n.choose(simplifiedChinese: "髋关节角", english: "Hip Angle"),
                 stats: result.hipStats,
                 tint: .blue
+            )
+            jointAngleStatsCard(
+                title: L10n.choose(simplifiedChinese: "踝关节角", english: "Ankle Angle"),
+                stats: result.ankleStats,
+                tint: .green
             )
         }
 
@@ -4194,6 +4558,13 @@ struct VideoDownloaderPageView: View {
                         y: .value("Hip", hip)
                     )
                     .foregroundStyle(.blue)
+                }
+                if let ankle = sample.ankleAngleDeg {
+                    LineMark(
+                        x: .value("Time", sample.timeSeconds),
+                        y: .value("Ankle", ankle)
+                    )
+                    .foregroundStyle(.green)
                 }
             }
         }
@@ -4725,6 +5096,8 @@ struct VideoDownloaderPageView: View {
                 .font(.caption2.monospacedDigit())
             Text(String(format: "H %@", snapshot.hipAngleDeg.map { String(format: "%.1f°", $0) } ?? "--"))
                 .font(.caption2.monospacedDigit())
+            Text(String(format: "A %@", snapshot.ankleAngleDeg.map { String(format: "%.1f°", $0) } ?? "--"))
+                .font(.caption2.monospacedDigit())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(8)
@@ -4735,6 +5108,7 @@ struct VideoDownloaderPageView: View {
     private func fittingRangeDashboard(result: VideoJointAngleAnalysisResult) -> some View {
         let kneeRange = result.kneeStats.map { $0.max - $0.min } ?? 0
         let hipRange = result.hipStats.map { $0.max - $0.min } ?? 0
+        let ankleRange = result.ankleStats.map { $0.max - $0.min } ?? 0
         let strongRatio = result.samples.isEmpty
             ? 0
             : Double(result.samples.filter { $0.confidence >= 0.55 }.count) / Double(result.samples.count)
@@ -4749,6 +5123,11 @@ struct VideoDownloaderPageView: View {
                 title: L10n.choose(simplifiedChinese: "髋角活动范围", english: "Hip ROM"),
                 value: result.hipStats == nil ? "--" : String(format: "%.1f°", hipRange),
                 tint: (hipRange >= 12 && hipRange <= 70) ? .green : .orange
+            )
+            metricCard(
+                title: L10n.choose(simplifiedChinese: "踝角活动范围", english: "Ankle ROM"),
+                value: result.ankleStats == nil ? "--" : String(format: "%.1f°", ankleRange),
+                tint: (ankleRange >= 8 && ankleRange <= 55) ? .green : .orange
             )
             metricCard(
                 title: L10n.choose(simplifiedChinese: "高置信帧占比", english: "High-confidence Ratio"),

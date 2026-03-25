@@ -71,7 +71,7 @@ async def run_load(host: str, port: int, endpoint: str, concurrency: int, reques
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Simple async HTTP load test for Fricu local backend")
+    parser = argparse.ArgumentParser(description="Simple async HTTP load test for fr-training local backend")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--endpoint", default="/health")

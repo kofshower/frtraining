@@ -80,6 +80,35 @@ final class MotionBERTPythonResolverTests: XCTestCase {
         XCTAssertEqual(invocation.executableURL.path, explicitPython.path)
     }
 
+    func testResolveInvocationPrefersBundledRuntimeOverExplicitEnvironmentVariable() throws {
+        let tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let fakeAppBundle = tempRoot.appendingPathComponent("fr-training.app", isDirectory: true)
+        let bundledPython = fakeAppBundle
+            .appendingPathComponent("Contents/Resources/\(MotionBERTRuntimeLocator.runtimeDirectoryName)/bin/python3", isDirectory: false)
+        let explicitPython = tempRoot
+            .appendingPathComponent("custom-python/bin/python", isDirectory: false)
+        try makeExecutable(at: bundledPython)
+        try makeExecutable(at: explicitPython)
+
+        defer {
+            try? FileManager.default.removeItem(at: tempRoot)
+        }
+
+        let bundle = try XCTUnwrap(Bundle(path: fakeAppBundle.path))
+        let invocation = VideoJointAngleAnalyzer.PythonPoseProcessRunner.resolveInvocation(
+            preferredEnvironmentVariables: ["FRICU_MEDIAPIPE_PYTHON"],
+            preferredCondaEnvironment: "mmpose-mac",
+            bundledRuntimeLocator: MotionBERTRuntimeLocator(),
+            bundle: bundle,
+            environment: [
+                "FRICU_MEDIAPIPE_PYTHON": explicitPython.path
+            ]
+        )
+
+        XCTAssertEqual(invocation.executableURL.path, bundledPython.path)
+    }
+
     private func makeExecutable(at url: URL) throws {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),

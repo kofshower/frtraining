@@ -1,4 +1,4 @@
-# FricuApp (macOS Native)
+# fr-training (macOS Native)
 
 A native macOS training workstation that combines key strengths of Golden Cheetah and Intervals.icu.
 
@@ -98,10 +98,11 @@ Build into `dist/` (default `release`):
 
 Build artifacts:
 
-- `dist/release/FricuApp` (executable binary)
-- `dist/release/FricuApp.app` (macOS app bundle)
+- `dist/release/fr-training` (executable binary)
+- `dist/release/fr-training.app` (macOS app bundle)
 - `dist/release/fricu-server` (server binary)
-- `dist/FricuApp` and `dist/FricuApp.app` (latest build alias)
+- `dist/fr-training` and `dist/fr-training.app` (latest build alias)
+- `dist/FricuApp` and `dist/FricuApp.app` (legacy compatibility aliases)
 
 Use the run script (default `release`, foreground):
 
@@ -166,7 +167,7 @@ Notes:
 - Wahoo and Garmin/Tacx trainers are auto-detected by brand and BLE services.
 - Full ERG control requires FTMS control point exposure on the trainer.
 - If FTMS control point is unavailable, app still supports telemetry when cycling power data is available.
-- On first use, allow Bluetooth permission for Fricu.
+- On first use, allow Bluetooth permission for fr-training.
 
 ## Heart Rate Monitor (Bluetooth)
 
@@ -233,7 +234,7 @@ Then click `Pull Wellness from Oura`.
 
 ## Storage
 
-Local data is stored under:
+Local data is stored under the legacy compatibility path:
 
 - `~/Library/Application Support/Fricu/activities.json`
 - `~/Library/Application Support/Fricu/workouts.json`
@@ -249,7 +250,7 @@ Local data is stored under:
 
 当前仓库已改为 C-S 架构：
 
-- `FricuApp` 作为客户端，仅通过 HTTP 访问服务端数据。
+- `fr-training` 作为客户端，仅通过 HTTP 访问服务端数据。
 - 服务端位于 `server/`，当前主实现为 C + SQLite 多线程 HTTP 服务。
 - 服务端数据存储使用 SQLite（嵌入式数据库，默认仓库根目录 `fricu_server.db`）。
 

@@ -12,11 +12,11 @@ mkdir -p "$(dirname "$DB_FILE")"
 cd "$ROOT_DIR"
 
 if [ ! -x "$SERVER_BIN" ]; then
-  echo "Building Fricu C backend..."
+  echo "Building fr-training C backend..."
   make -C "$ROOT_DIR/server"
 fi
 
-echo "Starting Fricu C backend on http://$HOST:$PORT"
+echo "Starting fr-training C backend on http://$HOST:$PORT"
 echo "SQLite DB: $DB_FILE"
 export FRICU_SERVER_BIND="$HOST:$PORT"
 export FRICU_DB_PATH="$DB_FILE"

@@ -34,10 +34,10 @@ TARGET_SUFFIXES = {
 }
 
 LEGACY_SEPARATORS = [
-    "---来自Fricu",
-    "---来自 Fricu",
-    "---fromFricu",
-    "---from Fricu",
+    "---来自fr-training",
+    "---来自 fr-training",
+    "---fromfr-training",
+    "---from fr-training",
     " · Trainer ride",
     " · 训练骑行",
     "• Trainer ride",
@@ -258,7 +258,7 @@ def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="One-time athleteName migration for Fricu model v2."
+        description="One-time athleteName migration for fr-training model v2."
     )
     parser.add_argument(
         "--db",

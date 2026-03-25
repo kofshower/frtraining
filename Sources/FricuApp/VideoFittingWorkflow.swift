@@ -113,8 +113,8 @@ enum VideoFittingCapability: String, CaseIterable, Identifiable {
             )
         case .sideKinematics:
             return L10n.choose(
-                simplifiedChinese: "缺少侧视视频：髋/膝角、BDC 与座高建议不可用。",
-                english: "Missing side video: hip/knee angles, BDC, and saddle-height suggestions are unavailable."
+                simplifiedChinese: "缺少侧视视频：髋/膝/踝角、BDC 与座高建议不可用。",
+                english: "Missing side video: hip/knee/ankle angles, BDC, and saddle-height suggestions are unavailable."
             )
         case .rearStability:
             return L10n.choose(
@@ -398,7 +398,7 @@ private func videoFittingSupportedConclusions(for view: CyclingCameraView) -> [S
         ]
     case .side:
         return [
-            L10n.choose(simplifiedChinese: "髋/膝角", english: "Hip / knee angles"),
+            L10n.choose(simplifiedChinese: "髋/膝/踝角", english: "Hip / knee / ankle angles"),
             L10n.choose(simplifiedChinese: "BDC 下止点膝角", english: "BDC knee angle"),
             L10n.choose(simplifiedChinese: "座高建议", english: "Saddle-height guidance")
         ]
@@ -427,8 +427,8 @@ private func videoFittingMissingImpactText(for view: CyclingCameraView) -> Strin
         )
     case .side:
         return L10n.choose(
-            simplifiedChinese: "缺少侧视：无法输出髋/膝角、BDC 与座高建议。",
-            english: "Missing side view: hip/knee angles, BDC, and saddle-height guidance stay unavailable."
+            simplifiedChinese: "缺少侧视：无法输出髋/膝/踝角、BDC 与座高建议。",
+            english: "Missing side view: hip/knee/ankle angles, BDC, and saddle-height guidance stay unavailable."
         )
     case .rear:
         return L10n.choose(
@@ -754,12 +754,16 @@ struct VideoFittingJointRecognitionQualitySummary: Equatable {
 enum VideoFittingJointAngleVisualKind: String, Equatable {
     case knee
     case hip
+    case ankle
     case bdcKnee
 }
 
 private enum VideoFittingJointTripletKind {
     case knee
     case hip
+    case ankle
+    case shoulder
+    case elbow
 }
 
 struct VideoFittingJointAngleVisualSummary: Identifiable, Equatable {
@@ -810,6 +814,7 @@ struct VideoFittingCheckpointVisualSummary: Identifiable, Equatable {
     let phaseDegrees: Double
     let kneeAngleText: String
     let hipAngleText: String
+    var ankleAngleText: String = "--"
     let crankCenter: VideoFittingNormalizedPoint?
     let crankRadius: Double?
     let firstPoint: VideoFittingNormalizedPoint?
@@ -826,30 +831,68 @@ struct VideoFittingPlaybackOverlaySummary: Equatable {
     let crankRadius: Double?
 }
 
+enum VideoFittingPlaybackJointKind: String, CaseIterable, Identifiable, Equatable {
+    case knee
+    case hip
+    case shoulder
+    case elbow
+
+    var id: String { rawValue }
+}
+
+struct VideoFittingPlaybackJointOverlay: Identifiable, Equatable {
+    let kind: VideoFittingPlaybackJointKind
+    let angleDegrees: Double
+    let firstPoint: VideoFittingNormalizedPoint
+    let jointPoint: VideoFittingNormalizedPoint
+    let thirdPoint: VideoFittingNormalizedPoint
+
+    var id: String { kind.rawValue }
+
+    func allowsOverlayRendering(
+        in bodyBounds: VideoFittingNormalizedRect?,
+        horizontalMargin: Double = 0.08,
+        verticalMargin: Double = 0.10
+    ) -> Bool {
+        let fallbackBounds = VideoFittingNormalizedRect(minX: 0, minY: 0, maxX: 1, maxY: 1)
+        let bounds = (bodyBounds ?? fallbackBounds).expanded(horizontal: horizontalMargin, vertical: verticalMargin)
+        let points = [firstPoint, jointPoint, thirdPoint]
+        return points.allSatisfy(bounds.contains)
+    }
+}
+
 struct VideoFittingPlaybackOverlaySample: Identifiable, Equatable {
     let id: Int
     let timeSeconds: Double
     let kneeAngleDegrees: Double?
     let hipAngleDegrees: Double?
+    var ankleAngleDegrees: Double? = nil
+    var shoulderAngleDegrees: Double? = nil
+    var elbowAngleDegrees: Double? = nil
     let crankPhaseDegrees: Double?
-    let firstPoint: VideoFittingNormalizedPoint?
-    let jointPoint: VideoFittingNormalizedPoint?
-    let thirdPoint: VideoFittingNormalizedPoint?
+    let pedalPoint: VideoFittingNormalizedPoint?
+    let jointOverlays: [VideoFittingPlaybackJointOverlay]
     let bodyBounds: VideoFittingNormalizedRect?
 
     func allowsOverlayRendering(horizontalMargin: Double = 0.08, verticalMargin: Double = 0.10) -> Bool {
-        guard
-            let firstPoint,
-            let jointPoint,
-            let thirdPoint
-        else {
-            return false
-        }
+        !renderableJointOverlays(horizontalMargin: horizontalMargin, verticalMargin: verticalMargin).isEmpty
+    }
 
-        let points = [firstPoint, jointPoint, thirdPoint]
-        let fallbackBounds = VideoFittingNormalizedRect(minX: 0, minY: 0, maxX: 1, maxY: 1)
-        let bounds = (bodyBounds ?? fallbackBounds).expanded(horizontal: horizontalMargin, vertical: verticalMargin)
-        return points.allSatisfy(bounds.contains)
+    func angleDegrees(for kind: VideoFittingPlaybackJointKind) -> Double? {
+        jointOverlays.first(where: { $0.kind == kind })?.angleDegrees
+    }
+
+    func renderableJointOverlays(
+        horizontalMargin: Double = 0.08,
+        verticalMargin: Double = 0.10
+    ) -> [VideoFittingPlaybackJointOverlay] {
+        jointOverlays.filter {
+            $0.allowsOverlayRendering(
+                in: bodyBounds,
+                horizontalMargin: horizontalMargin,
+                verticalMargin: verticalMargin
+            )
+        }
     }
 }
 
@@ -859,6 +902,7 @@ struct VideoFittingPlaybackCheckpointMarker: Identifiable, Equatable {
     let phaseDegrees: Double
     let kneeAngleText: String
     let hipAngleText: String
+    var ankleAngleText: String = "--"
 
     var id: String { checkpoint.id }
 }
@@ -1015,23 +1059,30 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
     }
 
     private static func actualModelDisplayText(for result: VideoJointAngleAnalysisResult) -> String {
+        let baseText: String
         switch result.modelUsed {
         case .mmposeMotionBERT:
-            return L10n.choose(
-                simplifiedChinese: "MotionBERT 3D（\(result.used3DAngleFrameCount) 帧）",
-                english: "MotionBERT 3D (\(result.used3DAngleFrameCount) frames)"
+            baseText = L10n.choose(
+                simplifiedChinese: "MotionAGFormer-L 3D（\(result.used3DAngleFrameCount) 帧）",
+                english: "MotionAGFormer-L 3D (\(result.used3DAngleFrameCount) frames)"
             )
         case .mediaPipeBlazePoseGHUM:
-            return L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
+            baseText = L10n.choose(simplifiedChinese: "BlazePose GHUM", english: "BlazePose GHUM")
         case .appleVision, .auto:
             if result.used3DAngleFrameCount > 0 {
-                return L10n.choose(
+                baseText = L10n.choose(
                     simplifiedChinese: "Vision 3D 优先（\(result.used3DAngleFrameCount) 帧）",
                     english: "Vision 3D preferred (\(result.used3DAngleFrameCount) frames)"
                 )
+            } else {
+                baseText = L10n.choose(simplifiedChinese: "Vision 2D", english: "Vision 2D")
             }
-            return L10n.choose(simplifiedChinese: "Vision 2D", english: "Vision 2D")
         }
+
+        guard result.resolvedView == .side, let bikeKeypointModelText = result.bikeKeypointModelText else {
+            return baseText
+        }
+        return "\(baseText) + \(bikeKeypointModelText)"
     }
 
     private static func modelDecisionText(
@@ -1045,11 +1096,25 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                     english: "Auto mode is enabled. The effective model used for this run will appear here after recognition."
                 )
             }
+            if selectedModel == .mmposeMotionBERT {
+                return L10n.choose(
+                    simplifiedChinese: "MotionAGFormer-L 模式会先准备 2D 骨架底稿，再叠加 3D 提升；分析完成后会在这里显示本次实际采用的模型。",
+                    english: "MotionAGFormer-L first prepares a 2D skeleton draft and then applies the 3D lift. The effective model used for this run will appear here after recognition."
+                )
+            }
             return nil
         }
 
-        if let fallbackNote = result.modelFallbackNote, !fallbackNote.isEmpty {
-            return fallbackNote
+        let fallbackNotes = [
+            result.modelFallbackNote,
+            result.bikeKeypointFallbackNote
+        ]
+            .compactMap { note -> String? in
+                guard let note, !note.isEmpty else { return nil }
+                return note
+            }
+        if !fallbackNotes.isEmpty {
+            return fallbackNotes.joined(separator: " ")
         }
 
         let actual = actualModelDisplayText(for: result)
@@ -1136,6 +1201,7 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
         case .side:
             if result.kneeStats != nil { indicators.append(L10n.choose(simplifiedChinese: "膝关节角", english: "Knee angle")) }
             if result.hipStats != nil { indicators.append(L10n.choose(simplifiedChinese: "髋关节角", english: "Hip angle")) }
+            if result.ankleStats != nil { indicators.append(L10n.choose(simplifiedChinese: "踝关节角", english: "Ankle angle")) }
             if !result.sideCheckpoints.isEmpty { indicators.append(L10n.choose(simplifiedChinese: "0/3/6/9 点位", english: "0/3/6/9 checkpoints")) }
             if result.cadenceSummary != nil { indicators.append(L10n.choose(simplifiedChinese: "BDC / 座高建议", english: "BDC / saddle guidance")) }
         case .front:
@@ -1195,11 +1261,11 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                     angleDegrees: hipAngle,
                     detail: L10n.choose(
                         simplifiedChinese: hipTriplet == nil
-                            ? "已保留真实关键帧；若肩点不足，将先显示原始帧并等待更稳定的肩-髋-膝叠加。"
-                            : "真实关键帧叠加肩-髋-膝连线，用于判断髋部折叠程度与上身打开状态。",
+                            ? "已保留真实关键帧；若肩点不足，将先显示原始帧并等待更稳定的肩-髋-膝投影叠加。"
+                            : "真实关键帧叠加肩-髋-膝投影连线；这里的髋角指侧视视频平面里的投影夹角，用于判断髋部折叠程度与腹前空间。",
                         english: hipTriplet == nil
-                            ? "Real keyframe kept; when shoulder points are unstable, the raw frame is shown until a shoulder-hip-knee overlay becomes available."
-                            : "Real keyframe with shoulder-hip-knee overlay for hip closure and torso opening."
+                            ? "Real keyframe kept; when shoulder points are unstable, the raw frame is shown until a shoulder-hip-knee projected overlay becomes available."
+                            : "Real keyframe with the side-view shoulder-hip-knee projected angle for hip closure and front-body clearance."
                     ),
                     frameTimeSeconds: hipSample.timeSeconds,
                     crankPhaseDegrees: hipSample.crankPhaseDeg,
@@ -1208,6 +1274,30 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                     firstPoint: hipTriplet.map { normalizedPoint($0.0) },
                     jointPoint: hipTriplet.map { normalizedPoint($0.1) },
                     thirdPoint: hipTriplet.map { normalizedPoint($0.2) }
+                )
+            )
+        }
+
+        if let ankleSample = representativeAnkleSample(for: result),
+           let ankleAngle = sanitizedAngle(ankleSample.ankleAngleDeg),
+           let ankleTriplet = jointTriplet(for: ankleSample, side: result.dominantSide, kind: .ankle) {
+            visuals.append(
+                VideoFittingJointAngleVisualSummary(
+                    kind: .ankle,
+                    title: L10n.choose(simplifiedChinese: "踝关节角", english: "Ankle Angle"),
+                    subtitle: L10n.choose(simplifiedChinese: "代表帧", english: "Representative Frame"),
+                    angleDegrees: ankleAngle,
+                    detail: L10n.choose(
+                        simplifiedChinese: "真实关键帧叠加膝-踝-足尖连线，用于判断踝部伸展与脚踝活动范围。",
+                        english: "Real keyframe with knee-ankle-toe overlay for ankle extension and ankle range checks."
+                    ),
+                    frameTimeSeconds: ankleSample.timeSeconds,
+                    crankPhaseDegrees: ankleSample.crankPhaseDeg,
+                    crankCenter: result.crankCenter.map(normalizedPoint),
+                    crankRadius: result.crankRadius,
+                    firstPoint: normalizedPoint(ankleTriplet.0),
+                    jointPoint: normalizedPoint(ankleTriplet.1),
+                    thirdPoint: normalizedPoint(ankleTriplet.2)
                 )
             )
         }
@@ -1251,6 +1341,7 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                 phaseDegrees: checkpoint.phaseDeg,
                 kneeAngleText: sanitizedAngle(checkpoint.kneeAngleDeg).map { String(format: "%.0f°", $0) } ?? "--",
                 hipAngleText: sanitizedAngle(checkpoint.hipAngleDeg).map { String(format: "%.0f°", $0) } ?? "--",
+                ankleAngleText: sanitizedAngle(checkpoint.ankleAngleDeg).map { String(format: "%.0f°", $0) } ?? "--",
                 crankCenter: result.crankCenter.map(normalizedPoint),
                 crankRadius: result.crankRadius,
                 firstPoint: triplet.map { normalizedPoint($0.0) },
@@ -1264,10 +1355,13 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
         guard result.resolvedView == .side else { return nil }
 
         let samples = result.samples.compactMap { sample -> VideoFittingPlaybackOverlaySample? in
-            let triplet = jointTriplet(for: sample, side: result.dominantSide, kind: .knee)
             let kneeAngle = sanitizedAngle(sample.kneeAngleDeg)
             let hipAngle = sanitizedAngle(sample.hipAngleDeg)
-            guard kneeAngle != nil || hipAngle != nil || triplet != nil else {
+            let ankleAngle = sanitizedAngle(sample.ankleAngleDeg)
+            let shoulderAngle = sanitizedAngle(sample.shoulderAngleDeg)
+            let elbowAngle = sanitizedAngle(sample.elbowAngleDeg)
+            let jointOverlays = playbackJointOverlays(for: sample, side: result.dominantSide)
+            guard kneeAngle != nil || hipAngle != nil || ankleAngle != nil || shoulderAngle != nil || elbowAngle != nil || !jointOverlays.isEmpty else {
                 return nil
             }
 
@@ -1276,10 +1370,12 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                 timeSeconds: sample.timeSeconds,
                 kneeAngleDegrees: kneeAngle,
                 hipAngleDegrees: hipAngle,
+                ankleAngleDegrees: ankleAngle,
+                shoulderAngleDegrees: shoulderAngle,
+                elbowAngleDegrees: elbowAngle,
                 crankPhaseDegrees: sample.crankPhaseDeg,
-                firstPoint: triplet.map { normalizedPoint($0.0) },
-                jointPoint: triplet.map { normalizedPoint($0.1) },
-                thirdPoint: triplet.map { normalizedPoint($0.2) },
+                pedalPoint: pedalPoint(for: sample, side: result.dominantSide).map(normalizedPoint),
+                jointOverlays: jointOverlays,
                 bodyBounds: bodyBounds(for: sample)
             )
         }
@@ -1292,7 +1388,8 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
                 timeSeconds: checkpoint.timeSeconds,
                 phaseDegrees: checkpoint.phaseDeg,
                 kneeAngleText: sanitizedAngle(checkpoint.kneeAngleDeg).map { String(format: "%.0f°", $0) } ?? "--",
-                hipAngleText: sanitizedAngle(checkpoint.hipAngleDeg).map { String(format: "%.0f°", $0) } ?? "--"
+                hipAngleText: sanitizedAngle(checkpoint.hipAngleDeg).map { String(format: "%.0f°", $0) } ?? "--",
+                ankleAngleText: sanitizedAngle(checkpoint.ankleAngleDeg).map { String(format: "%.0f°", $0) } ?? "--"
             )
         }
 
@@ -1344,6 +1441,21 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
         }
     }
 
+    private static func representativeAnkleSample(for result: VideoJointAngleAnalysisResult) -> VideoJointAngleSample? {
+        let candidates = result.samples.filter {
+            sanitizedAngle($0.ankleAngleDeg) != nil &&
+                jointTriplet(for: $0, side: result.dominantSide, kind: .ankle) != nil &&
+                $0.confidence >= 0.55
+        }
+        guard !candidates.isEmpty else { return nil }
+        guard let target = result.ankleStats?.mean else { return candidates.first }
+        return candidates.min { lhs, rhs in
+            let lhsDistance = abs((lhs.ankleAngleDeg ?? target) - target)
+            let rhsDistance = abs((rhs.ankleAngleDeg ?? target) - target)
+            return lhsDistance < rhsDistance
+        }
+    }
+
     private static func nearestSample(to timeSeconds: Double, in samples: [VideoJointAngleSample]) -> VideoJointAngleSample? {
         samples.min { abs($0.timeSeconds - timeSeconds) < abs($1.timeSeconds - timeSeconds) }
     }
@@ -1363,7 +1475,15 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
         side: VideoPoseBodySide,
         kind: VideoFittingJointTripletKind
     ) -> (PoseJointPoint, PoseJointPoint, PoseJointPoint)? {
-        func triplet(shoulder: PoseJointPoint?, hip: PoseJointPoint?, knee: PoseJointPoint?, ankle: PoseJointPoint?) -> (PoseJointPoint, PoseJointPoint, PoseJointPoint)? {
+        func triplet(
+            shoulder: PoseJointPoint?,
+            elbow: PoseJointPoint?,
+            wrist: PoseJointPoint?,
+            hip: PoseJointPoint?,
+            knee: PoseJointPoint?,
+            ankle: PoseJointPoint?,
+            toe: PoseJointPoint?
+        ) -> (PoseJointPoint, PoseJointPoint, PoseJointPoint)? {
             switch kind {
             case .knee:
                 guard let hip, let knee, let ankle else { return nil }
@@ -1371,19 +1491,106 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
             case .hip:
                 guard let shoulder, let hip, let knee else { return nil }
                 return (shoulder, hip, knee)
+            case .ankle:
+                guard let knee, let ankle, let toe else { return nil }
+                return (knee, ankle, toe)
+            case .shoulder:
+                guard let hip, let shoulder, let elbow else { return nil }
+                return (hip, shoulder, elbow)
+            case .elbow:
+                guard let shoulder, let elbow, let wrist else { return nil }
+                return (shoulder, elbow, wrist)
             }
         }
 
         switch side {
         case .left:
-            return triplet(shoulder: sample.leftShoulder, hip: sample.leftHip, knee: sample.leftKnee, ankle: sample.leftAnkle)
+            return triplet(
+                shoulder: sample.leftShoulder,
+                elbow: sample.leftElbow,
+                wrist: sample.leftWrist,
+                hip: sample.leftHip,
+                knee: sample.leftKnee,
+                ankle: sample.leftAnkle,
+                toe: sample.leftToe
+            )
         case .right:
-            return triplet(shoulder: sample.rightShoulder, hip: sample.rightHip, knee: sample.rightKnee, ankle: sample.rightAnkle)
+            return triplet(
+                shoulder: sample.rightShoulder,
+                elbow: sample.rightElbow,
+                wrist: sample.rightWrist,
+                hip: sample.rightHip,
+                knee: sample.rightKnee,
+                ankle: sample.rightAnkle,
+                toe: sample.rightToe
+            )
         case .unknown:
-            if let left = triplet(shoulder: sample.leftShoulder, hip: sample.leftHip, knee: sample.leftKnee, ankle: sample.leftAnkle) {
+            if let left = triplet(
+                shoulder: sample.leftShoulder,
+                elbow: sample.leftElbow,
+                wrist: sample.leftWrist,
+                hip: sample.leftHip,
+                knee: sample.leftKnee,
+                ankle: sample.leftAnkle,
+                toe: sample.leftToe
+            ) {
                 return left
             }
-            return triplet(shoulder: sample.rightShoulder, hip: sample.rightHip, knee: sample.rightKnee, ankle: sample.rightAnkle)
+            return triplet(
+                shoulder: sample.rightShoulder,
+                elbow: sample.rightElbow,
+                wrist: sample.rightWrist,
+                hip: sample.rightHip,
+                knee: sample.rightKnee,
+                ankle: sample.rightAnkle,
+                toe: sample.rightToe
+            )
+        }
+    }
+
+    private static func playbackJointOverlays(
+        for sample: VideoJointAngleSample,
+        side: VideoPoseBodySide
+    ) -> [VideoFittingPlaybackJointOverlay] {
+        func overlay(
+            kind: VideoFittingPlaybackJointKind,
+            tripletKind: VideoFittingJointTripletKind,
+            angle: Double?
+        ) -> VideoFittingPlaybackJointOverlay? {
+            guard
+                let angle = sanitizedAngle(angle),
+                let triplet = jointTriplet(for: sample, side: side, kind: tripletKind)
+            else {
+                return nil
+            }
+            return VideoFittingPlaybackJointOverlay(
+                kind: kind,
+                angleDegrees: angle,
+                firstPoint: normalizedPoint(triplet.0),
+                jointPoint: normalizedPoint(triplet.1),
+                thirdPoint: normalizedPoint(triplet.2)
+            )
+        }
+
+        return [
+            overlay(kind: .knee, tripletKind: .knee, angle: sample.kneeAngleDeg),
+            overlay(kind: .hip, tripletKind: .hip, angle: sample.hipAngleDeg),
+            overlay(kind: .shoulder, tripletKind: .shoulder, angle: sample.shoulderAngleDeg),
+            overlay(kind: .elbow, tripletKind: .elbow, angle: sample.elbowAngleDeg)
+        ].compactMap { $0 }
+    }
+
+    private static func pedalPoint(for sample: VideoJointAngleSample, side: VideoPoseBodySide) -> PoseJointPoint? {
+        if let bikePedalCenter = sample.bikePedalCenter {
+            return bikePedalCenter
+        }
+        switch side {
+        case .left:
+            return sample.leftToe ?? sample.leftAnkle
+        case .right:
+            return sample.rightToe ?? sample.rightAnkle
+        case .unknown:
+            return sample.leftToe ?? sample.leftAnkle ?? sample.rightToe ?? sample.rightAnkle
         }
     }
 
@@ -1394,10 +1601,14 @@ enum VideoFittingJointRecognitionQualitySummaryResolver {
     private static func bodyBounds(for sample: VideoJointAngleSample) -> VideoFittingNormalizedRect? {
         let points = [
             sample.leftShoulder,
+            sample.leftElbow,
+            sample.leftWrist,
             sample.leftHip,
             sample.leftKnee,
             sample.leftAnkle,
             sample.rightShoulder,
+            sample.rightElbow,
+            sample.rightWrist,
             sample.rightHip,
             sample.rightKnee,
             sample.rightAnkle,
@@ -1516,8 +1727,8 @@ enum VideoFittingResultOverviewSummaryResolver {
                 )
             } else {
                 detail = L10n.choose(
-                    simplifiedChinese: "已完成侧视角识别，可查看髋/膝角、BDC 与稳定性结果。",
-                    english: "Side-view recognition is ready. You can review hip/knee angles, BDC, and stability outputs."
+                    simplifiedChinese: "已完成侧视角识别，可查看髋/膝/踝角、BDC 与稳定性结果。",
+                    english: "Side-view recognition is ready. You can review hip/knee/ankle angles, BDC, and stability outputs."
                 )
             }
             let tone: VideoFittingResultRiskTone = {
